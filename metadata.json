@@ -1,0 +1,6 @@
+{
+  "name": "OmniMarket & Delivery Platform",
+  "description": "Multi-vendor marketplace & real-time delivery ecosystem connecting customers, vendors, dispatch riders, and admin management.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
