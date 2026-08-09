@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, Filter, Edit3, Trash2, UtensilsCrossed, MoreHorizontal, X, Image as ImageIcon, Tag, DollarSign, Hash, Layers, Timer, Camera, Upload } from 'lucide-react';
+import { Plus, Search, Filter, Edit3, Trash2, UtensilsCrossed, MoreHorizontal, X, Image as ImageIcon, Tag, DollarSign, Hash, Layers, Timer, Upload } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/src/components/ui/card';
 import { Badge } from '@/src/components/ui/badge';
 import { Button } from '@/src/components/ui/button';
 import { useApp } from '@/src/context/AppContext';
 import { useAuth } from '@/src/lib/auth/auth-store';
 import { cn } from '@/src/lib/utils';
+import { ImageCropModal } from '@/src/components/common/ImageCropModal';
 
 interface MealForm {
   title: string; price: string; stock: string; category: string; description: string; image: string; prepTime: string;
@@ -26,6 +27,7 @@ export function VendorProductsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<MealForm>(initialForm);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
 
   const filtered = vendorProducts.filter(p =>
     p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -80,35 +82,17 @@ export function VendorProductsPage() {
     setShowAddModal(true);
   };
 
-  const pickMealImage = (capture: boolean = false) => {
+  const pickMealImage = () => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
-    if (capture) (input as any).capture = 'environment';
     input.onchange = (e: any) => {
       const file = e.target.files?.[0];
       if (!file) return;
       const reader = new FileReader();
       reader.onload = (event) => {
-        const img = new window.Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          const MAX = 1200; // Increased resolution slightly for better quality
-          if (width > height) {
-            if (width > MAX) { height *= MAX / width; width = MAX; }
-          } else {
-            if (height > MAX) { width *= MAX / height; height = MAX; }
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx?.drawImage(img, 0, 0, width, height);
-          const base64 = canvas.toDataURL('image/jpeg', 0.8); // Better quality
-          setForm(f => ({ ...f, image: base64 }));
-        };
-        img.src = event.target?.result as string;
+        const src = event.target?.result as string;
+        if (src) setCropSrc(src);
       };
       reader.readAsDataURL(file);
     };
@@ -285,14 +269,11 @@ className="w-full resize-y bg-gray-50 dark:bg-slate-800 border-2 border-transpar
                     </div>
                     <div className="flex-1 space-y-2">
                       <div className="flex flex-wrap gap-2">
-                        <Button size="sm" variant="outline" className="rounded-xl text-[10px] font-black" onClick={() => pickMealImage(true)}>
-                          <Camera className="w-4 h-4 mr-1" /> TAKE PHOTO
-                        </Button>
-                        <Button size="sm" variant="outline" className="rounded-xl text-[10px] font-black" onClick={() => pickMealImage(false)}>
+                        <Button size="sm" variant="outline" className="rounded-xl text-[10px] font-black" onClick={() => pickMealImage()}>
                           <Upload className="w-4 h-4 mr-1" /> UPLOAD FROM DEVICE
                         </Button>
                       </div>
-                      <p className="text-[10px] text-gray-400 font-bold">On mobile you will be asked for camera / gallery permission. Uploaded photos are compressed automatically.</p>
+                      <p className="text-[10px] text-gray-400 font-bold">Choose an image from your device. Uploaded photos are compressed automatically.</p>
                       {form.image && (
                         <button onClick={() => setForm({ ...form, image: '' })} className="text-[10px] font-black text-rose-500 hover:underline uppercase tracking-widest">Remove photo</button>
                       )}
@@ -311,6 +292,19 @@ className="w-full resize-y bg-gray-50 dark:bg-slate-800 border-2 border-transpar
           </div>
         )}
       </AnimatePresence>
+
+      <ImageCropModal
+        open={!!cropSrc}
+        imageSrc={cropSrc || ''}
+        onCancel={() => setCropSrc(null)}
+        onConfirm={(dataUrl) => {
+          setForm(f => ({ ...f, image: dataUrl }));
+          setCropSrc(null);
+        }}
+        aspect={1}
+        maxOutputSize={900}
+        title="Crop Meal Photo"
+      />
     </div>
   );
 }

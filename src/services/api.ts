@@ -314,6 +314,10 @@ export const MessagingService = {
     method: 'POST',
     body: JSON.stringify(data)
   }),
+  supportConversation: (data?: { subject?: string }) => request<Conversation>('/messages/support', {
+    method: 'POST',
+    body: JSON.stringify(data || {})
+  }),
 };
 
 // ------------------------------------------------------------

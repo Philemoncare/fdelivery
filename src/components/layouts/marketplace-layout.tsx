@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
+import { ScrollToTop } from '@/src/components/common/ScrollToTop';
 import { PortalAccessBar } from '@/src/components/common/PortalAccessBar';
 import { HeaderNavbar } from '@/src/components/common/HeaderNavbar';
 import { MegaMenu } from '@/src/components/common/MegaMenu';
@@ -15,6 +16,7 @@ export function MarketplaceShell() {
 
   return (
 <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-slate-950 selection:bg-emerald-500 selection:text-white pb-20 lg:pb-0">
+      <ScrollToTop />
       <div className="sticky top-0 z-40">
         <PortalAccessBar />
         <HeaderNavbar

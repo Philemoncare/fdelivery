@@ -28,7 +28,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             ref={ref}
             id={inputId}
             className={cn(
-              'w-full px-4 py-2.5 bg-white dark:bg-slate-800/80 border rounded-xl text-sm placeholder:text-gray-400 dark:placeholder:text-slate-500',
+              'w-full px-4 py-2.5 bg-white dark:bg-slate-800/80 border rounded-xl text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-slate-500',
               'focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200',
               icon && 'pl-10',
               error

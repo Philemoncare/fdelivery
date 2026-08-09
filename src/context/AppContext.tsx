@@ -63,6 +63,10 @@ interface AppContextType {
   clearCart: () => void;
   cartTotal: number;
   cartCount: number;
+  deliveryFee: number;
+  estimatedTax: number;
+  discountAmount: number;
+  grandTotal: number;
 
   wishlist: Product[];
   toggleWishlist: (product: Product) => void;
@@ -147,12 +151,12 @@ export interface CustomerLite {
 }
 
 const CURRENCY_RATES: Record<CurrencyCode, { symbol: string; rate: number }> = {
-  GHS: { symbol: 'GHS ', rate: 1.0 },
+  GHS: { symbol: 'GH₵ ', rate: 1.0 },
   USD: { symbol: '$', rate: 0.065 },
-  EUR: { symbol: 'EUR ', rate: 0.060 },
-  GBP: { symbol: 'GBP ', rate: 0.051 },
-  NGN: { symbol: 'NGN ', rate: 100.0 },
-  JPY: { symbol: 'JPY ', rate: 10.0 },
+  EUR: { symbol: '€ ', rate: 0.060 },
+  GBP: { symbol: '£ ', rate: 0.051 },
+  NGN: { symbol: '₦ ', rate: 100.0 },
+  JPY: { symbol: '¥ ', rate: 10.0 },
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -250,7 +254,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Formatting
   const formatPrice = useCallback((amount: any): string => {
     const numericAmount = typeof amount === 'number' ? amount : parseFloat(amount);
-    if (isNaN(numericAmount)) return 'GHS 0.00';
+    if (isNaN(numericAmount)) return 'GH₵ 0.00';
 
     const info = CURRENCY_RATES[currency];
     const converted = numericAmount * info.rate;
@@ -270,9 +274,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     console.log('Fetching application data...');
     setIsLoading(true);
     try {
-      // Base data for everyone (e.g., for exploration)
-      // For strict isolation, we might skip these if user is a vendor/rider
-      // Admins and super-admins get the full product catalog for moderation.
       const isPublic = !user || user.role === 'customer';
       const isConsumerCatalog = isPublic || user?.role === 'administrator' || user?.role === 'super-administrator';
 
@@ -302,7 +303,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             MessagingService.getConversations(user.id)
           ];
 
-          // If vendor, also fetch their specific products
           if (user.role === 'vendor' || user.role === 'store-manager' || user.role === 'vendor-staff') {
             const vId = user.vendorId;
             if (vId) {
@@ -318,7 +318,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setReviews(Array.isArray(revData) ? revData : []);
           setConversations(Array.isArray(convs) ? convs : []);
 
-          // Fetch vendor specific data separately to avoid destructuring issues
           if (user.role === 'vendor' || user.role === 'store-manager' || user.role === 'vendor-staff') {
             const vId = user.vendorId;
             if (vId) {
@@ -333,7 +332,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           setCustomerProfile(profile || {
             id: user.id,
-            name: `${user.firstName} ${user.lastName}`,
+            name: user.displayName || `${user.firstName} ${user.lastName}`,
             email: user.email,
             avatar: user.avatarUrl || '',
             phone: user.phone,
@@ -360,12 +359,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     refreshData();
   }, [refreshData]);
 
-  // Real-time synchronization listeners (guests do not open an SSE connection)
   useEffect(() => {
     if (!user) return;
     const unsubscribeOrder = RealTimeService.subscribe('order_update', (updatedOrder: Order) => {
       setOrders(prev => {
-        // Only update if it's relevant to the current user to maintain strict isolation
         const isRelevant = user?.id === updatedOrder.customerId ||
                            vendorId === updatedOrder.vendorId ||
                            riderId === updatedOrder.riderId ||
@@ -420,10 +417,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubscribeVendor();
       unsubscribeProduct();
     };
-  }, [user, showToast]);
+  }, [user, showToast, vendorId, riderId]);
 
-  // User Location Auto-Detection (only for signed-in users; guests must not
-  // trigger a browser GPS permission prompt or have their location broadcast).
   useEffect(() => {
     if (!user) return;
     if (!navigator.geolocation) return;
@@ -432,23 +427,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       async (position) => {
         const { latitude, longitude } = position.coords;
         try {
-          // Use Nominatim for free reverse geocoding
           const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`, {
             headers: { 'Accept-Language': 'en' }
           });
           const data = await res.json();
-
-          // Try to get a clean short name (suburb, road, or city)
           const addr = data.address;
           const shortName = addr.suburb || addr.neighbourhood || addr.road || addr.city || addr.town || 'Takoradi';
-          const fullName = data.display_name?.split(',').slice(0, 2).join(',');
-
           setCurrentAddressName(shortName);
 
-          // Persist the detected GPS location to THIS user's profile (each
-          // logged-in person keeps their own tracked location - like Uber).
-          // Only auto-save once per login and only when the user has not yet
-          // set a real default address on purpose.
           if (user && user.role === 'customer') {
             try {
               const savedKey = `om_geo_saved_${user.id}`;
@@ -467,12 +453,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 }
                 sessionStorage.setItem(savedKey, '1');
               }
-            } catch {
-              /* auto-save is best-effort; never block the app */
-            }
+            } catch {}
           }
-
-          console.log('[Location] Resolved to:', fullName || shortName);
         } catch (err) {
           console.error('[Location] Reverse geocoding failed:', err);
           setCurrentAddressName('Takoradi');
@@ -486,20 +468,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   }, [user]);
 
-  // Rider Location Tracking
   useEffect(() => {
     if (!user || user.role !== 'rider' || riderStatus === 'OFFLINE') {
       setCurrentRiderLocation(null);
       return;
     }
-
     if (!navigator.geolocation) {
-      console.error('Geolocation is not supported by this browser.');
       setRiderStatus('LOCATION_UNAVAILABLE');
       return;
     }
 
-    console.log('Starting real-time rider location tracking...');
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
         const update: RiderLocationUpdate = {
@@ -512,7 +490,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           timestamp: new Date(position.timestamp).toISOString(),
         };
 
-        // If there's an active delivery, attach its ID
         const activeOrder = orders.find(o =>
           o.riderId === user.id &&
           ['picked_up', 'in_transit', 'arriving'].includes(o.status)
@@ -522,29 +499,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         setCurrentRiderLocation(update);
-
-        // Push update to server
         RiderService.updateLocation(update).catch(err => {
           console.error('Failed to sync location to server:', err);
         });
       },
       (error) => {
-        console.error('Geolocation error:', error);
         if (error.code === error.PERMISSION_DENIED) {
           setRiderStatus('LOCATION_PERMISSION_DENIED');
         } else {
           setRiderStatus('LOCATION_UNAVAILABLE');
         }
       },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0
-      }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
 
     return () => {
-      console.log('Stopping rider location tracking.');
       navigator.geolocation.clearWatch(watchId);
     };
   }, [user, riderStatus, orders]);
@@ -592,6 +561,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const cartTotal = useMemo(() => cart.reduce((sum, i) => sum + (i.product?.price || 0) * i.quantity, 0), [cart]);
   const cartCount = useMemo(() => cart.reduce((sum, i) => sum + i.quantity, 0), [cart]);
+
+  const deliveryFee = useMemo(() => (cart.length > 0 ? (selectedRider ? selectedRider.deliveryFee : 3.00) : 0), [cart.length, selectedRider]);
+  const estimatedTax = useMemo(() => Number((cartTotal * 0.05).toFixed(2)), [cartTotal]);
+  const discountAmount = useMemo(() => {
+    if (!appliedCoupon) return 0;
+    if (appliedCoupon.type === 'percentage') {
+      return Math.min((cartTotal * appliedCoupon.value) / 100, appliedCoupon.maxDiscount || Infinity);
+    }
+    if (appliedCoupon.type === 'fixed_amount') {
+      return Math.min(appliedCoupon.value, cartTotal);
+    }
+    if (appliedCoupon.type === 'free_delivery') {
+      return deliveryFee;
+    }
+    return 0;
+  }, [appliedCoupon, cartTotal, deliveryFee]);
+
+  const grandTotal = useMemo(() => Math.max(0, cartTotal + deliveryFee + estimatedTax - discountAmount), [cartTotal, deliveryFee, estimatedTax, discountAmount]);
 
   const isInWishlist = useCallback((id: string) => wishlist.some(p => p.id === id), [wishlist]);
   const isFavoriteVendor = useCallback((id: string) => favoriteVendors.some(v => v.id === id), [favoriteVendors]);
@@ -702,9 +689,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     setOrders(prev => [newOrder, ...prev]);
     clearCart();
-    showToast('Order Placed!', `Your order #${newOrder.orderNumber} is confirmed.`);
 
-    // Open an order chat thread so the customer can message the restaurant.
     if (vendor && user && vendor.ownerId && vendor.ownerId !== user.id) {
       MessagingService.createConversation({
         type: 'customer_vendor',
@@ -713,7 +698,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         subject: `Order chat — ${vendor.name}`
       }).catch(() => {});
     }
-    // Refresh conversations so the new order thread appears in Messages.
     if (user) {
       MessagingService.getConversations(user.id).then(setConversations).catch(() => {});
     }
@@ -869,6 +853,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     selectedOrder, setSelectedOrder, selectedRider, setSelectedRider,
     quickViewProduct, setQuickViewProduct,
     cart, isCartOpen, setIsCartOpen, addToCart, removeFromCart, updateCartQuantity, clearCart, cartTotal, cartCount,
+    deliveryFee, estimatedTax, discountAmount, grandTotal,
     wishlist, toggleWishlist, isInWishlist,
     searchQuery, setSearchQuery, searchCategory, setSearchCategory,
     refreshData, updateVendorProfile, updateRiderProfile, createVendor, deleteVendor, updateVendorHours,
@@ -892,6 +877,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     selectedOrder, setSelectedOrder, selectedRider, setSelectedRider,
     quickViewProduct, setQuickViewProduct,
     cart, isCartOpen, setIsCartOpen, addToCart, removeFromCart, updateCartQuantity, clearCart, cartTotal, cartCount,
+    deliveryFee, estimatedTax, discountAmount, grandTotal,
     wishlist, toggleWishlist, isInWishlist,
     searchQuery, setSearchQuery, searchCategory, setSearchCategory,
     refreshData, updateVendorProfile, updateRiderProfile, createVendor, deleteVendor, updateVendorHours,
@@ -918,6 +904,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
 export const useApp = () => {
   const context = useContext(AppContext);
-  if (!context) throw new Error('useApp must be used within an AppProvider');
+  if (!context) throw new Error('useApp must be used within AppProvider');
   return context;
 };

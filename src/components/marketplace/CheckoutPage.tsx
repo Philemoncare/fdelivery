@@ -3,6 +3,7 @@ import { useNavigate, Navigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '@/src/lib/auth/auth-store';
 import { getVendorOperationalStatus } from '../../lib/vendor-utils';
+import { cn } from '@/src/lib/utils';
 import {
   ShieldCheck,
   Bike,
@@ -14,8 +15,13 @@ import {
   ArrowRight,
   Clock,
   AlertCircle,
-  Smartphone
+  Smartphone,
+  Package,
+  Star
 } from 'lucide-react';
+import { Card } from '../ui/card';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
 
 export const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
@@ -41,44 +47,47 @@ export const CheckoutPage: React.FC = () => {
     isLoading,
     setSelectedOrder,
     vendors,
-    showToast
+    showToast,
+    deliveryFee,
+    estimatedTax,
+    discountAmount,
+    grandTotal
   } = useApp();
 
+  const [step, setStep] = useState<1 | 2 | 3>(1); // 1: Address & Rider, 2: Payment, 3: Success
   const [deliveryMethod, setDeliveryMethod] = useState<'delivery' | 'pickup'>('delivery');
-  const [paymentMethod, setPaymentMethod] = useState<'Credit Card' | 'Wallet' | 'Apple Pay' | 'Cash on Delivery'>('Credit Card');
+  const [paymentMethod, setPaymentMethod] = useState<string>('MTN MoMo');
   const [selectedAddress, setSelectedAddress] = useState<string>('');
-  const [specialInstructions, setSpecialInstructions] = useState<string>('Please call on arrival.');
-  const [couponCode, setCouponCode] = useState<string>('');
+  const [specialInstructions, setSpecialInstructions] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [placedOrder, setPlacedOrder] = useState<any>(null);
 
-  // Initial address selection once profile is loaded
+  // Initial address selection
   React.useEffect(() => {
     if (customerProfile?.addresses?.length && !selectedAddress) {
-      setSelectedAddress(customerProfile.addresses[0]?.address || '');
+      const def = customerProfile.addresses.find(a => a.isDefault) || customerProfile.addresses[0];
+      setSelectedAddress(def?.address || '');
     }
   }, [customerProfile, selectedAddress]);
 
+  // Default rider
+  React.useEffect(() => {
+    if (deliveryMethod === 'delivery' && riders.length && !selectedRider) {
+      const available = riders.filter(r => r.isOnline && r.isAvailable);
+      if (available.length) setSelectedRider(available[0]);
+      else setSelectedRider(riders[0]);
+    }
+  }, [deliveryMethod, riders, selectedRider, setSelectedRider]);
+
   if (isLoading || !customerProfile) {
-    return <div className="min-h-screen flex items-center justify-center">
+    return <div className="min-h-[60vh] flex items-center justify-center">
       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
     </div>;
   }
 
-  const discountAmount = appliedCoupon
-    ? (appliedCoupon.type === 'percentage'
-        ? Math.min((cartTotal * appliedCoupon.value) / 100, appliedCoupon.maxDiscount)
-        : appliedCoupon.value)
-    : 0;
-
-  const estimatedTax = Number((cartTotal * 0.08).toFixed(2));
-  const deliveryFee = deliveryMethod === 'delivery' ? (selectedRider ? selectedRider.deliveryFee : 3.50) : 0;
-  const grandTotal = Math.max(0, cartTotal - discountAmount + estimatedTax + deliveryFee);
-
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
   const handlePlaceOrder = async () => {
     if (cart.length === 0 || isSubmitting) return;
 
-    // Verify vendor is open
     const vendorId = cart[0].product.vendorId;
     const vendor = vendors.find(v => v.id === vendorId);
     if (vendor) {
@@ -94,267 +103,306 @@ export const CheckoutPage: React.FC = () => {
       const order = await placeOrder({
         deliveryMethod,
         paymentMethod,
-        specialInstructions,
+        specialInstructions: specialInstructions || 'No instructions',
         riderId: selectedRider?.id,
         address: selectedAddress
       });
+      setPlacedOrder(order);
       setSelectedOrder(order);
-      navigate('/track-order');
-    } catch (err) {
-      console.error(err);
+      setStep(3); // Move to Success Step
+      window.scrollTo(0, 0);
+    } catch (err: any) {
+      showToast('error', 'Order Failed', err.message || 'Could not process your order.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const vendor = vendors.find(v => v.id === cart[0]?.product.vendorId);
-  const vendorStatus = vendor ? getVendorOperationalStatus(vendor) : 'OPEN';
-  const isVendorOpen = vendorStatus === 'OPEN' || vendorStatus === 'BUSY';
+  // SUCCESS SCREEN
+  if (step === 3 && placedOrder) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-12 text-center space-y-8 animate-in fade-in zoom-in duration-500">
+        <div className="w-24 h-24 bg-emerald-100 dark:bg-emerald-950/50 rounded-full flex items-center justify-center mx-auto text-emerald-600 shadow-inner">
+          <CheckCircle2 className="w-12 h-12" />
+        </div>
+
+        <div>
+          <h1 className="text-3xl font-black text-gray-900 dark:text-white">Order Placed Successfully!</h1>
+          <p className="text-gray-500 mt-2">Thank you, {customerProfile.name.split(' ')[0]}. Your delicious meal is on the way.</p>
+        </div>
+
+        <Card className="rounded-[2.5rem] border-gray-100 dark:border-slate-800 shadow-xl overflow-hidden bg-white dark:bg-slate-900">
+          <div className="p-8 space-y-6">
+            <div className="flex justify-between items-center border-b border-gray-100 dark:border-slate-800 pb-4">
+              <div className="text-left">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Order ID</p>
+                <p className="font-mono font-bold text-gray-900 dark:text-white">{placedOrder.orderNumber}</p>
+              </div>
+              <Badge variant="success" className="rounded-xl px-4 py-1 font-black uppercase text-[10px] tracking-widest">Confirmed</Badge>
+            </div>
+
+            <div className="grid grid-cols-2 gap-6 text-left">
+              <div>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Restaurant</p>
+                <p className="text-sm font-bold text-gray-900 dark:text-white">{placedOrder.vendorName}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Total Paid</p>
+                <p className="text-sm font-black text-emerald-600">{formatPrice(placedOrder.totalAmount)}</p>
+              </div>
+            </div>
+
+            <div className="bg-gray-50 dark:bg-slate-800/50 rounded-2xl p-4 flex items-center gap-4 text-left">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-600 flex-shrink-0">
+                <Bike className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Delivery Status</p>
+                <p className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                  {placedOrder.riderId ? `Assigned to ${selectedRider?.name || 'Rider'}` : 'Awaiting Assignment'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Button variant="brand" className="rounded-2xl py-6 font-black uppercase text-xs tracking-widest shadow-lg" onClick={() => navigate(`/customer/orders/${placedOrder.id}`)}>
+            <Package className="w-4 h-4 mr-2" /> View Order Details
+          </Button>
+          <Button variant="outline" className="rounded-2xl py-6 font-black uppercase text-xs tracking-widest border-gray-200" onClick={() => navigate('/track-order')}>
+            <MapPin className="w-4 h-4 mr-2" /> Track Delivery
+          </Button>
+        </div>
+
+        <button onClick={() => navigate('/')} className="text-xs font-black text-emerald-600 uppercase tracking-[0.2em] hover:underline">
+          Back to Marketplace
+        </button>
+      </div>
+    );
+  }
+
+  const activeRiders = riders.filter(r => r.isOnline && r.isAvailable);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    <div className="max-w-5xl mx-auto px-4 py-8 space-y-8 pb-32">
       
       {/* Header */}
-      <div className="bg-gradient-to-r from-emerald-600 to-teal-800 rounded-3xl p-8 text-white shadow-xl flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-heading font-extrabold flex items-center gap-2">
-            <ShieldCheck className="w-8 h-8 text-emerald-300" /> Secure Food Checkout
+          <h1 className="text-3xl font-black text-gray-900 dark:text-white flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/20">
+              <ShieldCheck className="w-7 h-7" />
+            </div>
+            Checkout
           </h1>
-          <p className="text-xs text-emerald-100 mt-1">Review your meals, assign your dispatch rider, and confirm your food order.</p>
+          <p className="text-sm text-gray-500 mt-1 ml-1">Complete your food order from {cart[0]?.product.vendorName || 'Takoradi'}</p>
         </div>
-        <span className="hidden md:inline-block bg-white/20 text-white font-mono text-xs px-3 py-1.5 rounded-full font-bold">
-          256-Bit Encrypted
-        </span>
+        <div className="flex bg-gray-100 dark:bg-slate-800 p-1 rounded-2xl shadow-inner">
+          {[1, 2].map((s) => (
+            <div
+              key={s}
+              className={cn(
+                "px-6 py-2.5 text-[10px] font-black rounded-xl uppercase tracking-widest transition-all",
+                step === s ? "bg-white dark:bg-slate-700 text-emerald-600 shadow-sm" : "text-gray-400"
+              )}
+            >
+              Step {s}
+            </div>
+          ))}
+        </div>
       </div>
 
-      {cart.length === 0 ? (
-        <div className="bg-white dark:bg-slate-900 rounded-3xl p-12 text-center border space-y-4">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white">Your food cart is currently empty</h3>
-          <button
-            onClick={() => navigate('/products')}
-            className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs px-6 py-3 rounded-xl shadow"
-          >
-            Explore Restaurants
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          
-          {/* Left Column: Delivery & Payment Details */}
-          <div className="lg:col-span-8 space-y-6">
-            
-            {/* Step 1: Delivery Method & Address */}
-            <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-gray-200 dark:border-slate-800 shadow-sm space-y-4">
-              <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2 border-b pb-3 border-gray-100 dark:border-slate-800">
-                <MapPin className="w-4 h-4 text-emerald-500" /> 1. Delivery Address & Restaurant Confirmation
-              </h3>
+      <div className="grid lg:grid-cols-[1fr_350px] gap-8 items-start">
 
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => setDeliveryMethod('delivery')}
-                  className={`p-3.5 rounded-2xl border text-xs font-bold transition flex items-center justify-center space-x-2 ${
-                    deliveryMethod === 'delivery'
-                      ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500 text-emerald-700 dark:text-emerald-300 ring-2 ring-emerald-500/20'
-                      : 'bg-gray-50 dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-300'
-                  }`}
-                >
-                  <Bike className="w-4 h-4" />
-                  <span>Doorstep Delivery</span>
-                </button>
+        <div className="space-y-6">
+          {step === 1 ? (
+            <>
+              {/* Delivery Choice */}
+              <Card className="rounded-[2.5rem] border-gray-100 dark:border-slate-800 shadow-sm p-6 sm:p-8 space-y-6">
+                <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] flex items-center gap-2">
+                  <MapPin className="w-4 h-4" /> Delivery Details
+                </h3>
 
-                <button
-                  onClick={() => setDeliveryMethod('pickup')}
-                  className={`p-3.5 rounded-2xl border text-xs font-bold transition flex items-center justify-center space-x-2 ${
-                    deliveryMethod === 'pickup'
-                      ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500 text-emerald-700 dark:text-emerald-300 ring-2 ring-emerald-500/20'
-                      : 'bg-gray-50 dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-300'
-                  }`}
-                >
-                  <Clock className="w-4 h-4" />
-                  <span>Restaurant Pickup (Free)</span>
-                </button>
-              </div>
-
-              {deliveryMethod === 'delivery' && (
-                <div className="space-y-3 pt-2">
-                  <label className="text-xs font-bold text-gray-700 dark:text-gray-300">Select Saved Address:</label>
-                  <div className="space-y-2">
-                    {customerProfile.addresses.map((a) => (
-                      <div
-                        key={a.id}
-                        onClick={() => setSelectedAddress(a.address)}
-                        className={`p-3 rounded-2xl border text-xs cursor-pointer flex items-center justify-between ${
-                          selectedAddress === a.address
-                            ? 'bg-emerald-50/60 dark:bg-emerald-950/40 border-emerald-500 font-bold text-gray-900 dark:text-white'
-                            : 'bg-gray-50 dark:bg-slate-800/50 border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-300'
-                        }`}
-                      >
-                        <div>
-                          <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 px-2 py-0.5 rounded font-bold mr-2">
-                            {a.title}
-                          </span>
-                          <span>{a.address}</span>
-                        </div>
-                        {selectedAddress === a.address && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">
-                      Delivery Instructions:
-                    </label>
-                    <input
-                      type="text"
-                      value={specialInstructions}
-                      onChange={(e) => setSpecialInstructions(e.target.value)}
-                      placeholder="e.g. Call upon arrival or leave at front desk..."
-                      className="w-full bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-xs text-gray-900 dark:text-white px-3 py-2 rounded-xl focus:outline-none focus:border-emerald-500"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Step 2: Preferred Rider Selection */}
-            {deliveryMethod === 'delivery' && (
-              <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-gray-200 dark:border-slate-800 shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b pb-3 border-gray-100 dark:border-slate-800">
-                  <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    <Bike className="w-4 h-4 text-emerald-500" /> 2. Choose Dispatch Rider
-                  </h3>
-                  <span className="text-[10px] bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-300 font-bold px-2 py-0.5 rounded">
-                    Live Nearby Fleet
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {riders.map((r) => {
-                    const isSel = selectedRider?.id === r.id;
-                    return (
-                      <div
-                        key={r.id}
-                        onClick={() => setSelectedRider(r)}
-                        className={`p-3.5 rounded-2xl border text-xs cursor-pointer transition-all flex flex-col justify-between ${
-                          isSel
-                            ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500 ring-2 ring-emerald-500/20 shadow-md'
-                            : 'bg-gray-50 dark:bg-slate-800 border-gray-200 dark:border-slate-700'
-                        }`}
-                      >
-                        <div className="flex items-center space-x-2 mb-2">
-                          <img src={r.avatar} alt={r.name} className="w-10 h-10 rounded-xl object-cover" />
-                          <div>
-                            <p className="font-bold text-gray-900 dark:text-white">{r.name}</p>
-                            <p className="text-[10px] text-gray-500">{r.vehicleType}</p>
-                          </div>
-                        </div>
-                        <div className="pt-2 border-t border-gray-200 dark:border-slate-700 flex justify-between text-[11px]">
-                          <span className="text-emerald-600 font-bold">ETA: {r.etaMinutes}m</span>
-                          <span className="font-bold text-gray-900 dark:text-white">{formatPrice(r.deliveryFee)}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Step 3: Payment Method */}
-            <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-gray-200 dark:border-slate-800 shadow-sm space-y-4">
-              <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2 border-b pb-3 border-gray-100 dark:border-slate-800">
-                <CreditCard className="w-4 h-4 text-emerald-500" /> 3. Payment Method
-              </h3>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {[
-                  { id: 'MTN MoMo', label: 'MTN MoMo', icon: <Smartphone className="w-4 h-4 text-amber-500" /> },
-                  { id: 'Telecel Cash', label: 'Telecel Cash', icon: <Smartphone className="w-4 h-4 text-red-500" /> },
-                  { id: 'AirtelTigo Money', label: 'AirtelTigo Money', icon: <Smartphone className="w-4 h-4 text-blue-500" /> },
-                  { id: 'Visa', label: 'Visa Card', icon: <CreditCard className="w-4 h-4 text-blue-600" /> },
-                  { id: 'Mastercard', label: 'Mastercard', icon: <CreditCard className="w-4 h-4 text-orange-500" /> },
-                  { id: 'OmniWallet', label: `OmniWallet (${formatPrice(customerProfile.walletBalance)})`, icon: <Wallet className="w-4 h-4 text-emerald-500" /> },
-                  { id: 'Cash on Delivery', label: 'Cash on Delivery', icon: <CheckCircle2 className="w-4 h-4 text-amber-600" /> }
-                ].map((pm) => (
-                  <button
-                    key={pm.id}
-                    onClick={() => setPaymentMethod(pm.id as any)}
-                    className={`p-3.5 rounded-2xl border text-[10px] font-bold transition flex flex-col items-center justify-center space-y-2 text-center ${
-                      paymentMethod === pm.id
-                        ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500 text-emerald-700 dark:text-emerald-300 ring-2 ring-emerald-500/20'
-                        : 'bg-gray-50 dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-300'
-                    }`}
-                  >
-                    {pm.icon}
-                    <span>{pm.label}</span>
+                <div className="grid grid-cols-2 gap-3">
+                  <button onClick={() => setDeliveryMethod('delivery')}
+                    className={cn("p-4 rounded-2xl border-2 flex flex-col items-center gap-2 transition-all",
+                      deliveryMethod === 'delivery' ? "border-emerald-500 bg-emerald-50/20 text-emerald-700" : "border-gray-50 bg-gray-50 text-gray-400")}>
+                    <Bike className="w-6 h-6" />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Doorstep</span>
                   </button>
-                ))}
-              </div>
-            </div>
-
-          </div>
-
-          {/* Right Column: Order Summary Card */}
-          <div className="lg:col-span-4">
-            <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-gray-200 dark:border-slate-800 shadow-xl space-y-6 sticky top-[168px]">
-              
-              <h3 className="font-heading font-bold text-sm text-gray-900 dark:text-white border-b pb-3 border-gray-100 dark:border-slate-800">
-                Order Summary ({cart.length} Meals)
-              </h3>
-
-              {/* Items overview */}
-              <div className="space-y-3 max-h-48 overflow-y-auto">
-                {cart.map((item) => (
-                  <div key={item.product.id} className="flex justify-between items-center text-xs">
-                    <div className="flex items-center space-x-2 min-w-0">
-                      <span className="font-bold text-emerald-600">{item.quantity}x</span>
-                      <span className="font-medium text-gray-800 dark:text-gray-200 truncate max-w-[140px]">{item.product.title}</span>
-                    </div>
-                    <span className="font-bold text-gray-900 dark:text-white">{formatPrice(item.product.price * item.quantity)}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Pricing breakdown */}
-              <div className="space-y-2 text-xs pt-4 border-t border-gray-100 dark:border-slate-800">
-                <div className="flex justify-between text-gray-600 dark:text-gray-300">
-                  <span>Subtotal</span>
-                  <span className="font-semibold text-gray-900 dark:text-white">{formatPrice(cartTotal)}</span>
+                  <button onClick={() => setDeliveryMethod('pickup')}
+                    className={cn("p-4 rounded-2xl border-2 flex flex-col items-center gap-2 transition-all",
+                      deliveryMethod === 'pickup' ? "border-emerald-500 bg-emerald-50/20 text-emerald-700" : "border-gray-50 bg-gray-50 text-gray-400")}>
+                    <Clock className="w-6 h-6" />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Pickup</span>
+                  </button>
                 </div>
-                {discountAmount > 0 && (
-                  <div className="flex justify-between text-emerald-600 font-semibold">
-                    <span>Discount</span>
-                    <span>-{formatPrice(discountAmount)}</span>
+
+                {deliveryMethod === 'delivery' && (
+                  <div className="space-y-4 pt-2 animate-in slide-in-from-top-2 duration-300">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Select Saved Address</label>
+                      <div className="space-y-2">
+                        {customerProfile.addresses.map((a) => (
+                          <button key={a.id} onClick={() => setSelectedAddress(a.address)}
+                            className={cn("w-full p-4 rounded-2xl border-2 text-left flex items-center justify-between group transition-all",
+                              selectedAddress === a.address ? "border-emerald-500 bg-white dark:bg-slate-800" : "border-gray-100 bg-gray-50/50 hover:border-emerald-300")}>
+                            <div>
+                               <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-0.5">{a.title}</p>
+                               <p className="text-xs font-bold text-gray-900 dark:text-white">{a.address}</p>
+                            </div>
+                            {selectedAddress === a.address && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Special Note for Rider</label>
+                      <input type="text" value={specialInstructions} onChange={e => setSpecialInstructions(e.target.value)} placeholder="e.g. Ring doorbell or leave at gate" className="w-full bg-gray-50 dark:bg-slate-800 p-4 rounded-2xl text-xs font-bold border-2 border-transparent focus:border-emerald-500 focus:bg-white outline-none transition-all" />
+                    </div>
                   </div>
                 )}
-                <div className="flex justify-between text-gray-600 dark:text-gray-300">
-                  <span>Estimated Tax</span>
-                  <span>{formatPrice(estimatedTax)}</span>
+              </Card>
+
+              {/* Rider Selection */}
+              {deliveryMethod === 'delivery' && (
+                <Card className="rounded-[2.5rem] border-gray-100 dark:border-slate-800 shadow-sm p-6 sm:p-8 space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] flex items-center gap-2">
+                      <Bike className="w-4 h-4" /> Dispatch Rider
+                    </h3>
+                    <Badge variant="outline" className="text-[8px] font-black uppercase border-gray-200">Nearby Fleet Only</Badge>
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    {(activeRiders.length ? activeRiders : riders.slice(0, 4)).map((r) => (
+                      <button key={r.id} onClick={() => setSelectedRider(r)}
+                        className={cn("p-4 rounded-3xl border-2 flex items-center gap-4 text-left transition-all",
+                          selectedRider?.id === r.id ? "border-emerald-500 bg-white dark:bg-slate-800 shadow-md ring-4 ring-emerald-500/5" : "border-gray-50 bg-gray-50/50 hover:border-emerald-200")}>
+                        <img src={r.avatar} className="w-12 h-12 rounded-xl object-cover shadow-sm" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-black text-gray-900 dark:text-white truncate">{r.name}</p>
+                          <div className="flex items-center gap-2 text-[9px] text-gray-500 font-bold uppercase mt-0.5">
+                            <span className="flex items-center gap-0.5 text-amber-500"><Star className="w-2.5 h-2.5 fill-current" /> {r.rating}</span>
+                            <span>{r.vehicleType}</span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] font-black text-emerald-600">{formatPrice(r.deliveryFee)}</p>
+                          <p className="text-[8px] text-gray-400 uppercase">{r.etaMinutes}m ETA</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
+              <Button className="w-full rounded-[1.75rem] py-8 bg-gray-900 text-white font-black uppercase tracking-[0.2em] text-xs shadow-xl active:scale-[0.98] transition-all" onClick={() => setStep(2)}>
+                Continue to Payment <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </>
+          ) : (
+            <>
+              {/* Payment Selection */}
+              <Card className="rounded-[2.5rem] border-gray-100 dark:border-slate-800 shadow-sm p-6 sm:p-8 space-y-8">
+                <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] flex items-center gap-2">
+                  <CreditCard className="w-4 h-4" /> Payment Selection
+                </h3>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {[
+                    { id: 'MTN MoMo', label: 'MTN Mobile Money', icon: 'MoMo', color: 'bg-amber-400' },
+                    { id: 'Telecel Cash', label: 'Telecel Cash', icon: 'Cash', color: 'bg-red-600' },
+                    { id: 'AirtelTigo Money', label: 'AirtelTigo Money', icon: 'M', color: 'bg-blue-600' },
+                    { id: 'Visa', label: 'Bank Card / Visa', icon: <CreditCard className="w-5 h-5" />, color: 'bg-blue-800' },
+                    { id: 'OmniWallet', label: `OmniWallet (${formatPrice(customerProfile.walletBalance)})`, icon: <Wallet className="w-5 h-5" />, color: 'bg-emerald-600' },
+                    { id: 'Cash on Delivery', label: 'Cash on Delivery', icon: <Smartphone className="w-5 h-5" />, color: 'bg-gray-700' },
+                  ].map((pm) => (
+                    <button key={pm.id} onClick={() => setPaymentMethod(pm.id)}
+                      className={cn("p-5 rounded-[2rem] border-2 flex items-center gap-4 text-left transition-all relative overflow-hidden group",
+                        paymentMethod === pm.id ? "border-emerald-500 bg-white dark:bg-slate-800 shadow-md" : "border-gray-50 bg-gray-50/50 hover:border-emerald-200")}>
+                      <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center text-[10px] font-black text-white shadow-lg", pm.color)}>
+                        {pm.icon}
+                      </div>
+                      <span className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-tight">{pm.label}</span>
+                      {paymentMethod === pm.id && <CheckCircle2 className="w-5 h-5 text-emerald-500 ml-auto" />}
+                    </button>
+                  ))}
                 </div>
-                <div className="flex justify-between text-gray-600 dark:text-gray-300">
-                  <span>Delivery Fee</span>
-                  <span>{formatPrice(deliveryFee)}</span>
+
+                <div className="p-5 rounded-2xl bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/40 flex items-start gap-4">
+                  <ShieldCheck className="w-6 h-6 text-blue-500 flex-shrink-0" />
+                  <p className="text-[11px] text-blue-600 dark:text-blue-300 font-medium leading-relaxed uppercase tracking-widest">Transactions are processed securely in Ghana Cedis (GH₵). Your payment data is never stored on our servers.</p>
                 </div>
-                <div className="flex justify-between text-base font-black text-gray-900 dark:text-white pt-2 border-t border-gray-200 dark:border-slate-700">
-                  <span>Grand Total</span>
-                  <span className="text-emerald-600">{formatPrice(grandTotal)}</span>
-                </div>
+              </Card>
+
+              <div className="flex gap-3">
+                 <Button variant="outline" className="rounded-2xl py-8 px-8 font-black uppercase text-xs tracking-widest border-gray-200" onClick={() => setStep(1)}>Back</Button>
+                 <Button className="flex-1 rounded-2xl py-8 bg-emerald-500 hover:bg-emerald-600 text-white font-black uppercase tracking-[0.2em] text-xs shadow-xl shadow-emerald-500/20" onClick={handlePlaceOrder} disabled={isSubmitting}>
+                   {isSubmitting ? 'Processing Order...' : 'Confirm & Place Order'}
+                 </Button>
               </div>
-
-              <button
-                onClick={handlePlaceOrder}
-                disabled={isSubmitting || !isVendorOpen}
-                className={`w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs py-4 rounded-2xl transition shadow-xl shadow-emerald-500/30 flex items-center justify-center space-x-2 cursor-pointer ${isSubmitting || !isVendorOpen ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                <span>{isSubmitting ? 'Processing Order...' : !isVendorOpen ? `Restaurant ${vendorStatus.replace('_', ' ')}` : 'Place Food Order'}</span>
-                {!isSubmitting && isVendorOpen && <ArrowRight className="w-4 h-4" />}
-              </button>
-
-            </div>
-          </div>
-
+            </>
+          )}
         </div>
-      )}
 
+        {/* Sidebar Summary */}
+        <aside className="space-y-6">
+          <Card className="rounded-[2.5rem] border-none bg-white dark:bg-slate-900 shadow-2xl p-8 space-y-6 border border-gray-100 dark:border-slate-800 lg:sticky lg:top-24">
+            <h3 className="font-black text-xl uppercase tracking-widest border-b pb-4">My Order</h3>
+
+            <div className="space-y-4 max-h-64 overflow-y-auto pr-2 scrollbar-none">
+              {cart.map(item => (
+                <div key={item.product.id} className="flex items-center gap-3">
+                   <div className="w-12 h-12 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
+                     <img src={item.product.images[0]} className="w-full h-full object-cover" />
+                   </div>
+                   <div className="flex-1 min-w-0">
+                     <p className="text-xs font-black text-gray-900 dark:text-white truncate">{item.product.title}</p>
+                     <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{item.quantity}x @ {formatPrice(item.product.price)}</p>
+                   </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="space-y-3 pt-4 border-t border-dashed">
+              <div className="flex justify-between text-xs font-bold text-gray-500 uppercase tracking-widest">
+                <span>Subtotal</span>
+                <span className="text-gray-900 dark:text-white">{formatPrice(cartTotal)}</span>
+              </div>
+              <div className="flex justify-between text-xs font-bold text-gray-500 uppercase tracking-widest">
+                <span>Tax & Service</span>
+                <span className="text-gray-900 dark:text-white">{formatPrice(estimatedTax)}</span>
+              </div>
+              <div className="flex justify-between text-xs font-bold text-gray-500 uppercase tracking-widest">
+                <span>Delivery Fee</span>
+                <span className="text-emerald-600">{formatPrice(deliveryFee)}</span>
+              </div>
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-xs font-bold text-emerald-600 uppercase tracking-widest">
+                  <span>Promo Discount</span>
+                  <span>-{formatPrice(discountAmount)}</span>
+                </div>
+              )}
+              <div className="pt-4 border-t border-gray-100 dark:border-slate-800 flex justify-between items-center">
+                <span className="text-sm font-black uppercase tracking-[0.2em]">Total</span>
+                <span className="text-2xl font-black text-emerald-600">{formatPrice(grandTotal)}</span>
+              </div>
+            </div>
+
+            <div className="pt-2 text-[10px] text-center text-gray-400 font-bold uppercase tracking-widest">
+               Takoradi Marketplace Delivery
+            </div>
+          </Card>
+
+          <div className="flex items-start gap-4 p-6 bg-gray-50 dark:bg-slate-800/30 rounded-[2rem] border border-gray-100 dark:border-slate-800">
+             <AlertCircle className="w-6 h-6 text-gray-400 flex-shrink-0" />
+             <p className="text-[10px] text-gray-500 font-medium leading-relaxed">Estimated delivery time is 35-45 minutes. Our dispatch riders prioritize safety first.</p>
+          </div>
+        </aside>
+
+      </div>
     </div>
   );
 };

@@ -118,7 +118,7 @@ export function AdminLoginPage({ variant = 'admin' }: { variant?: 'admin' | 'sup
                     <label className="block text-sm font-medium text-slate-300 mb-1.5">Email</label>
                     <div className="relative">
                       <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                      <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@omnimarket.com"
+                      <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@gmail.com"
                         className="w-full pl-10 pr-4 py-3 bg-slate-800/70 border border-slate-700 rounded-lg text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500 transition-all" />
                     </div>
                   </div>

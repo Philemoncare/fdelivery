@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { Store, ShieldCheck, MapPin, Phone, Mail, Clock, Star, ShoppingBag, Eye, Heart, ArrowLeft, Search } from 'lucide-react';
+import { getVendorOperationalStatus } from '../../lib/vendor-utils';
+import { cn } from '../../lib/utils';
 
 export const VendorDetailPage: React.FC = () => {
   const navigate = useNavigate();
@@ -42,6 +44,23 @@ export const VendorDetailPage: React.FC = () => {
   const displayProds = vendorProducts.filter((p) =>
     p.title?.toLowerCase().includes(searchKey.toLowerCase())
   );
+
+  const status = getVendorOperationalStatus(vendor);
+  const statusLabel = status === 'OPEN' ? 'Open Now' : status === 'BUSY' ? 'Busy' : status === 'TEMPORARILY_PAUSED' ? 'Temporarily Paused' : status.replace('_', ' ');
+
+  const todayHours = (() => {
+    if (!Array.isArray(vendor.businessHours) || vendor.businessHours.length === 0) return null;
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const h = vendor.businessHours.find((x: any) => x.day === dayNames[new Date().getDay()]);
+    if (!h) return null;
+    if (!h.isOpen) return 'Closed today';
+    const fmt = (v: string) => {
+      if (!v) return '';
+      const [hr, min] = v.split(':').map(Number);
+      return `${hr % 12 || 12}:${String(min ?? 0).padStart(2, '0')} ${hr >= 12 ? 'PM' : 'AM'}`;
+    };
+    return `${fmt(h.open)} - ${fmt(h.close)}`;
+  })();
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -98,6 +117,13 @@ export const VendorDetailPage: React.FC = () => {
                   <h1 className="text-3xl sm:text-4xl font-heading font-black text-slate-900 dark:text-white truncate">
                     {vendor.name}
                   </h1>
+                  <span className={cn(
+                    "shrink-0 text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest border",
+                    status === 'OPEN' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20" : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20"
+                  )}>
+                    <span className={cn("inline-block w-1.5 h-1.5 rounded-full mr-1.5", status === 'OPEN' ? "bg-emerald-500 animate-pulse" : "bg-rose-500")} />
+                    {statusLabel}
+                  </span>
                   <div className="p-1 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-500 shrink-0">
                     <ShieldCheck className="w-5 h-5" />
                   </div>
@@ -113,6 +139,12 @@ export const VendorDetailPage: React.FC = () => {
                     <MapPin className="w-4 h-4 text-emerald-500" />
                     <span className="hover:text-emerald-500 transition-colors truncate">{vendor.address}</span>
                   </div>
+                  {todayHours && (
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-violet-500" />
+                      <span className="text-slate-900 dark:text-white">{todayHours}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3 pt-1">

@@ -6,6 +6,7 @@ import { VendorLayout } from '@/src/components/vendor/VendorLayout';
 import { RiderLayout } from '@/src/components/rider/RiderLayout';
 import { AdminLayout } from '@/src/components/admin/AdminLayout';
 import { SuperAdminLayout } from '@/src/components/super-admin/SuperAdminLayout';
+import { ScrollToTop } from '@/src/components/common/ScrollToTop';
 
 import { LandingPage } from '@/src/pages/auth/landing';
 import { PublicLoginPage } from '@/src/pages/auth/public-login';
@@ -29,7 +30,7 @@ import { StaticPages } from '@/src/components/static/StaticPages';
 
 import { CustomerDashboardPage } from '@/src/pages/customer/dashboard';
 import {
-  CustomerOrdersPage, CustomerCartPage, CustomerWishlistPage, CustomerWalletPage,
+  CustomerOrdersPage, CustomerOrderDetailsPage, CustomerCartPage, CustomerWishlistPage, CustomerWalletPage,
   CustomerMessagesPage, CustomerAddressesPage, CustomerSettingsPage,
   CustomerNotificationsPage, CustomerReviewsPage,
   CustomerFavoritesPage, CustomerCouponsPage, CustomerPaymentMethodsPage,
@@ -185,6 +186,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to="/customer/dashboard" replace /> },
       { path: 'dashboard', element: <CustomerDashboardPage /> },
       { path: 'orders', element: <CustomerOrdersPage /> },
+      { path: 'orders/:id', element: <CustomerOrderDetailsPage /> },
       { path: 'cart', element: <CustomerCartPage /> },
       { path: 'wishlist', element: <CustomerWishlistPage /> },
       { path: 'favorites', element: <CustomerFavoritesPage /> },

@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, ShoppingBag, Users, BarChart3,
   Megaphone, Wallet, Store, Download, LifeBuoy,
-  Bell, MessageSquare, Tags, UtensilsCrossed, ChefHat, UserRound, Users2, Star, Settings
+  Bell, MessageSquare, Tags, UtensilsCrossed, ChefHat, UserRound, Users2, Star, Settings, Crown
 } from 'lucide-react';
 import { PortalLayout, type PortalConfig } from '@/src/components/layouts/portal-layout';
 import { useApp } from '@/src/context/AppContext';
@@ -39,6 +39,7 @@ export function VendorLayout() {
       { label: 'Analytics', icon: BarChart3, path: '/restaurant/analytics' },
       { label: 'Wallet', icon: Wallet, path: '/restaurant/wallet' },
       { label: 'Withdrawals', icon: Download, path: '/restaurant/withdrawals' },
+      { label: 'Subscription', icon: Crown, path: '/restaurant/subscription' },
       { label: 'Restaurant Profile', icon: UserRound, path: '/restaurant/store-settings' },
       { label: 'Staff Management', icon: Users2, path: '/restaurant/staff' },
       { label: 'Help & Support', icon: LifeBuoy, path: '/restaurant/support' },

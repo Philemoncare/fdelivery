@@ -6,7 +6,7 @@ import {
   UtensilsCrossed, Store, TicketPercent, ChevronRight, Search,
   History, Plus, MessageCircle, Phone, Info, Trash2, ArrowRight,
   CheckCircle2, Clock, XCircle, MoreVertical, Download, LifeBuoy, AlertCircle,
-  Sun, Moon, Smartphone, X, Send
+  Sun, Moon, Smartphone, X, Send, ShieldCheck
 } from 'lucide-react';
 import { useApp } from '@/src/context/AppContext';
 import { useAuth } from '@/src/lib/auth/auth-store';
@@ -18,6 +18,179 @@ import { Badge } from '@/src/components/ui/badge';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/src/lib/utils';
 import { AdminService, InteractionService, OrderService } from '@/src/services/api';
+import { AuthApiService } from '@/src/services/auth-api';
+import { ImageCropModal } from '@/src/components/common/ImageCropModal';
+import { ReceiptModal, ReceiptOrder } from '@/src/components/common/ReceiptModal';
+import { useParams } from 'react-router-dom';
+
+// ============================================================
+// ORDER DETAILS
+// ============================================================
+export function CustomerOrderDetailsPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { orders, formatPrice } = useApp();
+  const [receiptOpen, setReceiptOpen] = useState(false);
+
+  const order = orders.find(o => o.id === id);
+
+  if (!order) {
+    return (
+      <div className="text-center py-20">
+        <AlertCircle className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+        <h3 className="text-lg font-bold">Order not found</h3>
+        <Button variant="ghost" className="mt-4" onClick={() => navigate('/customer/orders')}>Back to Orders</Button>
+      </div>
+    );
+  }
+
+  const receiptOrder: ReceiptOrder = {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    invoiceNumber: order.invoiceNumber,
+    customerName: order.customerName,
+    customerAddress: order.customerAddress,
+    customerPhone: order.customerPhone,
+    vendorName: order.vendorName,
+    items: order.items,
+    subtotal: order.subtotal,
+    deliveryFee: order.deliveryFee,
+    tax: order.tax,
+    discount: order.discount,
+    totalAmount: order.totalAmount,
+    paymentMethod: order.paymentMethod,
+    createdAt: order.createdAt,
+  };
+
+  const statusColor =
+    order.status === 'delivered' ? 'text-emerald-500' :
+    order.status === 'cancelled' ? 'text-rose-500' :
+    'text-amber-500';
+
+  return (
+    <div className="space-y-8 pb-20 max-w-4xl">
+      <div className="flex items-center gap-3">
+        <button onClick={() => navigate('/customer/orders')} className="p-2 rounded-xl bg-gray-100 dark:bg-slate-800 text-gray-500 hover:text-gray-900 transition-colors">
+          <ChevronRight className="w-5 h-5 rotate-180" />
+        </button>
+        <div>
+          <h1 className="text-2xl font-black text-gray-900 dark:text-white">Order Details</h1>
+          <p className="text-sm text-gray-500">#{order.orderNumber} · {new Date(order.createdAt).toLocaleDateString()}</p>
+        </div>
+      </div>
+
+      <div className="grid md:grid-cols-[1fr_300px] gap-8">
+        <div className="space-y-6">
+          <Card className="rounded-[2.5rem] border-gray-100 dark:border-slate-800 shadow-sm overflow-hidden">
+            <div className="p-8 space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-2xl bg-emerald-50 dark:bg-emerald-950 flex items-center justify-center text-emerald-600 text-2xl font-black shadow-inner">
+                    {(order.vendorName || 'V').charAt(0)}
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">{order.vendorName}</h3>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{order.items?.length || 0} Items Ordered</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className={cn("text-xs font-black uppercase tracking-widest mb-1", statusColor)}>{order.status.replace('_', ' ')}</p>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase">{new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-4 border-t border-gray-100 dark:border-slate-800">
+                {order.items?.map((item: any, i: number) => (
+                  <div key={i} className="flex justify-between items-center text-sm font-bold">
+                    <span className="text-gray-500"><span className="text-emerald-600 mr-2">{item.quantity}x</span> {item.productName}</span>
+                    <span className="text-gray-900 dark:text-white">{formatPrice(item.price * item.quantity)}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="space-y-3 pt-6 border-t border-dashed border-gray-200 dark:border-slate-700">
+                <div className="flex justify-between text-xs font-bold text-gray-400 uppercase tracking-widest">
+                  <span>Subtotal</span>
+                  <span className="text-gray-900 dark:text-white">{formatPrice(order.subtotal)}</span>
+                </div>
+                <div className="flex justify-between text-xs font-bold text-gray-400 uppercase tracking-widest">
+                  <span>Delivery Fee</span>
+                  <span className="text-gray-900 dark:text-white">{formatPrice(order.deliveryFee)}</span>
+                </div>
+                <div className="flex justify-between text-xs font-bold text-gray-400 uppercase tracking-widest">
+                  <span>Tax & Service</span>
+                  <span className="text-gray-900 dark:text-white">{formatPrice(order.tax)}</span>
+                </div>
+                {order.discount > 0 && (
+                  <div className="flex justify-between text-xs font-bold text-emerald-600 uppercase tracking-widest">
+                    <span>Discount</span>
+                    <span>-{formatPrice(order.discount)}</span>
+                  </div>
+                )}
+                <div className="pt-4 border-t border-gray-100 dark:border-slate-800 flex justify-between items-center">
+                  <span className="text-lg font-black uppercase tracking-widest text-gray-900 dark:text-white">Total</span>
+                  <span className="text-3xl font-black text-emerald-600">{formatPrice(order.totalAmount)}</span>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            <Card className="rounded-[2rem] p-6 border-gray-100 dark:border-slate-800 shadow-sm space-y-3">
+              <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2"><MapPin className="w-3.5 h-3.5" /> Delivery Address</h4>
+              <p className="text-sm font-bold text-gray-900 dark:text-white leading-relaxed">{order.customerAddress}</p>
+            </Card>
+            <Card className="rounded-[2rem] p-6 border-gray-100 dark:border-slate-800 shadow-sm space-y-3">
+              <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2"><CreditCard className="w-3.5 h-3.5" /> Payment Method</h4>
+              <p className="text-sm font-bold text-gray-900 dark:text-white">{order.paymentMethod}</p>
+              <Badge variant={order.paymentStatus === 'paid' ? 'success' : 'warning'} className="text-[9px] font-black">{order.paymentStatus.toUpperCase()}</Badge>
+            </Card>
+          </div>
+        </div>
+
+        <aside className="space-y-6">
+          {order.dispatchRider ? (
+            <Card className="rounded-[2rem] p-6 border-none bg-emerald-500 text-white shadow-xl space-y-4">
+              <div className="flex items-center gap-4">
+                <img src={order.dispatchRider.avatar} className="w-14 h-14 rounded-2xl object-cover ring-4 ring-white/20 shadow-lg" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-black uppercase tracking-widest opacity-80">Your Rider</p>
+                  <p className="text-lg font-black truncate">{order.dispatchRider.name}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 pt-2">
+                <Button className="bg-white text-emerald-600 hover:bg-white/90 rounded-xl font-black text-[10px] h-11" onClick={() => window.open(`tel:${order.dispatchRider.phone}`)}><Phone className="w-3.5 h-3.5 mr-1.5" /> CALL</Button>
+                <Button className="bg-emerald-600 text-white hover:bg-emerald-700 rounded-xl font-black text-[10px] h-11" onClick={() => navigate('/customer/messages')}><MessageSquare className="w-3.5 h-3.5 mr-1.5" /> CHAT</Button>
+              </div>
+            </Card>
+          ) : (
+            <Card className="rounded-[2rem] p-6 border-gray-100 dark:border-slate-800 shadow-sm text-center py-10 space-y-3">
+              <div className="w-12 h-12 bg-gray-50 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto text-gray-300">
+                <Truck className="w-6 h-6" />
+              </div>
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Assigning Rider</p>
+              <p className="text-xs font-bold text-gray-600 dark:text-gray-400">Finding the best nearby rider for you...</p>
+            </Card>
+          )}
+
+          <div className="space-y-2">
+            <Button variant="outline" className="w-full rounded-[1.25rem] h-14 font-black uppercase text-[10px] tracking-widest border-gray-200" onClick={() => setReceiptOpen(true)}>
+              <FileText className="w-4 h-4 mr-2" /> View Receipt
+            </Button>
+            <Button variant="outline" className="w-full rounded-[1.25rem] h-14 font-black uppercase text-[10px] tracking-widest border-gray-200" onClick={() => navigate('/track-order')}>
+              <MapPin className="w-4 h-4 mr-2" /> Track on Map
+            </Button>
+            <Button variant="outline" className="w-full rounded-[1.25rem] h-14 font-black uppercase text-[10px] tracking-widest border-gray-200" onClick={() => navigate('/customer/support')}>
+              <LifeBuoy className="w-4 h-4 mr-2" /> Get Help
+            </Button>
+          </div>
+        </aside>
+      </div>
+
+      <ReceiptModal open={receiptOpen} order={receiptOrder} onClose={() => setReceiptOpen(false)} />
+    </div>
+  );
+}
 
 // ============================================================
 // MY ORDERS
@@ -26,6 +199,27 @@ export function CustomerOrdersPage() {
   const navigate = useNavigate();
   const { orders, formatPrice, updateOrderStatus } = useApp();
   const [activeTab, setActiveTab] = useState<'Active' | 'Preparing' | 'On the Way' | 'Delivered' | 'Cancelled'>('Active');
+  const [receiptOrder, setReceiptOrder] = useState<ReceiptOrder | null>(null);
+
+  const openReceipt = (order: any) => {
+    setReceiptOrder({
+      id: order.id,
+      orderNumber: order.orderNumber || order.invoiceNumber || order.id,
+      invoiceNumber: order.invoiceNumber || order.id,
+      customerName: order.customerName,
+      customerAddress: order.customerAddress,
+      customerPhone: order.customerPhone,
+      vendorName: order.vendorName,
+      items: order.items,
+      subtotal: order.subtotal || order.itemsTotal,
+      deliveryFee: order.deliveryFee,
+      tax: order.tax,
+      discount: order.discount,
+      totalAmount: order.totalAmount,
+      paymentMethod: order.paymentMethod,
+      createdAt: order.createdAt,
+    });
+  };
 
   const filteredOrders = orders.filter(o => {
     if (activeTab === 'Active') return ['pending', 'confirmed'].includes(o.status);
@@ -122,7 +316,7 @@ export function CustomerOrdersPage() {
 
                   <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-gray-100 dark:border-slate-800">
                     <div className="flex gap-2">
-                      <Button variant="ghost" className="rounded-xl text-[10px] font-bold text-gray-500 h-10 hover:bg-gray-100 dark:hover:bg-slate-800"><FileText className="w-3.5 h-3.5 mr-1.5" /> Download Invoice</Button>
+                      <Button variant="ghost" className="rounded-xl text-[10px] font-bold text-gray-500 h-10 hover:bg-gray-100 dark:hover:bg-slate-800" onClick={() => openReceipt(order)}><FileText className="w-3.5 h-3.5 mr-1.5" /> View Receipt</Button>
                       <Button variant="ghost" className="rounded-xl text-[10px] font-bold text-gray-500 h-10 hover:bg-gray-100 dark:hover:bg-slate-800"><LifeBuoy className="w-3.5 h-3.5 mr-1.5" /> Help & Support</Button>
                     </div>
                     <div className="flex gap-3">
@@ -143,6 +337,8 @@ export function CustomerOrdersPage() {
           ))
         )}
       </div>
+
+      <ReceiptModal open={!!receiptOrder} order={receiptOrder} onClose={() => setReceiptOrder(null)} heading="Customer Receipt" />
     </div>
   );
 }
@@ -393,112 +589,145 @@ export function CustomerWalletPage() {
 // ============================================================
 export function CustomerCartPage() {
   const navigate = useNavigate();
-  const { cart, removeFromCart, updateCartQuantity, cartTotal, formatPrice } = useApp();
+  const {
+    cart,
+    removeFromCart,
+    updateCartQuantity,
+    cartTotal,
+    formatPrice,
+    deliveryFee,
+    estimatedTax,
+    discountAmount,
+    grandTotal,
+    appliedCoupon,
+    removeCoupon
+  } = useApp();
 
-  const deliveryFee = cart.length > 0 ? 12.00 : 0;
-  const tax = cartTotal * 0.05;
-  const grandTotal = cartTotal + deliveryFee + tax;
-
-  return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 dark:text-white">Your Food Cart</h1>
-          <p className="text-sm text-gray-500">Review your delicious selections before checkout</p>
-        </div>
-        {cart.length > 0 && <Badge variant="secondary" className="px-4 py-1.5 rounded-full font-black uppercase tracking-widest text-[10px]">{cart.length} MEALS SELECTED</Badge>}
-      </div>
-
-      {cart.length === 0 ? (
-        <Card className="border-dashed border-2 py-24 text-center space-y-6 rounded-[3rem] bg-gray-50/30 dark:bg-slate-900/30">
-          <div className="w-24 h-24 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto text-emerald-500 shadow-xl">
+  if (cart.length === 0) {
+    return (
+      <div className="space-y-8 animate-in fade-in duration-500">
+        <h1 className="text-3xl font-black text-gray-900 dark:text-white">Your Cart</h1>
+        <Card className="border-dashed border-2 py-24 text-center space-y-6 rounded-[3rem] bg-white dark:bg-slate-900 shadow-sm">
+          <div className="w-24 h-24 bg-gray-50 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto text-gray-300 shadow-inner">
             <ShoppingCart className="w-12 h-12" />
           </div>
           <div>
             <h3 className="text-2xl font-black text-gray-900 dark:text-white">Your cart is empty</h3>
-            <p className="text-sm text-gray-500 max-w-xs mx-auto mt-2">Order something delicious from the best local restaurants in Takoradi.</p>
+            <p className="text-sm text-gray-500 max-w-xs mx-auto mt-2">Hungry? Explore Takoradi's top-rated restaurants and fill your cart.</p>
           </div>
-          <Button variant="brand" className="rounded-[1.5rem] px-12 py-7 font-black text-lg shadow-xl" onClick={() => navigate('/products')}>Browse Meals</Button>
+          <Button variant="brand" className="rounded-2xl px-12 py-7 font-black text-lg shadow-xl" onClick={() => navigate('/products')}>Browse Menu</Button>
         </Card>
-      ) : (
-        <div className="grid lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-4">
-            {cart.map((item) => (
-              <Card key={item.product.id} className="p-6 rounded-[2.5rem] border-gray-100 dark:border-slate-800 shadow-sm hover:shadow-xl transition-all group overflow-hidden relative">
-                <div className="flex gap-6">
-                  <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-3xl overflow-hidden flex-shrink-0 shadow-lg group-hover:scale-105 transition-transform duration-500">
-                    <img src={item.product.images?.[0] || ''} className="w-full h-full object-cover" />
-                  </div>
-                  <div className="flex-1 flex flex-col justify-between py-1">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-black text-gray-900 dark:text-white text-lg group-hover:text-emerald-500 transition-colors">{item.product.title}</h4>
-                        <p className="text-[10px] text-emerald-600 font-black uppercase tracking-widest">{item.product.vendorName}</p>
-                        <div className="flex gap-3 mt-3">
-                          <button className="text-[9px] font-black text-gray-400 hover:text-emerald-500 uppercase tracking-widest border border-gray-100 dark:border-slate-800 px-3 py-1.5 rounded-lg transition-colors">Add Extras</button>
-                          <button className="text-[9px] font-black text-gray-400 hover:text-emerald-500 uppercase tracking-widest border border-gray-100 dark:border-slate-800 px-3 py-1.5 rounded-lg transition-colors">Special Note</button>
-                        </div>
-                      </div>
-                      <button className="p-2.5 rounded-2xl bg-rose-50 dark:bg-rose-900/20 text-rose-500 hover:bg-rose-500 hover:text-white transition-all shadow-sm" onClick={() => removeFromCart(item.product.id)}>
-                        <Trash2 className="w-5 h-5" />
-                      </button>
-                    </div>
+      </div>
+    );
+  }
 
-                    <div className="flex items-center justify-between pt-4">
-                      <p className="text-2xl font-black text-emerald-600">{formatPrice(item.product.price)}</p>
-                      <div className="flex items-center bg-gray-100 dark:bg-slate-800 rounded-2xl p-1.5 shadow-inner">
-                        <button className="w-10 h-10 flex items-center justify-center text-gray-500 hover:text-gray-900 dark:hover:text-white font-black text-xl" onClick={() => updateCartQuantity(item.product.id, -1)}>-</button>
-                        <span className="w-12 text-center font-black text-base text-gray-900 dark:text-white">{item.quantity}</span>
-                        <button className="w-10 h-10 flex items-center justify-center text-gray-500 hover:text-gray-900 dark:hover:text-white font-black text-xl" onClick={() => updateCartQuantity(item.product.id, 1)}>+</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-
-          <div className="space-y-6">
-            <Card className="rounded-[3rem] border-none bg-white dark:bg-slate-900 shadow-2xl overflow-hidden p-8 space-y-8 sticky top-24 border border-gray-100 dark:border-slate-800">
-              <h3 className="font-black text-xl uppercase tracking-widest border-b pb-4">Order Summary</h3>
-              <div className="space-y-4">
-                <div className="flex justify-between text-gray-500 font-bold text-sm">
-                  <span>Subtotal ({cart.length} items)</span>
-                  <span className="text-gray-900 dark:text-white">{formatPrice(cartTotal)}</span>
-                </div>
-                <div className="flex justify-between text-gray-500 font-bold text-sm">
-                  <span>Estimated Delivery Fee</span>
-                  <span className="text-emerald-600">{formatPrice(deliveryFee)}</span>
-                </div>
-                <div className="flex justify-between text-gray-500 font-bold text-sm">
-                  <span>Service Tax (5%)</span>
-                  <span className="text-gray-900 dark:text-white">{formatPrice(tax)}</span>
-                </div>
-                <div className="pt-6 border-t border-dashed flex justify-between items-center">
-                  <span className="text-lg font-black uppercase tracking-widest">Total</span>
-                  <span className="text-3xl font-black text-emerald-600">{formatPrice(grandTotal)}</span>
-                </div>
-              </div>
-
-              <div className="pt-4 space-y-4">
-                <div className="relative group">
-                  <TicketPercent className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-emerald-500 transition-colors" />
-                  <input type="text" placeholder="Promo Code" className="w-full bg-gray-50 dark:bg-slate-800 border-2 border-gray-100 dark:border-slate-800 p-4 pl-12 rounded-[1.5rem] text-xs font-bold uppercase tracking-widest outline-none focus:border-emerald-500 transition-all" />
-                  <Button variant="ghost" size="sm" className="absolute right-2 top-1/2 -translate-y-1/2 text-emerald-600 font-black text-[10px] px-4">APPLY</Button>
-                </div>
-                <Button className="w-full rounded-[1.5rem] bg-emerald-500 hover:bg-emerald-600 py-8 font-black text-lg shadow-xl shadow-emerald-500/20" onClick={() => navigate('/checkout')}>
-                  Proceed to Checkout
-                </Button>
-              </div>
-              <p className="text-[10px] text-gray-400 text-center font-bold uppercase tracking-widest">Safe & Secure Payments</p>
-            </Card>
-            <div className="flex items-start gap-4 p-6 bg-blue-50/50 dark:bg-blue-900/10 rounded-[2rem] border border-blue-100 dark:border-blue-900/40">
-              <Info className="w-6 h-6 text-blue-500 flex-shrink-0" />
-              <p className="text-[11px] text-blue-600 dark:text-blue-300 font-medium leading-relaxed">Prices include VAT and NHIS levies. Delivery fees vary by distance from the restaurant in Takoradi.</p>
-            </div>
-          </div>
+  return (
+    <div className="space-y-8 pb-24">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-black text-gray-900 dark:text-white">Your Cart</h1>
+          <p className="text-sm text-gray-500">{cart.length} items from {cart[0]?.product.vendorName}</p>
         </div>
-      )}
+        <button onClick={() => navigate('/products')} className="text-xs font-black text-emerald-600 uppercase tracking-widest hover:underline">Add More</button>
+      </div>
+
+      <div className="grid lg:grid-cols-[1fr_380px] gap-8 items-start">
+        {/* Items List */}
+        <div className="space-y-4">
+          {cart.map((item) => (
+            <Card key={item.product.id} className="p-4 sm:p-6 rounded-[2.5rem] border-gray-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-all group overflow-hidden bg-white dark:bg-slate-900">
+              <div className="flex gap-4 sm:gap-6">
+                <div className="w-20 h-20 sm:w-28 sm:h-28 rounded-2xl sm:rounded-3xl overflow-hidden flex-shrink-0 shadow-sm">
+                  <img src={item.product.images?.[0] || ''} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                </div>
+                <div className="flex-1 min-w-0 flex flex-col justify-between">
+                  <div className="flex justify-between items-start">
+                    <div className="min-w-0">
+                      <h4 className="font-black text-gray-900 dark:text-white text-base sm:text-lg truncate">{item.product.title}</h4>
+                      <p className="text-[10px] text-emerald-600 font-black uppercase tracking-widest">{item.product.vendorName}</p>
+                    </div>
+                    <button className="p-2 rounded-xl bg-rose-50 dark:bg-rose-900/20 text-rose-500 hover:bg-rose-500 hover:text-white transition-all shadow-sm" onClick={() => removeFromCart(item.product.id)}>
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between mt-4">
+                    <p className="text-lg font-black text-gray-900 dark:text-white">{formatPrice(item.product.price)}</p>
+                    <div className="flex items-center bg-gray-50 dark:bg-slate-800 rounded-xl p-1 shadow-inner ring-1 ring-gray-100 dark:ring-slate-700">
+                      <button className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-900 dark:hover:text-white font-black text-lg" onClick={() => updateCartQuantity(item.product.id, -1)}>-</button>
+                      <span className="w-10 text-center font-black text-sm text-gray-900 dark:text-white">{item.quantity}</span>
+                      <button className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-900 dark:hover:text-white font-black text-lg" onClick={() => updateCartQuantity(item.product.id, 1)}>+</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+
+        {/* Order Summary */}
+        <aside className="space-y-6">
+          <Card className="rounded-[3rem] border-none bg-white dark:bg-slate-900 shadow-2xl p-8 space-y-6 border border-gray-100 dark:border-slate-800 lg:sticky lg:top-24">
+            <h3 className="font-black text-xl uppercase tracking-widest border-b pb-4">Order Summary</h3>
+
+            <div className="space-y-3">
+              <div className="flex justify-between text-xs font-bold text-gray-500 uppercase tracking-widest">
+                <span>Subtotal</span>
+                <span className="text-gray-900 dark:text-white">{formatPrice(cartTotal)}</span>
+              </div>
+              <div className="flex justify-between text-xs font-bold text-gray-500 uppercase tracking-widest">
+                <span>Estimated Tax</span>
+                <span className="text-gray-900 dark:text-white">{formatPrice(estimatedTax)}</span>
+              </div>
+              <div className="flex justify-between text-xs font-bold text-gray-500 uppercase tracking-widest">
+                <span>Delivery Fee</span>
+                <span className="text-emerald-600 font-black">{formatPrice(deliveryFee)}</span>
+              </div>
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-xs font-black text-emerald-600 uppercase tracking-widest animate-in fade-in slide-in-from-right-2">
+                  <span className="flex items-center gap-1.5"><Tag className="w-3.5 h-3.5" /> Promo Discount</span>
+                  <span>-{formatPrice(discountAmount)}</span>
+                </div>
+              )}
+              <div className="pt-4 border-t border-gray-100 dark:border-slate-800 flex justify-between items-center">
+                <span className="text-sm font-black uppercase tracking-[0.2em]">Total</span>
+                <span className="text-3xl font-black text-emerald-600">{formatPrice(grandTotal)}</span>
+              </div>
+            </div>
+
+            <div className="pt-2 space-y-4">
+              {appliedCoupon ? (
+                <div className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-950/40 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-800">
+                  <div>
+                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Code Applied</p>
+                    <p className="text-sm font-black text-emerald-700 dark:text-emerald-400">{appliedCoupon.code}</p>
+                  </div>
+                  <button onClick={removeCoupon} className="text-[10px] font-black text-rose-500 hover:underline uppercase tracking-widest">Remove</button>
+                </div>
+              ) : (
+                <div className="relative group">
+                  <Tag className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-emerald-500 transition-colors" />
+                  <input type="text" placeholder="VOUCHER CODE" className="w-full bg-gray-50 dark:bg-slate-800 border-2 border-transparent p-4 pl-12 rounded-2xl text-[10px] font-black tracking-[0.3em] outline-none focus:border-emerald-500 focus:bg-white transition-all uppercase" />
+                  <button className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600 font-black text-[10px] uppercase hover:underline">Apply</button>
+                </div>
+              )}
+
+              <Button className="w-full rounded-3xl bg-emerald-500 hover:bg-emerald-600 py-8 font-black text-lg shadow-xl shadow-emerald-500/20 transition-all active:scale-[0.98] uppercase tracking-widest" onClick={() => navigate('/checkout')}>
+                Proceed to Checkout
+              </Button>
+            </div>
+
+            <div className="flex items-center justify-center gap-3 pt-2 text-[9px] text-gray-400 font-bold uppercase tracking-widest">
+               <ShieldCheck className="w-4 h-4" /> SSL Encrypted Checkout
+            </div>
+          </Card>
+
+          <div className="p-6 bg-blue-50/50 dark:bg-blue-900/10 rounded-[2rem] border border-blue-100 dark:border-blue-900/40 flex items-start gap-4">
+            <Info className="w-5 h-5 text-blue-500 flex-shrink-0" />
+            <p className="text-[10px] text-blue-600 dark:text-blue-300 font-medium leading-relaxed">By proceeding, you agree to OmniMarket's Terms of Service. Final delivery fee is calculated by the distance to your chosen address.</p>
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }
@@ -889,6 +1118,7 @@ export function CustomerProfilePage() {
   const { customerProfile, formatPrice, updateProfile, isLoading, showToast } = useApp();
   const navigate = useNavigate();
   const [form, setForm] = useState({ name: '', email: '', phone: '', avatar: '' });
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
 
   useEffect(() => {
     if (!customerProfile) return;
@@ -909,26 +1139,8 @@ export function CustomerProfilePage() {
       if (!file) return;
       const reader = new FileReader();
       reader.onload = (event) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          const MAX = 800;
-          if (width > height) {
-            if (width > MAX) { height *= MAX / width; width = MAX; }
-          } else {
-            if (height > MAX) { width *= MAX / height; height = MAX; }
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx?.drawImage(img, 0, 0, width, height);
-          const base64 = canvas.toDataURL('image/jpeg', 0.4);
-          setForm(f => ({ ...f, avatar: base64 }));
-          showToast('Photo Processed', 'Tap Save Changes to update your picture.');
-        };
-        img.src = event.target?.result as string;
+        const src = event.target?.result as string;
+        if (src) setCropSrc(src);
       };
       reader.readAsDataURL(file);
     };
@@ -1083,6 +1295,20 @@ export function CustomerProfilePage() {
           </div>
         </div>
       </div>
+
+      <ImageCropModal
+        open={!!cropSrc}
+        imageSrc={cropSrc || ''}
+        onCancel={() => setCropSrc(null)}
+        onConfirm={(dataUrl) => {
+          setForm(f => ({ ...f, avatar: dataUrl }));
+          showToast('Photo Processed', 'Tap Save Changes to update your picture.');
+          setCropSrc(null);
+        }}
+        aspect={1}
+        maxOutputSize={500}
+        title="Crop Profile Photo"
+      />
     </div>
   );
 }
@@ -1092,7 +1318,18 @@ export function CustomerProfilePage() {
 // ============================================================
 export function CustomerSettingsPage() {
   const { showToast, customerProfile, updateProfile, isLoading } = useApp();
+  const { user, updateUser } = useAuth();
   const [tab, setTab] = useState<'profile' | 'payment' | 'location'>('profile');
+
+  const changeTab = (t: typeof tab) => {
+    setTab(t);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const [emailStep, setEmailStep] = useState<'idle' | 'sent' | 'verified'>('idle');
+  const [emailCode, setEmailCode] = useState('');
+  const [emailBusy, setEmailBusy] = useState(false);
+  const emailVerified = !!(user?.isEmailVerified || user?.isVerified);
 
   const [form, setForm] = useState({
     name: '',
@@ -1128,38 +1365,17 @@ export function CustomerSettingsPage() {
     }));
   }, [customerProfile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const pickImage = (capture: boolean = false) => {
+  const pickImage = () => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
-    // On mobile browsers `capture` asks the device to use the camera,
-    // otherwise the photos/gallery picker is shown.
-    if (capture) (input as any).capture = 'user';
     input.onchange = (e: any) => {
       const file = e.target.files?.[0];
       if (!file) return;
       const reader = new FileReader();
       reader.onload = (event) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          const MAX = 800;
-          if (width > height) {
-            if (width > MAX) { height *= MAX / width; width = MAX; }
-          } else {
-            if (height > MAX) { width *= MAX / height; height = MAX; }
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx?.drawImage(img, 0, 0, width, height);
-          const base64 = canvas.toDataURL('image/jpeg', 0.4);
-          setForm(f => ({ ...f, avatar: base64 }));
-          showToast('Photo Processed', 'Tap SAVE to update your profile picture.');
-        };
-        img.src = event.target?.result as string;
+        const src = event.target?.result as string;
+        if (src) setCropSrc(src);
       };
       reader.readAsDataURL(file);
     };
@@ -1210,6 +1426,42 @@ export function CustomerSettingsPage() {
     }
   };
 
+  const requestEmailVerification = async () => {
+    setEmailBusy(true);
+    try {
+      const res = await AuthApiService.sendVerification();
+      if (res.emailVerified) {
+        setEmailStep('verified');
+        updateUser({ isEmailVerified: true, isVerified: true });
+        showToast('Email Verified', 'Your email is verified.');
+      } else {
+        setEmailStep('sent');
+        showToast('Code Sent', 'Check your inbox for the verification code.');
+      }
+    } catch (err: any) {
+      console.error(err);
+      showToast('Error', err?.message || 'Could not send the verification code.', 'warning');
+    } finally {
+      setEmailBusy(false);
+    }
+  };
+
+  const submitEmailVerification = async () => {
+    if (!emailCode.trim()) return;
+    setEmailBusy(true);
+    try {
+      await AuthApiService.verifyEmail(emailCode.trim());
+      setEmailStep('verified');
+      updateUser({ isEmailVerified: true, isVerified: true });
+      showToast('Email Verified', 'Your email is now verified.');
+    } catch (err: any) {
+      console.error(err);
+      showToast('Invalid Code', err?.message || 'The code could not be verified.', 'warning');
+    } finally {
+      setEmailBusy(false);
+    }
+  };
+
   if (isLoading || !customerProfile) {
     return <div className="flex items-center justify-center min-h-[400px]">
       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
@@ -1236,7 +1488,7 @@ export function CustomerSettingsPage() {
         {TABS.map(t => (
           <button
             key={t.key}
-            onClick={() => setTab(t.key)}
+            onClick={() => changeTab(t.key)}
             className={cn(
               "px-5 py-3 rounded-2xl text-xs font-black transition-all border",
               tab === t.key
@@ -1254,18 +1506,15 @@ export function CustomerSettingsPage() {
           <div className="flex flex-col sm:flex-row items-center gap-8">
             <div className="relative group">
               <img src={form.avatar} className="w-28 h-28 rounded-[2rem] object-cover ring-8 ring-emerald-500/10 shadow-xl group-hover:scale-105 transition-transform duration-700" />
-              <button onClick={pickImage} className="absolute -bottom-2 -right-2 p-3 rounded-2xl bg-emerald-500 text-white shadow-xl hover:scale-110 transition-transform ring-4 ring-white dark:ring-slate-900">
+              <button onClick={() => pickImage()} className="absolute -bottom-2 -right-2 p-3 rounded-2xl bg-emerald-500 text-white shadow-xl hover:scale-110 transition-transform ring-4 ring-white dark:ring-slate-900">
                 <Plus className="w-5 h-5" />
               </button>
             </div>
             <div className="flex-1 space-y-1 text-center sm:text-left">
               <h3 className="text-lg font-black text-gray-900 dark:text-white">Profile Picture</h3>
-              <p className="text-xs text-gray-500 font-medium">On mobile you will be asked for camera / photos permission so you can take or pick a photo.</p>
+              <p className="text-xs text-gray-500 font-medium">Choose an image from your device to set your profile picture.</p>
               <div className="flex flex-wrap gap-2 pt-2 justify-center sm:justify-start">
-                <Button size="sm" variant="outline" className="rounded-xl text-[10px] font-black" onClick={() => pickImage(true)}>
-                  <Plus className="w-4 h-4 mr-1" /> TAKE PHOTO
-                </Button>
-                <Button size="sm" variant="outline" className="rounded-xl text-[10px] font-black" onClick={() => pickImage(false)}>
+                <Button size="sm" variant="outline" className="rounded-xl text-[10px] font-black" onClick={() => pickImage()}>
                   <Smartphone className="w-4 h-4 mr-1" /> CHOOSE FROM GALLERY
                 </Button>
               </div>
@@ -1292,6 +1541,51 @@ export function CustomerSettingsPage() {
               Save Profile
             </Button>
           </div>
+        </Card>
+      )}
+
+      {tab === 'profile' && (
+        <Card className="rounded-[2.5rem] p-8 sm:p-10 border-gray-100 dark:border-slate-800 shadow-sm space-y-6">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-violet-50 dark:bg-violet-900/20 flex items-center justify-center text-violet-600"><ShieldCheck className="w-6 h-6" /></div>
+            <div>
+              <h3 className="text-lg font-black text-gray-900 dark:text-white">Email Verification</h3>
+              <p className="text-xs text-gray-500 font-medium">Verified emails unlock order receipts and swifter support. Demo code: 123456</p>
+            </div>
+          </div>
+
+          {emailVerified ? (
+            <div className="flex items-center gap-3 p-5 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800">
+              <CheckCircle2 className="w-6 h-6 text-emerald-500 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-black text-emerald-700 dark:text-emerald-300">Email Verified</p>
+                <p className="text-xs text-emerald-600 dark:text-emerald-400">{form.email || user?.email}</p>
+              </div>
+            </div>
+          ) : emailStep === 'sent' ? (
+            <div className="grid sm:grid-cols-[1fr_auto] gap-3">
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="Enter 6-digit verification code"
+                value={emailCode}
+                onChange={e => setEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                className="h-14 rounded-2xl border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 px-5 text-sm font-bold outline-none focus:ring-2 ring-violet-400"
+              />
+              <Button variant="brand" className="rounded-2xl px-8 font-black text-xs" onClick={submitEmailVerification} disabled={emailBusy || emailCode.length < 6}>
+                {emailBusy ? 'Verifying...' : 'Verify'}
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <p className="flex-1 text-sm font-bold text-gray-600 dark:text-gray-300">
+                Verify <span className="text-violet-600">{form.email || user?.email || 'your email'}</span> to secure your account.
+              </p>
+              <Button variant="brand" className="rounded-2xl px-8 font-black text-xs" onClick={requestEmailVerification} disabled={emailBusy}>
+                {emailBusy ? 'Sending...' : 'Verify Email'}
+              </Button>
+            </div>
+          )}
         </Card>
       )}
 
@@ -1378,6 +1672,20 @@ export function CustomerSettingsPage() {
           </div>
         </Card>
       )}
+
+      <ImageCropModal
+        open={!!cropSrc}
+        imageSrc={cropSrc || ''}
+        onCancel={() => setCropSrc(null)}
+        onConfirm={(dataUrl) => {
+          setForm(f => ({ ...f, avatar: dataUrl }));
+          showToast('Photo Processed', 'Tap SAVE to update your profile picture.');
+          setCropSrc(null);
+        }}
+        aspect={1}
+        maxOutputSize={500}
+        title="Crop Profile Photo"
+      />
     </div>
   );
 }

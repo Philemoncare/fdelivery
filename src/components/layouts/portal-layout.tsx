@@ -1,5 +1,6 @@
 import { useState, Fragment, type ElementType } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import { ScrollToTop } from '@/src/components/common/ScrollToTop';
 import {
   Settings, LogOut, Menu, ChevronDown, Search, Sun, Moon,
   ChevronLeft, ChevronRight, Bell, MessageSquare
@@ -89,8 +90,15 @@ export function PortalLayout({ config }: { config: PortalConfig }) {
 
   const currentPageLabel = allItems.find(i => i.path && (location.pathname === i.path || location.pathname.startsWith(i.path + '/')))?.label || config.title;
 
+  // When Settings is already a regular nav item, hide the bottom shortcut
+  // next to Logout so it doesn't appear twice.
+  const settingsInNav = config.settingsPath
+    ? allItems.some(i => i.path && i.path === config.settingsPath)
+    : false;
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-950">
+      <ScrollToTop />
       {/* Mobile overlay */}
       <AnimatePresence>
         {mobileOpen && (
@@ -144,7 +152,7 @@ export function PortalLayout({ config }: { config: PortalConfig }) {
         </nav>
 
         <div className="p-3 border-t border-gray-100 dark:border-slate-800">
-          {!config.sections && (
+          {!settingsInNav && (
             <button onClick={() => { setMobileOpen(false); navigate(config.settingsPath); }}
               className={cn('flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800/50 w-full transition-all', !sidebarOpen && 'lg:justify-center')}>
               <Settings className="w-5 h-5" />
@@ -199,7 +207,7 @@ export function PortalLayout({ config }: { config: PortalConfig }) {
                 )}
               </div>
               <div className="hidden sm:block text-xs">
-                <p className="font-bold text-gray-900 dark:text-white leading-none">{user?.displayName || user?.firstName || 'User'}</p>
+                <p className="font-bold text-gray-900 dark:text-white leading-none">{user?.displayName || (user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Account')}</p>
                 <p className="text-[10px] text-gray-400 dark:text-slate-500 capitalize mt-0.5">{config.module} account</p>
               </div>
               <ChevronDown className="w-3.5 h-3.5 text-gray-400 hidden sm:block" />

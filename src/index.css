@@ -133,6 +133,25 @@
   .dark .bg-grid {
     background-image: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
   }
+
+  /* Safe Area Utilities */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .mb-safe {
+    margin-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* Mobile Layout Fixes */
+  .mobile-page-container {
+    @apply px-4 sm:px-6 lg:px-8;
+  }
+  .mobile-stack {
+    @apply flex flex-col lg:flex-row gap-6 lg:gap-8;
+  }
 }
 
 @keyframes pulse-subtle {
@@ -196,4 +215,30 @@
 
 .password-strength-bar {
   @apply h-1.5 rounded-full transition-all duration-300;
+}
+
+/* Printable receipts (vendor + customer). When printing, everything except
+   the active receipt is hidden so an A4 receipt is produced cleanly. */
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  .om-receipt, .om-receipt * {
+    visibility: visible !important;
+  }
+  .om-receipt {
+    position: absolute !important;
+    left: 0;
+    top: 0;
+    width: 100%;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+  }
+  .om-receipt-nobutton {
+    display: none !important;
+  }
 }

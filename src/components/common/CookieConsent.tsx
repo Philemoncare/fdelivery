@@ -1,26 +1,41 @@
-import React, { useState } from 'react';
-import { ShieldCheck, X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { ShieldCheck } from 'lucide-react';
+
+const CONSENT_KEY = 'omnimarket_cookie_consent';
 
 export const CookieConsent: React.FC = () => {
-  const [isDismissed, setIsDismissed] = useState(false);
+  const [accepted, setAccepted] = useState(() => {
+    try {
+      return localStorage.getItem(CONSENT_KEY) === 'accepted';
+    } catch {
+      return false;
+    }
+  });
 
-  if (isDismissed) return null;
+  const handleAccept = () => {
+    try {
+      localStorage.setItem(CONSENT_KEY, 'accepted');
+    } catch {}
+    setAccepted(true);
+  };
+
+  if (accepted) return null;
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 z-40 max-w-md bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 p-4 rounded-2xl shadow-2xl flex items-center justify-between gap-4">
+    <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 z-[60] max-w-md bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 p-4 rounded-2xl shadow-2xl flex items-center justify-between gap-4 animate-in slide-in-from-bottom-5 duration-500">
       <div className="flex items-start space-x-3 text-xs">
         <ShieldCheck className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
         <div>
-          <p className="font-bold text-gray-900 dark:text-white">Privacy & Cookie Preferences</p>
-          <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-            We use essential cookies to deliver real-time rider tracking, multi-restaurant cart persistence, and secure wallet transactions.
+          <p className="font-bold text-gray-900 dark:text-white uppercase tracking-widest text-[10px]">Privacy & Cookies</p>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
+            We use essential cookies for real-time tracking, secure payments, and persistent cart features.
           </p>
         </div>
       </div>
       <div className="flex items-center space-x-2">
         <button
-          onClick={() => setIsDismissed(true)}
-          className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition cursor-pointer"
+          onClick={handleAccept}
+          className="bg-gray-900 dark:bg-white dark:text-gray-900 text-white font-black text-[10px] px-5 py-2.5 rounded-xl transition cursor-pointer uppercase tracking-widest active:scale-95 shadow-lg"
         >
           Accept
         </button>

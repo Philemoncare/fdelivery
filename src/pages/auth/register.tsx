@@ -15,6 +15,7 @@ import { useAuth } from '@/src/lib/auth/auth-store';
 import { resolvePostLoginRoute } from '@/src/lib/auth/types';
 import { Chrome, Apple as AppleIcon } from 'lucide-react';
 import { TAKORADI_LOCATIONS } from '@/src/lib/locations';
+import { ImageCropModal } from '@/src/components/common/ImageCropModal';
 
 const TIME_OPTIONS = [
   '6:00 AM', '7:00 AM', '8:00 AM', '9:00 AM', '10:00 AM', '11:00 AM', '12:00 PM',
@@ -96,7 +97,7 @@ const customerSteps: Step[] = [
     subtitle: 'Your personal ordering account',
     fields: [
       { key: 'name', label: 'Full Name', type: 'text', placeholder: 'Kwabena Mensah', icon: UserCircle },
-      { key: 'email', label: 'Email Address', type: 'email', placeholder: 'kwabena@omnimarket.com', icon: Mail },
+      { key: 'email', label: 'Email Address', type: 'email', placeholder: 'kwabena@gmail.com', icon: Mail },
       { key: 'phone', label: 'Phone Number', type: 'tel', placeholder: '+233 2X XXX XXXX', icon: Phone },
       { key: 'password', label: 'Password', type: 'password', icon: Lock },
       { key: 'confirmPassword', label: 'Confirm Password', type: 'password', icon: Lock },
@@ -110,7 +111,7 @@ const restaurantSteps: Step[] = [
     subtitle: 'Your administrative details',
     fields: [
       { key: 'ownerName', label: 'Restaurant Owner Name', type: 'text', placeholder: 'Full name', icon: UserCircle },
-      { key: 'email', label: 'Email', type: 'email', placeholder: 'restaurant@omnimarket.com', icon: Mail },
+      { key: 'email', label: 'Email', type: 'email', placeholder: 'restaurant@gmail.com', icon: Mail },
       { key: 'phone', label: 'Phone Number', type: 'tel', placeholder: '+233 2X XXX XXXX', icon: Phone },
       { key: 'password', label: 'Password', type: 'password', icon: Lock },
       { key: 'confirmPassword', label: 'Confirm Password', type: 'password', icon: Lock },
@@ -144,7 +145,7 @@ const riderSteps: Step[] = [
     subtitle: 'Your personal rider account',
     fields: [
       { key: 'fullName', label: 'Full Name', type: 'text', placeholder: 'Yaw Boateng', icon: UserCircle },
-      { key: 'email', label: 'Email Address', type: 'email', placeholder: 'yaw.boateng@omnimarket.com', icon: Mail },
+      { key: 'email', label: 'Email Address', type: 'email', placeholder: 'yaw.boateng@gmail.com', icon: Mail },
       { key: 'phone', label: 'Phone Number', type: 'tel', placeholder: '+233 2X XXX XXXX', icon: Phone },
       { key: 'password', label: 'Password', type: 'password', icon: Lock },
       { key: 'confirmPassword', label: 'Confirm Password', type: 'password', icon: Lock },
@@ -194,12 +195,12 @@ export function RegisterPage() {
     <div className="min-h-screen bg-white dark:bg-slate-950 flex flex-col">
       <header className="h-20 flex items-center px-6 sm:px-12 border-b border-gray-100 dark:border-slate-800 shrink-0">
         <Link to="/" className="flex items-center gap-2.5 group">
-          <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20 group-hover:scale-105 transition-transform">
-            <span className="text-white font-black text-xl">O</span>
+          <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-emerald-500 flex items-center justify-center text-white shadow-lg group-hover:scale-105 transition-transform">
+            <Bike className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div className="hidden sm:block">
-            <span className="block font-heading font-black text-xl text-gray-900 dark:text-white leading-none">OmniMarket</span>
-            <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-widest">Partner Registration</span>
+            <span className="block font-heading font-black text-xl text-black dark:text-white leading-none">OmniMarket</span>
+            <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-widest">Takoradi Express</span>
           </div>
         </Link>
       </header>
@@ -307,6 +308,8 @@ function RegistrationForm({ role, onBack, navigate }: { role: string; onBack: ()
     } catch { return {}; }
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const [cropKey, setCropKey] = useState<string>('logoUrl');
 
   // Location autocomplete state
   const [locationResults, setLocationResults] = useState<string[]>([]);
@@ -437,49 +440,59 @@ function RegistrationForm({ role, onBack, navigate }: { role: string; onBack: ()
     input.accept = 'image/*';
     input.onchange = (e: any) => {
       const file = e.target.files?.[0];
-      if (file) {
-        // Image compression helper
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const img = new Image();
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            let width = img.width;
-            let height = img.height;
-
-            // Max dimensions for modern forms (Optimized for speed/stability)
-            const MAX_WIDTH = 800;
-            const MAX_HEIGHT = 800;
-
-            if (width > height) {
-              if (width > MAX_WIDTH) {
-                height *= MAX_WIDTH / width;
-                width = MAX_WIDTH;
-              }
-            } else {
-              if (height > MAX_HEIGHT) {
-                width *= MAX_HEIGHT / height;
-                height = MAX_HEIGHT;
-              }
-            }
-
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx?.drawImage(img, 0, 0, width, height);
-
-            // Compress to JPEG with 0.4 quality for maximum reliability
-            const compressedBase64 = canvas.toDataURL('image/jpeg', 0.4);
-            update(key, compressedBase64);
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const src = event.target?.result as string;
+        if (!src) return;
+        // Logos and banners get an interactive crop; documents are just
+        // resized so the full page stays legible.
+        if (key === 'logoUrl' || key === 'coverUrl') {
+          setCropKey(key);
+          setCropSrc(src);
+        } else {
+          compressImage(src).then(base64 => {
+            update(key, base64);
             showToast('success', 'Image Processed', 'Document attached and optimized.');
-          };
-          img.src = event.target?.result as string;
-        };
-        reader.readAsDataURL(file);
-      }
+          });
+        }
+      };
+      reader.readAsDataURL(file);
     };
     input.click();
   };
+
+  const compressImage = (src: string) =>
+    new Promise<string>((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        // Max dimensions for modern forms (Optimized for speed/stability)
+        const MAX_WIDTH = 800;
+        const MAX_HEIGHT = 800;
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        // Compress to JPEG with 0.4 quality for maximum reliability
+        resolve(canvas.toDataURL('image/jpeg', 0.4));
+      };
+      img.onerror = () => resolve(src);
+      img.src = src;
+    });
 
   const validateStep = (idx: number) => {
     const e: Record<string, string> = {};
@@ -852,6 +865,20 @@ function RegistrationForm({ role, onBack, navigate }: { role: string; onBack: ()
             <div className="w-2 h-2 rounded-full bg-emerald-500 opacity-10" />
          </div>
       </div>
+
+      <ImageCropModal
+        open={!!cropSrc}
+        imageSrc={cropSrc || ''}
+        onCancel={() => setCropSrc(null)}
+        onConfirm={(dataUrl) => {
+          update(cropKey, dataUrl);
+          showToast('success', 'Image Processed', 'Image ready and optimized.');
+          setCropSrc(null);
+        }}
+        aspect={cropKey === 'logoUrl' ? 1 : 16 / 6}
+        maxOutputSize={cropKey === 'logoUrl' ? 500 : 1400}
+        title={cropKey === 'logoUrl' ? 'Crop Restaurant Logo' : 'Crop Cover Banner'}
+      />
     </div>
   );
 }

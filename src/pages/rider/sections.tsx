@@ -6,7 +6,7 @@ import {
   Truck, TrendingUp, Clock, Radio, MessageSquare, Bell, DollarSign,
   ChefHat, PackageCheck, Phone, CheckCircle, Navigation as NavigationIcon,
   RefreshCw, Search, Camera, Upload, MessageCircle, ChevronRight, Send,
-  X, Image as ImageIcon, Moon, Sun, AlertCircle
+  X, Image as ImageIcon, Moon, Sun, AlertCircle, CheckCircle2, Circle, ShieldCheck
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/src/components/ui/card';
 import { Badge } from '@/src/components/ui/badge';
@@ -19,6 +19,8 @@ import { useApp } from '@/src/context/AppContext';
 import { useAuth } from '@/src/lib/auth/auth-store';
 import { cn, getInitials } from '@/src/lib/utils';
 import { MessagingService } from '@/src/services/api';
+import { AuthApiService } from '@/src/services/auth-api';
+import { ImageCropModal } from '@/src/components/common/ImageCropModal';
 
 const ACCENT = 'from-amber-400 to-orange-600';
 
@@ -472,6 +474,13 @@ export function RiderProfilePage() {
   const { user } = useAuth();
   const [showEditModal, setShowEditModal] = useState(false);
   const [showBannerPicker, setShowBannerPicker] = useState(false);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+
+  const onAvatarCropped = (dataUrl: string) => {
+    updateProfile({ avatar: dataUrl });
+    showToast('Profile Updated', 'Your profile image has been changed.');
+    setCropSrc(null);
+  };
 
   const rider = riders.find(r => r.userId === user?.id || r.id === user?.id);
   const deliveredCount = orders.filter(o => o.riderId === user?.id && ['delivered', 'completed'].includes(o.status)).length;
@@ -501,39 +510,44 @@ export function RiderProfilePage() {
       if (!file) return;
       const reader = new FileReader();
       reader.onload = (event) => {
-        const img = new (window as any).Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          const MAX = isBanner ? 1200 : 500;
-          if (width > height) {
-            if (width > MAX) { height *= MAX / width; width = MAX; }
-          } else {
-            if (height > MAX) { width *= MAX / height; height = MAX; }
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx?.drawImage(img, 0, 0, width, height);
-          const base64 = canvas.toDataURL('image/jpeg', 0.8);
-          if (isBanner) {
-            if (rider) {
-              updateRiderProfile(rider.id, { bannerUrl: base64 });
-              showToast('Banner Updated', 'Your cover photo has been changed.');
-            } else {
-              showToast('Error', 'Rider record not found.', 'warning');
-            }
-          } else {
-            updateProfile({ avatar: base64 });
-            showToast('Profile Updated', 'Your profile image has been changed.');
-          }
-        };
-        img.src = event.target?.result as string;
+        const src = event.target?.result as string;
+        if (!src) return;
+        if (isBanner) {
+          applyBannerImage(src);
+        } else {
+          setCropSrc(src);
+        }
       };
       reader.readAsDataURL(file);
     };
     input.click();
+  };
+
+  const applyBannerImage = (src: string) => {
+    const img = new (window as any).Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+      const MAX = 1200;
+      if (width > height) {
+        if (width > MAX) { height *= MAX / width; width = MAX; }
+      } else {
+        if (height > MAX) { width *= MAX / height; height = MAX; }
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx?.drawImage(img, 0, 0, width, height);
+      const base64 = canvas.toDataURL('image/jpeg', 0.8);
+      if (rider) {
+        updateRiderProfile(rider.id, { bannerUrl: base64 });
+        showToast('Banner Updated', 'Your cover photo has been changed.');
+      } else {
+        showToast('Error', 'Rider record not found.', 'warning');
+      }
+    };
+    img.src = src;
   };
 
   const handleSaveProfile = async () => {
@@ -661,6 +675,14 @@ export function RiderProfilePage() {
                   <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{f.value}</p>
                 </div>
               ))}
+              {(rider?.about || form.about) && (
+                <div className="sm:col-span-2 space-y-1.5 pt-2 border-t border-gray-100 dark:border-slate-800">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Bio / About</p>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
+                    {rider?.about || form.about}
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -741,7 +763,7 @@ export function RiderProfilePage() {
                       <Select value={form.vehicleType} onValueChange={(v) => setForm({ ...form, vehicleType: v })} className="w-full">
                         <SelectTrigger className="h-12 rounded-xl bg-gray-50 dark:bg-slate-800 border-none"><SelectValue placeholder="Select vehicle" /></SelectTrigger>
                         <SelectContent>
-                          {(['Motorcycle', 'Scooter', 'Bicycle', 'Van', 'Car'] as const).map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                          {(['Motorcycle', 'Scooter', 'Bicycle', 'Van', 'Car'] as string[]).map((v: string) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
@@ -798,6 +820,16 @@ export function RiderProfilePage() {
           </div>
         )}
       </AnimatePresence>
+
+      <ImageCropModal
+        open={!!cropSrc}
+        imageSrc={cropSrc || ''}
+        onCancel={() => setCropSrc(null)}
+        onConfirm={onAvatarCropped}
+        aspect={1}
+        maxOutputSize={500}
+        title="Crop Profile Photo"
+      />
     </div>
   );
 }
@@ -810,17 +842,86 @@ export function RiderProfilePage() {
 export function RiderSettingsPage() {
   const navigate = useNavigate();
   const { riderStatus, updateRiderStatus, showToast, theme, toggleTheme, riders } = useApp();
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const online = riderStatus !== 'OFFLINE' && riderStatus !== 'LOCATION_PERMISSION_DENIED' && riderStatus !== 'LOCATION_UNAVAILABLE';
   const [pushPref, setPushPref] = useState(() => localStorage.getItem('om_rider_push') !== 'off');
   const [showDeactivate, setShowDeactivate] = useState(false);
+  const [emailStep, setEmailStep] = useState<'idle' | 'sent' | 'verified'>('idle');
+  const [emailCode, setEmailCode] = useState('');
+  const [emailBusy, setEmailBusy] = useState(false);
 
   const rider = riders.find(r => r.userId === user?.id || r.id === user?.id);
+  const emailVerified = !!(user?.isEmailVerified || user?.isVerified);
+
+  const requestEmailVerification = async () => {
+    setEmailBusy(true);
+    try {
+      const res = await AuthApiService.sendVerification();
+      if (res.emailVerified) {
+        setEmailStep('verified');
+        updateUser({ isEmailVerified: true, isVerified: true });
+      } else {
+        setEmailStep('sent');
+        showToast('Code Sent', 'Check your inbox for the verification code.');
+      }
+    } catch (err: any) {
+      showToast('Error', err?.message || 'Could not send the verification code.', 'warning');
+    } finally {
+      setEmailBusy(false);
+    }
+  };
+
+  const submitEmailVerification = async () => {
+    if (!emailCode.trim()) return;
+    setEmailBusy(true);
+    try {
+      const res = await AuthApiService.verifyEmail(emailCode.trim());
+      if (res?.user) updateUser({ isEmailVerified: true, isVerified: true });
+      setEmailStep('verified');
+      showToast('Email Verified', 'Your email is verified — full account trust unlocked.');
+    } catch (err: any) {
+      showToast('Invalid Code', err?.message || 'The code could not be verified.', 'warning');
+    } finally {
+      setEmailBusy(false);
+    }
+  };
 
   const handlePushToggle = (v: boolean) => {
     setPushPref(v);
     localStorage.setItem('om_rider_push', v ? 'on' : 'off');
   };
+
+  // Profile-setup / trust score (email verification is the biggest factor).
+  const setupHasPhone = !!(user?.phone || '').trim();
+  const setupHasVehicle = !!rider?.vehicleNumber;
+  const setupHasPhoto = !!user?.avatarUrl && !user.avatarUrl.includes('dicebear');
+  const setupHasBio = !!rider?.about?.trim();
+  const setupPct = Math.min(
+    100,
+    (emailVerified ? 55 : 0) + (setupHasPhone ? 15 : 0) + (setupHasVehicle ? 15 : 0) + (setupHasPhoto ? 10 : 0) + (setupHasBio ? 5 : 0)
+  );
+  const setupLabel = emailVerified ? (setupPct >= 100 ? '100% Trust' : 'Email verified — finish your profile') : 'Verify your email to reach 100% trust';
+
+  const setupSteps = [
+    { label: 'Verify email', done: emailVerified, weight: 'Most important — unlocks 100% trust' },
+    { label: 'Add phone number', done: setupHasPhone },
+    { label: 'Add vehicle + plate', done: setupHasVehicle },
+    { label: 'Add profile photo', done: setupHasPhoto },
+    { label: 'Add a short bio', done: setupHasBio },
+  ];
+
+  const emailAction = emailVerified ? (
+    <Badge variant="success" className="rounded-lg">Verified</Badge>
+  ) : emailStep === 'sent' ? (
+    <div className="flex items-center gap-2">
+      <Input value={emailCode} onChange={e => setEmailCode(e.target.value)} placeholder="6-digit code" className="w-24 h-9 rounded-lg text-center font-bold" maxLength={6} />
+      <Button size="sm" variant="primary" className="rounded-lg" onClick={submitEmailVerification} disabled={emailBusy}>Verify</Button>
+    </div>
+  ) : (
+    <Button size="sm" variant="outline" className="rounded-lg" onClick={requestEmailVerification} disabled={emailBusy}>
+      Verify Email
+    </Button>
+  );
 
   const settingsGroups = [
     {
@@ -885,9 +986,13 @@ export function RiderSettingsPage() {
       items: [
         {
           label: 'Email Verification',
-          desc: user?.isVerified ? 'Your account is verified.' : 'Verify your email to ensure account security.',
+          desc: emailVerified
+            ? 'Your email is verified — 100% account trust.'
+            : emailStep === 'sent'
+              ? 'Enter the 6-digit code we emailed you.'
+              : 'Verify your email to reach 100% account trust.',
           icon: CheckCircle,
-          action: <Badge variant={user?.isVerified ? 'success' : 'warning'}>{user?.isVerified ? 'Verified' : 'Pending'}</Badge>
+          action: emailAction
         }
       ]
     }
@@ -896,6 +1001,33 @@ export function RiderSettingsPage() {
   return (
     <div className="space-y-6 pb-20">
       <PageHeader icon={Settings} title="Account Settings" description="Manage your availability, preferences, and security." />
+
+      {/* Profile Setup & Trust Score */}
+      <Card className="rounded-[2.5rem] border-gray-100 dark:border-slate-800 shadow-xl overflow-hidden">
+        <CardContent className="p-6 sm:p-8">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Profile Setup &amp; Trust</p>
+              <p className="text-3xl font-black text-gray-900 dark:text-white mt-2">{setupPct}%</p>
+              <p className="text-xs font-bold text-amber-600 mt-1">{setupLabel}</p>
+            </div>
+            <div className="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center text-amber-500">
+              <ShieldCheck className="w-8 h-8" />
+            </div>
+          </div>
+          <div className="h-3 mt-5 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-amber-400 via-orange-500 to-emerald-500 rounded-full transition-all duration-700" style={{ width: `${setupPct}%` }} />
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-2 mt-5">
+            {setupSteps.map(s => (
+              <div key={s.label} title={s.done ? 'Complete' : s.weight || ''} className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider ${s.done ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600' : 'bg-gray-50 dark:bg-slate-800 text-gray-500'}`}>
+                {s.done ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Circle className="w-3.5 h-3.5" />}
+                <span className="truncate">{s.label}</span>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="space-y-6">
         {settingsGroups.map(group => (

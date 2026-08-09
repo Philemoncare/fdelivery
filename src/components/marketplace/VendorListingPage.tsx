@@ -18,58 +18,55 @@ export const VendorListingPage: React.FC = () => {
   });
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-6 sm:space-y-8">
       
-      <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-3xl p-8 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-heading font-extrabold">
-            Restaurant Directory
+      <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-[2.5rem] p-8 sm:p-10 text-white shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full -mr-16 -mt-16 blur-2xl" />
+        <div className="relative z-10">
+          <h1 className="text-3xl sm:text-4xl font-black leading-tight tracking-tight">
+            Restaurant <span className="text-emerald-500">Directory</span>
           </h1>
-          <p className="text-xs text-slate-300 mt-1">Browse verified restaurants and local kitchens with instant rider dispatch integration.</p>
+          <p className="text-sm text-slate-400 mt-2 max-w-lg font-medium">Browse verified kitchens in Takoradi. Every meal is paired with an express dispatch rider.</p>
         </div>
 
         <button
           onClick={() => navigate('/become-vendor')}
-          className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition shadow cursor-pointer self-start md:self-auto"
+          className="bg-emerald-500 hover:bg-emerald-600 text-white font-black text-[10px] px-8 py-4 rounded-2xl transition shadow-xl shadow-emerald-500/20 cursor-pointer self-start md:self-auto uppercase tracking-widest active:scale-95"
         >
-          + Partner Your Restaurant
+          Partner Your Restaurant
         </button>
       </div>
 
       {/* Search & Category filter */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white dark:bg-slate-900 p-4 rounded-3xl border border-gray-200 dark:border-slate-800 shadow-sm">
-        <div className="relative flex-1 w-full">
-          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
+      <div className="flex flex-col lg:flex-row items-center justify-between gap-4 bg-white dark:bg-slate-900 p-4 rounded-[2.5rem] border border-gray-100 dark:border-slate-800 shadow-sm">
+        <div className="relative flex-1 w-full group">
+          <Search className="w-4 h-4 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-emerald-500 transition-colors" />
           <input
             type="text"
-            placeholder="Search restaurants by name or cuisine..."
+            placeholder="Search restaurants or cuisines..."
             value={vendorSearch}
             onChange={(e) => setVendorSearch(e.target.value)}
-            className="w-full bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-xs text-gray-900 dark:text-white pl-9 pr-3 py-2 rounded-xl focus:outline-none focus:border-emerald-500"
+            className="w-full bg-gray-50 dark:bg-slate-800 border-none text-xs font-bold text-gray-900 dark:text-white pl-12 pr-4 py-4 rounded-2xl focus:ring-1 focus:ring-emerald-500 outline-none transition-all"
           />
         </div>
 
-        <div className="flex items-center space-x-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+        <div className="flex items-center gap-2 overflow-x-auto w-full lg:w-auto pb-1 lg:pb-0 scrollbar-none px-1">
           <button
             onClick={() => setSelectedCat('All')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+            className={cn("px-5 py-2.5 rounded-xl text-[10px] font-black transition-all whitespace-nowrap uppercase tracking-widest",
               selectedCat === 'All'
-                ? 'bg-emerald-500 text-white'
-                : 'bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-gray-300'
-            }`}
-          >
-            All Restaurants
+                ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"
+                : "bg-gray-100 dark:bg-slate-800 text-gray-500 hover:text-gray-700")}>
+            All
           </button>
           {categories.map((c) => (
             <button
               key={c.id}
               onClick={() => setSelectedCat(c.name)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+              className={cn("px-5 py-2.5 rounded-xl text-[10px] font-black transition-all whitespace-nowrap uppercase tracking-widest",
                 selectedCat === c.name
-                  ? 'bg-emerald-500 text-white'
-                  : 'bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-gray-300'
-              }`}
-            >
+                  ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"
+                  : "bg-gray-100 dark:bg-slate-800 text-gray-500 hover:text-gray-700")}>
               {c.name}
             </button>
           ))}

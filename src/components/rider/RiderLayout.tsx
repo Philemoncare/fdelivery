@@ -1,7 +1,6 @@
 import {
-  LayoutDashboard, Bike, History, Wallet, UserRound,
-  Settings, Bell, MessageSquare, Star, TrendingUp, Navigation,
-  Clock, Radio, CheckCircle2, ListFilter
+  LayoutDashboard, Bike, Navigation, Wallet, Star, Settings, Bell,
+  MessageSquare, UserRound, Truck
 } from 'lucide-react';
 import { PortalLayout, type PortalConfig } from '@/src/components/layouts/portal-layout';
 import { useApp } from '@/src/context/AppContext';
@@ -20,15 +19,12 @@ export const riderPortalConfig: PortalConfig = {
   items: [
     { label: 'Dashboard', icon: LayoutDashboard, path: '/rider/dashboard' },
     { label: 'Available Deliveries', icon: Bike, path: '/rider/jobs', badge: 3 },
-    { label: 'Active Delivery', icon: History, path: '/rider/deliveries' },
+    { label: 'Deliveries', icon: Truck, path: '/rider/deliveries' },
     { label: 'Navigation Map', icon: Navigation, path: '/rider/navigation' },
-    { label: 'Pickup Queue', icon: ListFilter, path: '/rider/pickup-queue' },
-    { label: 'Delivery History', icon: History, path: '/rider/history' },
-    { label: 'Earnings', icon: TrendingUp, path: '/rider/earnings' },
-    { label: 'Wallet', icon: Wallet, path: '/rider/wallet' },
+    { label: 'Earnings & Wallet', icon: Wallet, path: '/rider/earnings' },
     { label: 'Ratings', icon: Star, path: '/rider/ratings' },
-    { label: 'My Profile', icon: UserRound, path: '/rider/profile' },
-    { label: 'Vehicle Info', icon: Bike, path: '/rider/profile' }, // Mapped to profile for now
+    { label: 'Messages', icon: MessageSquare, path: '/rider/messages' },
+    { label: 'Profile', icon: UserRound, path: '/rider/profile' },
     { label: 'Settings', icon: Settings, path: '/rider/settings' },
   ],
 };

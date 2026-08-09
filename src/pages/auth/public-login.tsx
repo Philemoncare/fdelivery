@@ -113,12 +113,12 @@ export function PublicLoginPage() {
           {/* Logo */}
           <div className="mb-8 text-center">
             <Link to="/" className="inline-flex items-center gap-2">
-              <div className="w-11 h-11 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/30">
-                <span className="text-white font-black text-xl">O</span>
+              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-emerald-500 flex items-center justify-center text-white shadow-lg">
+                <Bike className="w-5 h-5 sm:w-6 sm:h-6" />
               </div>
               <div className="text-left">
-                <span className="block font-heading font-extrabold text-2xl text-gray-900 dark:text-white leading-tight">OmniMarket</span>
-                <span className="block text-[10px] text-gray-500 dark:text-slate-400 font-medium uppercase tracking-wider -mt-1">Marketplace & Delivery</span>
+                <span className="block font-heading font-extrabold text-2xl text-black dark:text-white leading-tight">OmniMarket</span>
+                <span className="block text-[10px] text-gray-500 dark:text-slate-400 font-medium uppercase tracking-wider -mt-1">Takoradi Express</span>
               </div>
             </Link>
           </div>
@@ -142,8 +142,8 @@ export function PublicLoginPage() {
                         type="text"
                         value={identifier}
                         onChange={e => setIdentifier(e.target.value)}
-                        placeholder="you@omnimarket.com or +233 2X XXX XXXX"
-                        className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-800/80 border border-gray-200 dark:border-slate-700 rounded-xl text-sm placeholder:text-gray-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all"
+                        placeholder="you@gmail.com or +233 2X XXX XXXX"
+                        className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-800/80 border border-gray-200 dark:border-slate-700 rounded-xl text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all"
                       />
                     </div>
                   </div>
@@ -160,7 +160,7 @@ export function PublicLoginPage() {
                         value={password}
                         onChange={e => setPassword(e.target.value)}
                         placeholder="Enter your password"
-                        className="w-full pl-10 pr-11 py-3 bg-white dark:bg-slate-800/80 border border-gray-200 dark:border-slate-700 rounded-xl text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all"
+                        className="w-full pl-10 pr-11 py-3 bg-white dark:bg-slate-800/80 border border-gray-200 dark:border-slate-700 rounded-xl text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all"
                       />
                       <button type="button" onClick={() => setShowPassword(s => !s)}
                         className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">

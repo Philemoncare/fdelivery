@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ShoppingBag, Boxes, Users, BarChart3, Megaphone, Wallet, Store,
   Package, CreditCard, TrendingUp, Truck, Star, RefreshCcw,
@@ -8,7 +8,8 @@ import {
   ChefHat, Timer, Flame, Bike, Heart, Clock, X, Search, Filter,
   CheckCircle2, AlertCircle, Phone, MapPin, Zap, ChevronRight,
   MoreHorizontal, Play, Pause, DollarSign, Printer, ArrowRight,
-  Plus, Trash2, Edit3, Settings, ShieldCheck, Smartphone, Send, ChevronLeft
+  Plus, Trash2, Edit3, Settings, ShieldCheck, Smartphone, Send, ChevronLeft,
+  Crown, Gem, Sparkles, CalendarDays, BadgeCheck, Check
 } from 'lucide-react';
 import {
   LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid,
@@ -20,9 +21,12 @@ import { Button } from '@/src/components/ui/button';
 import { useApp } from '@/src/context/AppContext';
 import { useAuth } from '@/src/lib/auth/auth-store';
 import { cn } from '@/src/lib/utils';
+import { ImageCropModal } from '@/src/components/common/ImageCropModal';
+import { ReceiptModal, ReceiptOrder } from '@/src/components/common/ReceiptModal';
 import { OrderStatus } from '@/src/types';
 import { LiveMap } from '@/src/components/common/LiveMap';
 import { AdminService, MessagingService } from '@/src/services/api';
+import { AuthApiService } from '@/src/services/auth-api';
 
 // ============================================================
 // ORDERS MANAGER
@@ -32,6 +36,7 @@ export function VendorOrdersPage() {
   const { orders, formatPrice, updateOrderStatus, showToast, vendors } = useApp();
   const [activeTab, setActiveTab] = useState<OrderStatus | 'All'>('All');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [receiptOrder, setReceiptOrder] = useState<ReceiptOrder | null>(null);
 
   const currentVendor = vendors.find(v => v.id === vendorId);
   const vendorOrders = orders.filter(o => o.vendorId === vendorId);
@@ -59,6 +64,26 @@ export function VendorOrdersPage() {
 
   const handleStatusUpdate = (id: string, status: OrderStatus) => {
     updateOrderStatus(id, status);
+  };
+
+  const openReceipt = (order: any) => {
+    setReceiptOrder({
+      id: order.id,
+      orderNumber: order.orderNumber || order.invoiceNumber || order.id,
+      invoiceNumber: order.invoiceNumber || order.id,
+      customerName: order.customerName,
+      customerAddress: order.customerAddress,
+      customerPhone: order.customerPhone,
+      vendorName: currentVendor?.name || order.vendorName,
+      items: order.items,
+      subtotal: order.subtotal || order.itemsTotal,
+      deliveryFee: order.deliveryFee,
+      tax: order.tax,
+      discount: order.discount,
+      totalAmount: order.totalAmount,
+      paymentMethod: order.paymentMethod,
+      createdAt: order.createdAt,
+    });
   };
 
   return (
@@ -175,6 +200,7 @@ export function VendorOrdersPage() {
                   <div className="flex flex-wrap items-center justify-between gap-4 pt-6 border-t border-gray-100 dark:border-slate-800">
                     <div className="flex gap-2">
                        <Button variant="outline" className="rounded-xl h-11 px-6 font-bold text-xs border-gray-100" onClick={() => setSelectedOrderId(order.id)}>View Details</Button>
+                       <Button className="rounded-xl h-11 px-4 font-black text-[10px] uppercase tracking-widest text-emerald-600 border border-emerald-100 hover:bg-emerald-50" onClick={() => openReceipt(order)}><Printer className="w-4 h-4 mr-1.5" /> Receipt</Button>
                        <Button variant="ghost" className="rounded-xl h-11 px-4 text-gray-400 hover:text-purple-600"><MessageSquare className="w-5 h-5" /></Button>
                        <Button variant="ghost" className="rounded-xl h-11 px-4 text-gray-400 hover:text-emerald-600"><Phone className="w-5 h-5" /></Button>
                     </div>
@@ -267,12 +293,14 @@ export function VendorOrdersPage() {
               </div>
               <div className="p-8 border-t border-gray-50 dark:border-slate-800 flex gap-4">
                  <Button variant="outline" className="flex-1 rounded-2xl h-12 font-black uppercase tracking-widest" onClick={() => setSelectedOrderId(null)}>CLOSE</Button>
-                 <Button className="flex-1 rounded-2xl h-12 bg-purple-600 font-black uppercase tracking-widest" onClick={() => showToast('Printing...', 'Generating customer receipt.')}><Printer className="w-4 h-4 mr-2" /> PRINT RECEIPT</Button>
+                 <Button className="flex-1 rounded-2xl h-12 bg-purple-600 font-black uppercase tracking-widest" onClick={() => openReceipt(orders.find(o => o.id === selectedOrderId))}><Printer className="w-4 h-4 mr-2" /> PRINT RECEIPT</Button>
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
+
+      <ReceiptModal open={!!receiptOrder} order={receiptOrder} onClose={() => setReceiptOrder(null)} heading="Merchant Receipt" />
     </div>
   );
 }
@@ -281,7 +309,7 @@ export function VendorOrdersPage() {
 // KITCHEN STATUS
 // ============================================================
 export function VendorKitchenStatusPage() {
-  const { vendors, toggleKitchenStatus, orders, isLoading } = useApp();
+  const { vendors, toggleKitchenStatus, orders, isLoading, showToast, updateOrderStatus } = useApp();
   const { vendorId } = useAuth();
   const currentVendor = vendors.find(v => v.id === vendorId);
 
@@ -291,8 +319,17 @@ export function VendorKitchenStatusPage() {
     </div>;
   }
 
-  const inKitchen = orders.filter(o => o.status === 'Preparing Food' && o.vendorId === currentVendor.id);
-  const queue = orders.filter(o => ['Order Received', 'Restaurant Accepted'].includes(o.status) && o.vendorId === currentVendor.id);
+  const inKitchen = orders.filter(o => ['confirmed', 'preparing'].includes(o.status) && o.vendorId === currentVendor.id);
+  const queue = orders.filter(o => o.status === 'pending' && o.vendorId === currentVendor.id);
+
+  const toggleKitchen = async () => {
+    try {
+      await toggleKitchenStatus(currentVendor.id);
+      showToast('Kitchen Updated', currentVendor.isKitchenOpen ? 'Kitchen paused — customers will see your restaurant as closed.' : 'Kitchen is now open and accepting orders.');
+    } catch (err) {
+      showToast('Error', 'Could not update kitchen status. Please try again.', 'warning');
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -306,7 +343,7 @@ export function VendorKitchenStatusPage() {
              Kitchen: {currentVendor.isKitchenOpen ? 'ONLINE' : 'PAUSED'}
            </span>
            <button
-             onClick={() => toggleKitchenStatus(currentVendor.id)}
+             onClick={toggleKitchen}
              className={cn(
                "w-14 h-7 rounded-full relative p-1 transition-all",
                currentVendor.isKitchenOpen ? "bg-emerald-500" : "bg-gray-200 dark:bg-slate-700"
@@ -349,7 +386,7 @@ export function VendorKitchenStatusPage() {
                   </div>
                   <div className="pt-4 border-t border-gray-50 flex items-center justify-between">
                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Prep Load: High</p>
-                     <Button size="sm" className="rounded-xl bg-emerald-600 hover:bg-emerald-700 font-black text-[9px] uppercase h-9 px-4">MARK READY</Button>
+                     <Button size="sm" className="rounded-xl bg-emerald-600 hover:bg-emerald-700 font-black text-[9px] uppercase h-9 px-4" onClick={() => updateOrderStatus(o.id, 'ready_for_pickup')}>MARK READY</Button>
                   </div>
                 </Card>
               ))}
@@ -373,7 +410,7 @@ export function VendorKitchenStatusPage() {
                         <p className="text-[10px] text-gray-500 font-bold uppercase tracking-tighter">{o.items.length} items • 15:42</p>
                      </div>
                   </div>
-                  <Button variant="ghost" size="sm" className="h-9 px-4 rounded-xl text-[9px] font-black uppercase tracking-widest text-purple-600 bg-purple-50 group-hover:bg-purple-600 group-hover:text-white transition-all">ACCEPT</Button>
+                  <Button variant="ghost" size="sm" className="h-9 px-4 rounded-xl text-[9px] font-black uppercase tracking-widest text-purple-600 bg-purple-50 group-hover:bg-purple-600 group-hover:text-white transition-all" onClick={() => updateOrderStatus(o.id, 'confirmed')}>ACCEPT</Button>
                 </div>
               ))}
               {queue.length === 0 && <p className="text-xs text-center py-10 text-gray-400 font-bold">No orders in queue</p>}
@@ -626,11 +663,14 @@ export function VendorWalletPage() {
 // RESTAURANT SETTINGS
 // ============================================================
 export function VendorStoreSettingsPage() {
-  const { vendors, showToast, isLoading, updateVendorProfile } = useApp();
-  const { vendorId } = useAuth();
+  const { vendors, showToast, isLoading, updateVendorProfile, updateVendorHours, reviews, orders } = useApp();
+  const { vendorId, user, updateUser } = useAuth();
+  const navigate = useNavigate();
   const currentVendor = vendors.find(v => v.id === vendorId);
 
   const [activeTab, setActiveTab] = useState('Profile');
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const [cropTarget, setCropTarget] = useState<'logo' | 'banner'>('logo');
   const [form, setForm] = useState({
     name: '',
     description: '',
@@ -645,6 +685,26 @@ export function VendorStoreSettingsPage() {
     logo: '',
     banner: '',
   });
+
+  const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const [hours, setHours] = useState<{ day: string; isOpen: boolean; open: string; close: string }[]>(
+    DAYS.map(day => ({ day, isOpen: true, open: '08:00', close: '22:00' }))
+  );
+  const [emailStep, setEmailStep] = useState<'idle' | 'sent' | 'verified'>('idle');
+  const [emailCode, setEmailCode] = useState('');
+  const [emailBusy, setEmailBusy] = useState(false);
+  const emailVerified = !!(user?.isEmailVerified || user?.isVerified);
+
+  useEffect(() => {
+    if (!currentVendor) return;
+    const raw = Array.isArray(currentVendor.businessHours) ? currentVendor.businessHours : [];
+    setHours(DAYS.map(day => {
+      const existing = raw.find((h: any) => h.day === day);
+      return existing
+        ? { day, isOpen: !!existing.isOpen, open: existing.open || '08:00', close: existing.close || '22:00' }
+        : { day, isOpen: true, open: '08:00', close: '22:00' };
+    }));
+  }, [currentVendor?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The vendors list is loaded asynchronously (AppProvider). Seed the form
   // from the DB once the current vendor actually arrives, so the collected
@@ -676,27 +736,11 @@ export function VendorStoreSettingsPage() {
       if (!file) return;
       const reader = new FileReader();
       reader.onload = (event) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          const MAX_WIDTH = 800;
-          const MAX_HEIGHT = 800;
-          if (width > height) {
-            if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
-          } else {
-            if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx?.drawImage(img, 0, 0, width, height);
-          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.4);
-          setForm(f => ({ ...f, [key]: compressedBase64 }));
-          showToast('Image Processed', 'Image attached. Click SAVE CONFIGURATION to apply.');
-        };
-        img.src = event.target?.result as string;
+        const src = event.target?.result as string;
+        if (src) {
+          setCropTarget(key);
+          setCropSrc(src);
+        }
       };
       reader.readAsDataURL(file);
     };
@@ -728,6 +772,88 @@ export function VendorStoreSettingsPage() {
       });
     } catch (err) {
       console.error(err);
+      showToast('Error', 'Could not save your profile. Please try again.', 'warning');
+    }
+  };
+
+  const formatHM = (v: string) => {
+    if (!v) return '';
+    const [h, m] = v.split(':').map(Number);
+    const hr = h % 12 || 12;
+    return `${hr}:${String(m ?? 0).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+  };
+
+  const updateHours = (day: string, patch: Partial<{ open: string; close: string }>) =>
+    setHours(prev => prev.map(h => h.day === day ? { ...h, ...patch } : h));
+
+  const toggleDay = (day: string) =>
+    setHours(prev => prev.map(h => h.day === day ? { ...h, isOpen: !h.isOpen } : h));
+
+  const setAllDays = (isOpen: boolean) => setHours(prev => prev.map(h => ({ ...h, isOpen })));
+
+  const saveHours = async () => {
+    if (!vendorId) return;
+    try {
+      const openDays = hours.filter(h => h.isOpen);
+      const display = openDays
+        .map(h => `${h.day}: ${formatHM(h.open)} - ${formatHM(h.close)}`)
+        .join(', ');
+      await updateVendorHours(vendorId, {
+        openHours: openDays.length ? display : 'Closed Today',
+        businessHours: hours,
+      });
+    } catch (err) {
+      console.error(err);
+      showToast('Error', 'Could not save hours. Please try again.', 'warning');
+    }
+  };
+
+  const handleContactSupport = async () => {
+    try {
+      showToast('Support', 'Opening your support thread with our team...');
+      const conv = await MessagingService.supportConversation({
+        subject: `Support Request - ${currentVendor?.name || 'Vendor'}`,
+      });
+      navigate(`/restaurant/messages?convId=${conv.id}`);
+    } catch (err) {
+      console.error(err);
+      showToast('Error', 'Unable to reach support right now. Please try again.', 'warning');
+    }
+  };
+
+  const requestEmailVerification = async () => {
+    setEmailBusy(true);
+    try {
+      const res = await AuthApiService.sendVerification();
+      if (res.emailVerified) {
+        setEmailStep('verified');
+        updateUser({ isEmailVerified: true, isVerified: true });
+        showToast('Email Verified', 'Your business email is verified.');
+      } else {
+        setEmailStep('sent');
+        showToast('Code Sent', 'Check your inbox for the verification code.');
+      }
+    } catch (err: any) {
+      console.error(err);
+      showToast('Error', err?.message || 'Could not send the verification code.', 'warning');
+    } finally {
+      setEmailBusy(false);
+    }
+  };
+
+  const submitEmailVerification = async () => {
+    if (!emailCode.trim()) return;
+    setEmailBusy(true);
+    try {
+      await AuthApiService.verifyEmail(emailCode.trim());
+      setEmailStep('verified');
+      updateUser({ isEmailVerified: true, isVerified: true });
+      showToast('Email Verified', 'Your business email is now verified.');
+    } catch (err: any) {
+      console.error(err);
+      showToast('Invalid Code', err?.message || 'The code could not be verified.', 'warning');
+    } finally {
+      setEmailBusy(false);
     }
   };
 
@@ -740,7 +866,7 @@ export function VendorStoreSettingsPage() {
         </div>
         <Button
           className="rounded-2xl h-14 px-10 font-black text-sm bg-purple-600 hover:bg-purple-700 shadow-xl shadow-purple-600/20"
-          onClick={handleSaveProfile}
+          onClick={activeTab === 'Operating Hours' ? saveHours : handleSaveProfile}
         >
            SAVE CONFIGURATION
         </Button>
@@ -750,7 +876,10 @@ export function VendorStoreSettingsPage() {
          {['Profile', 'Operating Hours', 'Delivery Rules', 'Payment Settings', 'Staff', 'Security'].map(t => (
            <button
              key={t}
-             onClick={() => setActiveTab(t)}
+             onClick={() => {
+               setActiveTab(t);
+               window.scrollTo({ top: 0, behavior: 'smooth' });
+             }}
              className={cn(
                "px-8 py-4 text-[10px] font-black uppercase tracking-widest rounded-2xl transition-all whitespace-nowrap",
                activeTab === t ? "bg-purple-600 text-white shadow-lg" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-slate-800"
@@ -854,21 +983,64 @@ export function VendorStoreSettingsPage() {
               </Card>
             )}
 
-            {activeTab === 'Operating Hours' && (
+{activeTab === 'Operating Hours' && (
                <Card className="rounded-[3rem] p-10 space-y-8 border-gray-100 dark:border-slate-800 shadow-sm">
-                  <h3 className="text-xl font-black">Kitchen Schedule</h3>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                     <div>
+                        <h3 className="text-xl font-black text-gray-900 dark:text-white">Kitchen Schedule</h3>
+                        <p className="text-xs text-gray-500 font-medium mt-1">Customers see when your restaurant opens and closes.</p>
+                     </div>
+                     <Badge variant="info" className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest">Shown to customers</Badge>
+                  </div>
                   <div className="space-y-4">
-                     {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(day => (
-                       <div key={day} className="flex items-center justify-between p-6 rounded-[1.5rem] bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-800">
-                          <span className="font-bold text-sm text-gray-700 dark:text-gray-300">{day}</span>
-                          <div className="flex items-center gap-4">
-                             <input type="time" defaultValue="08:00" className="bg-white dark:bg-slate-900 px-4 py-2 rounded-xl text-xs font-bold border border-gray-100" />
-                             <span className="text-gray-400 font-black">to</span>
-                             <input type="time" defaultValue="22:00" className="bg-white dark:bg-slate-900 px-4 py-2 rounded-xl text-xs font-bold border border-gray-100" />
-                             <div className="w-12 h-6 bg-emerald-500 rounded-full relative p-1 cursor-pointer"><div className="w-4 h-4 bg-white rounded-full ml-auto" /></div>
-                          </div>
-                       </div>
+                     {hours.map(h => (
+                        <div key={h.day} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-6 rounded-[1.5rem] bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-800">
+                           <span className="font-bold text-sm text-gray-700 dark:text-gray-300">{h.day}</span>
+                           {h.isOpen ? (
+                              <div className="flex items-center gap-3">
+                                 <input type="time" value={h.open} onChange={e => updateHours(h.day, { open: e.target.value })} className="bg-white dark:bg-slate-900 px-4 py-2 rounded-xl text-xs font-bold border border-gray-100 dark:border-slate-700" />
+                                 <span className="text-gray-400 font-black text-xs">to</span>
+                                 <input type="time" value={h.close} onChange={e => updateHours(h.day, { close: e.target.value })} className="bg-white dark:bg-slate-900 px-4 py-2 rounded-xl text-xs font-bold border border-gray-100 dark:border-slate-700" />
+                              </div>
+                           ) : (
+                              <span className="text-[10px] font-black uppercase tracking-widest text-rose-500">Closed</span>
+                           )}
+                           <button
+                             onClick={() => toggleDay(h.day)}
+                             className={cn("w-14 h-7 rounded-full relative p-1 transition-all shrink-0", h.isOpen ? "bg-emerald-500" : "bg-gray-200 dark:bg-slate-700")}
+                           >
+                              <div className={cn("w-5 h-5 bg-white rounded-full shadow-md transition-all", h.isOpen ? "ml-auto" : "ml-0")} />
+                           </button>
+                        </div>
                      ))}
+                  </div>
+<div className="flex flex-wrap items-center gap-3 pt-2">
+                     <Button variant="outline" size="sm" className="rounded-xl text-[10px] font-black" onClick={() => setAllDays(true)}>OPEN ALL DAYS</Button>
+                     <Button variant="outline" size="sm" className="rounded-xl text-[10px] font-black text-rose-500" onClick={() => setAllDays(false)}>CLOSE ALL DAYS</Button>
+                     <Button className="ml-auto rounded-2xl h-12 px-8 font-black text-xs bg-purple-600 hover:bg-purple-700 shadow-lg" onClick={saveHours}>SAVE HOURS</Button>
+                  </div>
+               </Card>
+            )}
+
+            {['Delivery Rules', 'Payment Settings', 'Staff', 'Security'].includes(activeTab) && (
+               <Card className="rounded-[3rem] p-10 border-gray-100 dark:border-slate-800 shadow-sm">
+                  <div className="flex items-start gap-6">
+                     <div className={cn(
+                       "w-16 h-16 rounded-2xl flex items-center justify-center shadow-inner shrink-0",
+                       activeTab === 'Delivery Rules' ? "bg-blue-50 text-blue-600" : activeTab === 'Payment Settings' ? "bg-emerald-50 text-emerald-600" : activeTab === 'Staff' ? "bg-amber-50 text-amber-600" : "bg-rose-50 text-rose-600"
+                     )}>
+                        {activeTab === 'Delivery Rules' ? <MapPin className="w-8 h-8" /> : activeTab === 'Payment Settings' ? <Wallet className="w-8 h-8" /> : activeTab === 'Staff' ? <Users className="w-8 h-8" /> : <ShieldCheck className="w-8 h-8" />}
+                     </div>
+                     <div className="space-y-2">
+                        <h3 className="text-xl font-black text-gray-900 dark:text-white">{activeTab}</h3>
+                        <p className="text-sm text-gray-500 font-medium leading-relaxed">
+                           {activeTab === 'Delivery Rules' && 'Configure delivery zones, fees and rider payout rules for orders from your kitchen.'}
+                           {activeTab === 'Payment Settings' && 'Manage how you get paid — bank details, settlement schedule and payout thresholds.'}
+                           {activeTab === 'Staff' && 'Add and manage your kitchen team members and their access to this portal.'}
+                           {activeTab === 'Security' && 'Manage password, two-factor login and trusted devices for your restaurant account.'}
+                        </p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-purple-500 pt-1">Coming soon — managed by our merchant success team</p>
+                     </div>
                   </div>
                </Card>
             )}
@@ -916,17 +1088,87 @@ export function VendorStoreSettingsPage() {
                </div>
             </Card>
 
+            <Card className="rounded-[2.5rem] p-8 border-gray-100 dark:border-slate-800 shadow-sm space-y-5">
+               <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b pb-4">Restaurant Rating</h3>
+               <div className="flex items-center gap-5">
+                  {(() => {
+                     const myOrderIds = new Set(orders.filter(o => o.vendorId === vendorId).map(o => o.id));
+                     const myReviews = reviews.filter(r => r.vendorId === vendorId || (r.orderId && myOrderIds.has(r.orderId)));
+                     const avg = myReviews.length ? myReviews.reduce((s, r) => s + r.rating, 0) / myReviews.length : 0;
+                     return (<>
+                        <div className="text-5xl font-black text-amber-500">{avg ? avg.toFixed(1) : '—'}</div>
+                        <div className="space-y-1.5">
+                           <div className="flex gap-0.5">
+                              {[1, 2, 3, 4, 5].map(s => (
+                                 <Star key={s} className={cn("w-4 h-4", s <= Math.round(avg) ? "fill-amber-400 text-amber-400" : "text-gray-300 dark:text-slate-600")} />
+                              ))}
+                           </div>
+                           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{myReviews.length} verified reviews</p>
+                        </div>
+                     </>);
+                  })()}
+               </div>
+               <p className="text-[11px] text-gray-500 font-medium leading-relaxed">Ratings come from verified customer reviews left after delivery.</p>
+            </Card>
+
+            <Card className="rounded-[2.5rem] p-8 border-gray-100 dark:border-slate-800 shadow-sm space-y-5">
+               <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b pb-4">Email Verification</h3>
+               {emailVerified ? (
+                  <div className="flex items-center gap-3">
+                     <CheckCircle2 className="w-8 h-8 text-emerald-500 shrink-0" />
+                     <div className="min-w-0">
+                        <p className="text-sm font-black text-emerald-600">Verified</p>
+                        <p className="text-[10px] text-gray-400 font-bold truncate">{user?.email}</p>
+                     </div>
+                  </div>
+               ) : emailStep === 'sent' ? (
+                  <div className="space-y-3">
+                     <p className="text-xs text-gray-500 font-medium">Enter the 6-digit code sent to <span className="font-black text-gray-700 dark:text-gray-200">{user?.email}</span>.</p>
+                     <input
+                       type="text"
+                       inputMode="numeric"
+                       maxLength={6}
+                       value={emailCode}
+                       onChange={e => setEmailCode(e.target.value.replace(/\D/g, ''))}
+                       placeholder="••••••"
+                       className="w-full bg-gray-50 dark:bg-slate-800 border border-gray-100 p-4 rounded-xl text-sm font-black tracking-[0.4em] text-center focus:border-purple-500/50 outline-none transition-all"
+                     />
+                     <Button className="w-full h-12 rounded-xl bg-purple-600 hover:bg-purple-700 font-black text-xs shadow-lg" onClick={submitEmailVerification} loading={emailBusy}>VERIFY EMAIL</Button>
+                     <button onClick={requestEmailVerification} className="w-full text-center text-[10px] font-black text-purple-600 underline">Resend code</button>
+                  </div>
+               ) : (
+                  <div className="space-y-3">
+                     <p className="text-xs text-gray-500 font-medium">Verify your business email to unlock full account trust, order updates and support alerts.</p>
+                     <Button className="w-full h-12 rounded-xl bg-purple-600 hover:bg-purple-700 font-black text-xs shadow-lg" onClick={requestEmailVerification} loading={emailBusy}>SEND VERIFICATION CODE</Button>
+                  </div>
+               )}
+            </Card>
+
             <section className="bg-gradient-to-br from-violet-600 to-purple-700 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden">
                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
                <div className="relative z-10 space-y-4 text-center">
                   <ShieldCheck className="w-12 h-12 mx-auto text-purple-200" />
                   <h3 className="text-xl font-black leading-tight">Need technical help with your portal?</h3>
                   <p className="text-xs text-purple-100 opacity-90 leading-relaxed font-medium">Our merchant success team is available 24/7 in Takoradi to assist with orders and hardware.</p>
-                  <Button className="w-full bg-white text-purple-600 hover:bg-purple-50 rounded-2xl h-14 font-black text-xs shadow-xl">Contact Support</Button>
+                  <Button onClick={handleContactSupport} className="w-full bg-white text-purple-600 hover:bg-purple-50 rounded-2xl h-14 font-black text-xs shadow-xl">Contact Support</Button>
                </div>
             </section>
          </div>
       </div>
+
+      <ImageCropModal
+        open={!!cropSrc}
+        imageSrc={cropSrc || ''}
+        onCancel={() => setCropSrc(null)}
+        onConfirm={(dataUrl) => {
+          setForm(f => ({ ...f, [cropTarget]: dataUrl }));
+          showToast('Image Processed', 'Image ready. Click SAVE CONFIGURATION to apply.');
+          setCropSrc(null);
+        }}
+        aspect={cropTarget === 'logo' ? 1 : 16 / 6}
+        maxOutputSize={cropTarget === 'logo' ? 500 : 1400}
+        title={cropTarget === 'logo' ? 'Crop Restaurant Logo' : 'Crop Cover Banner'}
+      />
     </div>
   );
 }
@@ -980,6 +1222,7 @@ export function VendorCategoriesPage() {
 export function VendorMessagesPage() {
   const { conversations, showToast, sendMessage } = useApp();
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [messageInput, setMessageInput] = useState('');
@@ -987,13 +1230,15 @@ export function VendorMessagesPage() {
   const [sending, setSending] = useState(false);
   const [search, setSearch] = useState('');
 
-  const myConversations = (conversations || []).filter(c => c.type === 'customer_vendor');
+  const myConversations = (conversations || []).filter(c => c.type === 'customer_vendor' || c.type === 'vendor_support');
   const filtered = myConversations.filter(c => {
     if (!search.trim()) return true;
-    const partner = (c.participants && c.participants[0]?.name) || c.subject || '';
+    const partner = ((c.participants || []).find(p => p.id !== user?.id) || c.participants?.[0])?.name || c.subject || '';
     return partner.toLowerCase().includes(search.toLowerCase());
   });
-  const selectedConv = myConversations.find(c => c.id === selectedConvId) || null;
+  const selectedConv = myConversations.find(c => c.id === selectedConvId)
+    || (selectedConvId ? { id: selectedConvId, subject: 'OmniMarket Support', participants: [{ name: 'OmniMarket Support' }] } : null);
+  const partnerInfo = (selectedConv?.participants || []).find(p => p.id !== user?.id) || selectedConv?.participants?.[0];
 
   const loadMessages = async (convId: string) => {
     setSelectedConvId(convId);
@@ -1007,6 +1252,11 @@ export function VendorMessagesPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const convId = searchParams.get('convId');
+    if (convId && !selectedConvId) loadMessages(convId);
+  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSend = async () => {
     const content = messageInput.trim();
@@ -1045,7 +1295,7 @@ export function VendorMessagesPage() {
             {filtered.length === 0 ? (
               <p className="text-xs text-center py-10 text-gray-400 font-bold">No active conversations</p>
             ) : filtered.map(m => {
-              const partner = m.participants && m.participants[0];
+              const partner = (m.participants || []).find(p => p.id !== user?.id) || m.participants?.[0];
               return (
                 <div key={m.id} onClick={() => loadMessages(m.id)} className={cn("p-4 rounded-2xl cursor-pointer transition-all flex gap-3 items-center", selectedConvId === m.id ? "bg-purple-50 dark:bg-purple-950/20 ring-1 ring-purple-500/20" : "hover:bg-gray-50 dark:hover:bg-slate-800/50")}>
                   <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center font-bold text-purple-600 overflow-hidden">
@@ -1072,15 +1322,15 @@ export function VendorMessagesPage() {
           ) : (
             <>
               <div className="p-4 border-b border-gray-50 dark:border-slate-800 flex items-center gap-3 bg-gray-50/50 dark:bg-slate-950/30">
-                <button onClick={() => setSelectedConvId(null)} className="md:hidden p-2 rounded-xl bg-gray-100 dark:bg-slate-800 text-gray-500"><ChevronLeft className="w-4 h-4" /></button>
-                <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center font-bold text-purple-600 overflow-hidden">
-                  {selectedConv.participants?.[0]?.avatar ? <img src={selectedConv.participants[0].avatar} className="w-full h-full object-cover" /> : (selectedConv.participants?.[0]?.name || 'C').charAt(0)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-black text-gray-900 dark:text-white truncate">{selectedConv.participants?.[0]?.name || selectedConv.subject}</p>
-                  <p className="text-[10px] text-gray-500">{selectedConv.orderId ? 'Linked to an order' : 'Customer chat'}</p>
-                </div>
-              </div>
+                    <button onClick={() => setSelectedConvId(null)} className="md:hidden p-2 rounded-xl bg-gray-100 dark:bg-slate-800 text-gray-500"><ChevronLeft className="w-4 h-4" /></button>
+                    <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center font-bold text-purple-600 overflow-hidden">
+                      {partnerInfo?.avatar ? <img src={partnerInfo.avatar} className="w-full h-full object-cover" /> : (partnerInfo?.name || 'C').charAt(0)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-black text-gray-900 dark:text-white truncate">{partnerInfo?.name || selectedConv.subject}</p>
+                      <p className="text-[10px] text-gray-500">{selectedConv.orderId ? 'Linked to an order' : selectedConv.type === 'vendor_support' ? 'OmniMarket Support' : 'Customer chat'}</p>
+                    </div>
+                  </div>
 
               <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50/20 dark:bg-slate-950/20">
                 {loading ? (
@@ -1783,5 +2033,170 @@ export function VendorReviewsPage() {
 export function VendorWithdrawalsPage() { return <VendorWalletPage />; }
 export function VendorOrderQueuePage() { return <VendorKitchenStatusPage />; }
 export function VendorOpeningHoursPage() { return <VendorStoreSettingsPage />; }
-export function VendorSubscriptionPage() { return <VendorAnalyticsPage />; }
+
+// ============================================================
+// SUBSCRIPTION
+// ============================================================
+const VENDOR_PLANS = [
+  {
+    id: 'Starter',
+    price: 0,
+    period: '/month',
+    icon: Sparkles,
+    tagline: 'Free forever. Perfect for new restaurants finding their feet.',
+    perks: ['Unlimited menu items', '2% per-order commission', 'Standard support', 'Basic analytics'],
+    cta: 'Current Plan',
+  },
+  {
+    id: 'Standard',
+    price: 99,
+    period: '/month',
+    icon: Crown,
+    popular: true,
+    tagline: 'Best value for growing kitchens that deliver daily.',
+    perks: ['0% commission on all orders', 'Priority rider dispatch', 'Designated account manager', 'Advanced analytics + reports', 'Promotion toolkit'],
+    cta: 'Upgrade to Standard',
+  },
+  {
+    id: 'Enterprise',
+    price: 249,
+    period: '/month',
+    icon: Gem,
+    tagline: 'For multi-brand kitchens and high-volume operations.',
+    perks: ['0% commission on all orders', 'Multiple staff accounts', 'Custom branding & API access', '24/7 dedicated support', 'On-site hardware setup'],
+    cta: 'Upgrade to Enterprise',
+  },
+];
+
+export function VendorSubscriptionPage() {
+  const { showToast } = useApp();
+  const { vendorId } = useAuth();
+  const [currentPlan, setCurrentPlan] = useState(
+    () => localStorage.getItem(`omnimarket_vendor_plan_${vendorId}`) || 'Starter'
+  );
+  const current = VENDOR_PLANS.find(p => p.id === currentPlan)!;
+  const nextBilling = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  }, []);
+
+  const handleSelect = (planId: string) => {
+    localStorage.setItem(`omnimarket_vendor_plan_${vendorId}`, planId);
+    setCurrentPlan(planId);
+    const plan = VENDOR_PLANS.find(p => p.id === planId)!;
+    showToast('Plan Updated', planId === 'Starter' ? 'You are now on the free Starter plan.' : `You are now on the ${planId} plan — billed ${plan.period === '/month' ? 'monthly' : 'yearly'}.`);
+  };
+
+  return (
+    <div className="space-y-8">
+      <div className="bg-gradient-to-br from-violet-600 to-purple-700 rounded-[2rem] p-8 text-white shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-white/10 rounded-full -mr-20 -mt-20 blur-2xl" />
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center gap-6">
+          <div className="flex-1 space-y-3">
+            <div className="inline-flex items-center gap-2 bg-white/15 backdrop-blur px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest">
+              <Crown className="w-4 h-4 text-amber-300" /> Your Plan
+            </div>
+            <h1 className="text-3xl font-black">{current.id}</h1>
+            <p className="text-sm text-purple-100 font-medium max-w-lg">{current.tagline}</p>
+          </div>
+          <div className="bg-white/15 backdrop-blur rounded-2xl p-5 text-center min-w-[190px]">
+            <p className="text-[10px] font-black uppercase tracking-widest text-purple-200">Next Billing</p>
+            <p className="text-2xl font-black mt-1 flex items-center justify-center gap-2">
+              <CalendarDays className="w-5 h-5 text-amber-300" /> {current.price === 0 ? 'Never' : nextBilling}
+            </p>
+            {current.price > 0 && (
+              <p className="text-[10px] text-purple-100 mt-1">GHS {current.price}{current.period} · auto-renew</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-6">
+        {VENDOR_PLANS.map(plan => {
+          const isCurrent = plan.id === currentPlan;
+          const Icon = plan.icon;
+          return (
+            <div
+              key={plan.id}
+              className={cn(
+                'rounded-[2rem] p-8 flex flex-col relative border shadow-sm transition-all',
+                plan.popular ? 'bg-white dark:bg-slate-900 border-violet-300 dark:border-violet-700 shadow-violet-500/20 ring-2 ring-violet-500/20' : 'bg-white dark:bg-slate-900 border-gray-100 dark:border-slate-800',
+                !isCurrent && 'hover:shadow-xl'
+              )}
+            >
+              {plan.popular && (
+                <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-violet-600 to-purple-600 text-white text-[9px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full shadow-lg">
+                  Most Popular
+                </span>
+              )}
+              {isCurrent && (
+                <span className="absolute top-3 right-3 flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 dark:bg-emerald-900/40 px-3 py-1 rounded-full">
+                  <BadgeCheck className="w-3.5 h-3.5" /> Current
+                </span>
+              )}
+
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-100 to-purple-100 dark:from-violet-900/40 dark:to-purple-900/40 flex items-center justify-center text-violet-600 dark:text-violet-300 mb-5">
+                <Icon className="w-7 h-7" />
+              </div>
+
+              <h3 className="text-lg font-black text-gray-900 dark:text-white">{plan.id}</h3>
+              <div className="mt-2 flex items-end gap-1">
+                <span className="text-4xl font-black text-gray-900 dark:text-white">GHS {plan.price}</span>
+                <span className="text-xs font-bold text-gray-400 mb-1.5">{plan.period}</span>
+              </div>
+              <p className="text-xs text-gray-500 font-medium mt-2 leading-relaxed">{plan.tagline}</p>
+
+              <ul className="mt-6 space-y-3 flex-1">
+                {plan.perks.map(perk => (
+                  <li key={perk} className="flex items-start gap-2.5 text-xs text-gray-600 dark:text-gray-300 font-medium">
+                    <Check className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                    <span>{perk}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <Button
+                className={cn(
+                  'w-full h-12 rounded-2xl mt-8 font-black text-xs shadow-lg',
+                  isCurrent
+                    ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-gray-400 cursor-default'
+                    : 'bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white shadow-violet-500/20'
+                )}
+                disabled={isCurrent}
+                onClick={() => handleSelect(plan.id)}
+              >
+                {isCurrent ? 'Current Plan' : plan.cta}
+              </Button>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 border border-gray-100 dark:border-slate-800 shadow-sm space-y-5">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-2xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center text-amber-500"><Zap className="w-5 h-5" /></div>
+          <div>
+            <h3 className="text-base font-black text-gray-900 dark:text-white">Why upgrade?</h3>
+            <p className="text-xs text-gray-500 font-medium">Subscription tiers remove per-order commission and unlock delivery tools.</p>
+          </div>
+        </div>
+        <div className="grid sm:grid-cols-3 gap-4">
+          {[
+            { title: '0% Commission', desc: 'Keep 100% of every order once on a paid plan.', icon: DollarSign },
+            { title: 'Priority Dispatch', desc: 'Paid plans get first claim on nearby riders during peak.', icon: Bike },
+            { title: 'Marketing Boosts', desc: 'Promotions and featured slots rank higher in the app.', icon: Megaphone },
+          ].map(f => (
+            <div key={f.title} className="p-5 rounded-2xl bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-800">
+              <f.icon className="w-5 h-5 text-violet-500 mb-3" />
+              <p className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-widest">{f.title}</p>
+              <p className="text-[11px] text-gray-500 font-medium mt-1 leading-relaxed">{f.desc}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-[10px] text-gray-400 font-medium">Demo checkout: selecting a plan is instant on this demo build. Real billing would route through our Takoradi finance team.</p>
+      </div>
+    </div>
+  );
+}
 

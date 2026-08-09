@@ -39,6 +39,7 @@ export function CustomerDashboardPage() {
   const nearbyVendors = vendors.slice(0, 4);
 
   const firstName = user?.firstName || customerProfile?.name?.split(' ')[0] || 'Customer';
+  const fullName = customerProfile?.name || user?.displayName || (user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Customer');
   const currentAddress = customerProfile?.addresses?.find(a => a.isDefault)?.address || currentAddressName || 'Takoradi';
 
   const handleCancelOrder = (orderId: string) => {
@@ -46,28 +47,28 @@ export function CustomerDashboardPage() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8 pb-10">
       {/* Welcome Section */}
       <section className="grid lg:grid-cols-3 gap-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-          className="lg:col-span-2 relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-emerald-600 via-emerald-500 to-teal-500 p-8 text-white shadow-xl shadow-emerald-500/20"
+          className="lg:col-span-2 relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-emerald-600 via-emerald-500 to-teal-500 p-6 sm:p-10 text-white shadow-xl shadow-emerald-500/20"
         >
           <div className="absolute inset-0 bg-grid opacity-10" />
           <div className="relative z-10 space-y-6">
-            <div className="flex items-start justify-between">
+            <div className="flex items-start justify-between gap-4">
               <div className="space-y-1">
-                <h1 className="text-3xl font-heading font-black">Good Afternoon, {firstName}</h1>
-                <div className="flex items-center gap-2 text-emerald-50 text-sm">
+                <h1 className="text-2xl sm:text-4xl font-heading font-black leading-tight tracking-tight">Good Day, {firstName}</h1>
+                <div className="flex items-center gap-2 text-emerald-50 text-xs sm:text-sm">
                   <MapPin className="w-4 h-4" />
-                  <span className="font-medium">Delivery to: {currentAddress}</span>
+                  <span className="font-medium opacity-90 truncate max-w-[200px] sm:max-w-none">Delivery to: {currentAddress}</span>
                 </div>
               </div>
               <div className="hidden sm:flex items-center gap-3 bg-white/10 backdrop-blur-md rounded-2xl p-3 border border-white/20">
                 <CloudSun className="w-5 h-5 text-amber-300" />
-                <div className="text-xs">
-                  <p className="font-bold">Weather</p>
-                  <p className="opacity-80">Local forecast active</p>
+                <div className="text-[10px] leading-tight uppercase font-black tracking-widest">
+                  <p>Weather</p>
+                  <p className="opacity-60">Takoradi</p>
                 </div>
               </div>
             </div>
@@ -81,11 +82,11 @@ export function CustomerDashboardPage() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && navigate('/products')}
-                  className="w-full bg-white/10 border border-white/20 rounded-2xl pl-11 pr-4 py-3.5 text-sm placeholder:text-emerald-100 focus:outline-none focus:bg-white/20 transition-all shadow-inner"
+                  className="w-full bg-white/15 border border-white/20 rounded-2xl pl-11 pr-4 py-4 text-sm placeholder:text-emerald-100 focus:outline-none focus:bg-white/20 transition-all shadow-inner font-bold"
                 />
               </div>
-              <Button size="lg" className="bg-white text-emerald-600 hover:bg-emerald-50 rounded-2xl font-bold shadow-lg" onClick={() => navigate('/products')}>
-                Quick Order
+              <Button className="bg-white text-emerald-600 hover:bg-emerald-50 h-14 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl active:scale-95 transition-all" onClick={() => navigate('/products')}>
+                Order Meal Now
               </Button>
             </div>
           </div>
@@ -94,56 +95,55 @@ export function CustomerDashboardPage() {
         {/* Wallet Summary */}
         <motion.div
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-          className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 border border-gray-100 dark:border-slate-800 shadow-xl flex flex-col justify-between"
+          className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 border border-gray-100 dark:border-slate-800 shadow-sm flex flex-col justify-between"
         >
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">OmniWallet</span>
-              <div className="p-2 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl">
-                <Wallet className="w-5 h-5 text-emerald-500" />
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">OmniWallet</span>
+              <div className="p-2 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl text-emerald-500">
+                <Wallet className="w-5 h-5" />
               </div>
             </div>
             <div>
-              <p className="text-4xl font-black text-gray-900 dark:text-white">{formatPrice(customerProfile.walletBalance)}</p>
-              <div className="flex items-center gap-2 mt-1">
-                <Badge variant="success" className="text-[10px] px-1.5 py-0">+{customerProfile.loyaltyPoints} Points</Badge>
-                <p className="text-[10px] text-gray-500">Available for orders</p>
+              <p className="text-4xl font-black text-gray-900 dark:text-white tracking-tighter">{formatPrice(customerProfile.walletBalance)}</p>
+              <div className="flex items-center gap-2 mt-2">
+                <Badge variant="success" className="text-[9px] font-black uppercase tracking-widest">+{customerProfile.loyaltyPoints} POINTS</Badge>
               </div>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3 mt-6">
-            <Button variant="outline" className="rounded-xl text-xs font-bold py-5 border-gray-200 dark:border-slate-800" onClick={() => navigate('/customer/wallet')}>
-              Transactions
+          <div className="grid grid-cols-2 gap-3 mt-8">
+            <Button variant="outline" className="rounded-xl text-[10px] font-black py-6 border-gray-100 dark:border-slate-800 uppercase tracking-widest" onClick={() => navigate('/customer/wallet')}>
+              HISTORY
             </Button>
-            <Button className="rounded-xl text-xs font-bold py-5 bg-emerald-500 hover:bg-emerald-600 shadow-lg shadow-emerald-500/20" onClick={() => navigate('/customer/wallet')}>
-              Top Up
+            <Button className="rounded-xl text-[10px] font-black py-6 bg-emerald-500 hover:bg-emerald-600 shadow-lg shadow-emerald-500/20 uppercase tracking-widest text-white" onClick={() => navigate('/customer/wallet')}>
+              TOP UP
             </Button>
           </div>
         </motion.div>
       </section>
 
-      {/* Quick Actions */}
-      <section className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
+      {/* Quick Actions - Scrollable on mobile */}
+      <section className="flex items-center gap-4 overflow-x-auto pb-4 scrollbar-none sm:grid sm:grid-cols-4 lg:grid-cols-7 sm:overflow-visible sm:pb-0">
         {[
           { label: 'Order Food', icon: Utensils, path: '/products', color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-950/40' },
           { label: 'Restaurants', icon: Store, path: '/vendors', color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-950/40' },
           { label: 'Track Order', icon: Truck, path: '/track-order', color: 'text-indigo-500', bg: 'bg-indigo-50 dark:bg-indigo-950/40' },
-          { label: 'Reorder Meal', icon: History, path: '/customer/orders', color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-950/40' },
-          { label: 'Top Up Wallet', icon: Wallet, path: '/customer/wallet', color: 'text-rose-500', bg: 'bg-rose-50 dark:bg-rose-950/40' },
-          { label: 'Contact Support', icon: Phone, path: '/customer/support', color: 'text-teal-500', bg: 'bg-teal-50 dark:bg-teal-950/40' },
-          { label: 'View Coupons', icon: Gift, path: '/customer/coupons', color: 'text-pink-500', bg: 'bg-pink-50 dark:bg-pink-950/40' },
+          { label: 'Order History', icon: History, path: '/customer/orders', color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-950/40' },
+          { label: 'My Wallet', icon: Wallet, path: '/customer/wallet', color: 'text-rose-500', bg: 'bg-rose-50 dark:bg-rose-950/40' },
+          { label: 'Support', icon: Phone, path: '/customer/support', color: 'text-teal-500', bg: 'bg-teal-50 dark:bg-teal-950/40' },
+          { label: 'Coupons', icon: Gift, path: '/customer/coupons', color: 'text-pink-500', bg: 'bg-pink-50 dark:bg-pink-950/40' },
         ].map((action, i) => (
           <motion.button
             key={action.label}
             whileHover={{ y: -4, scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => navigate(action.path)}
-            className="flex flex-col items-center gap-3 p-4 rounded-3xl bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 shadow-sm hover:shadow-xl transition-all"
+            className="flex flex-col items-center gap-3 p-4 rounded-3xl bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 shadow-sm hover:shadow-xl transition-all min-w-[100px] sm:min-w-0"
           >
-            <div className={`p-3 rounded-2xl ${action.bg}`}>
+            <div className={`p-3.5 rounded-2xl ${action.bg}`}>
               <action.icon className={`w-5 h-5 ${action.color}`} />
             </div>
-            <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 text-center leading-tight uppercase tracking-tighter">
+            <span className="text-[9px] font-black text-gray-500 dark:text-gray-300 text-center leading-tight uppercase tracking-widest whitespace-nowrap">
               {action.label}
             </span>
           </motion.button>

@@ -82,6 +82,15 @@ export const AuthApiService = {
     body: JSON.stringify({ identifier, code, portal })
   }),
 
+  sendVerification: () => request<{ success: boolean; emailVerified?: boolean; message: string }>('/auth/send-verification', {
+    method: 'POST'
+  }),
+
+  verifyEmail: (code: string) => request<AuthResult>('/auth/verify-email', {
+    method: 'POST',
+    body: JSON.stringify({ code })
+  }),
+
   requestPasswordReset: (email: string) => request<{ success: boolean; message: string }>('/auth/request-password-reset', {
     method: 'POST',
     body: JSON.stringify({ email })

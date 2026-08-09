@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '@/src/lib/auth/auth-store';
+import { FoodCard } from '../common/FoodCard';
 import {
   Store,
   Bike,
@@ -248,73 +249,7 @@ export const HomePage: React.FC = () => {
             {/* Flash sale products grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               {flashSaleProducts.map((product, idx) => (
-                <div
-                  key={product.id}
-                  className="group bg-gray-50 dark:bg-slate-800/60 rounded-3xl p-4 border border-gray-200 dark:border-slate-700/80 hover:border-emerald-500 hover:shadow-xl transition-all flex flex-col justify-between animate-tilt-hover"
-                  style={{ animationDelay: `${idx * 0.08}s` }}
-                >
-                  <div>
-                    <div className="relative aspect-square rounded-2xl overflow-hidden mb-3 bg-white dark:bg-slate-900">
-                      <img src={product.images?.[0] || ''} alt={product.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                      <span className="absolute top-2 left-2 bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow">
-                        -{product.discountPercent}% OFF
-                      </span>
-                      <button
-                        onClick={() => toggleWishlist(product)}
-                        className={`absolute top-2 right-2 p-2 rounded-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-md transition ${
-                          isInWishlist(product.id) ? 'text-rose-500' : 'text-gray-500 hover:text-rose-500'
-                        }`}
-                      >
-                        <Heart className={`w-4 h-4 ${isInWishlist(product.id) ? 'fill-rose-500' : ''}`} />
-                      </button>
-                    </div>
-
-                    <div className="flex items-center space-x-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mb-1">
-                      <Store className="w-3.5 h-3.5" />
-                      <span className="truncate">{product.vendorName}</span>
-                    </div>
-
-                    <h4
-                      onClick={() => {
-                        setSelectedProduct(product);
-                        navigate(`/product/${product.id}`);
-                      }}
-                      className="text-xs font-bold text-gray-900 dark:text-white hover:text-emerald-500 transition line-clamp-2 cursor-pointer"
-                    >
-                      {product.title}
-                    </h4>
-                  </div>
-
-                  <div className="mt-4 pt-3 border-t border-gray-200 dark:border-slate-700 flex items-center justify-between">
-                    <div>
-                      <span className="text-sm font-black text-emerald-600 dark:text-emerald-400 block">
-                        {formatPrice(product.price)}
-                      </span>
-                      {product.originalPrice && (
-                        <span className="text-[10px] text-gray-400 line-through">
-                          {formatPrice(product.originalPrice)}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center space-x-1">
-                      <button
-                        onClick={() => setQuickViewProduct(product)}
-                        className="p-2 bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-gray-200 rounded-xl hover:bg-gray-300 transition"
-                        title="Quick View"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => addToCart(product)}
-                        className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-xl transition shadow"
-                        title="Add to Basket"
-                      >
-                        <ShoppingBag className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                <FoodCard key={product.id} product={product} />
               ))}
             </div>
 

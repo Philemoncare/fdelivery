@@ -90,9 +90,9 @@ export function LoginPage() {
       <div className="flex-1 flex items-center justify-center p-4 sm:p-6 lg:p-8">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md">
           <div className="mb-8 text-center">
-            <Link to="/" className="inline-flex items-center gap-2 text-2xl font-bold text-emerald-600 mb-2">
-              <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-xl flex items-center justify-center shadow-lg">
-                <span className="text-white font-bold text-lg">O</span>
+            <Link to="/" className="inline-flex items-center gap-2 text-2xl font-bold text-black dark:text-white mb-2">
+              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-emerald-500 flex items-center justify-center text-white shadow-lg">
+                <Bike className="w-5 h-5 sm:w-6 sm:h-6" />
               </div>
               OmniMarket
             </Link>
@@ -106,7 +106,7 @@ export function LoginPage() {
                 <Input
                   label="Email or Phone Number"
                   type="email"
-                  placeholder="you@omnimarket.com"
+                  placeholder="you@gmail.com"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   icon={<Mail className="w-4 h-4" />}

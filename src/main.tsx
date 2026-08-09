@@ -5,6 +5,7 @@ import { router } from './router';
 import { AppProvider } from './context/AppContext';
 import { AuthProvider } from './lib/auth/auth-store';
 import { ToastProvider } from './components/ui/toast';
+import { ScrollToTop } from './components/common/ScrollToTop';
 import './index.css';
 
 const container = document.getElementById('root');

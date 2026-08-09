@@ -169,7 +169,6 @@ export interface DispatchRider {
   deliveryFee: number;
   etaMinutes: number;
   distanceKm: number;
-  avatar?: string;
   phoneSecondary?: string;
   about?: string;
   bannerUrl?: string;

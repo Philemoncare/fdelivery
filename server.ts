@@ -296,6 +296,7 @@ function publicVendor(v: any, agg: any) {
     logo: v.logo,
     banner: typeof v.banner === 'string' && v.banner ? v.banner : v.logo || '',
     description: v.description || '',
+    about: typeof v.about === 'string' ? v.about : '',
     category: v.category || 'General',
     cuisines: Array.isArray(v.cuisines) ? v.cuisines : [],
     address: typeof v.address === 'string' ? v.address : '',
@@ -311,7 +312,9 @@ function publicVendor(v: any, agg: any) {
     minOrder: Number(v.minOrder) || 0,
     distanceKm: Number(v.distanceKm) || 1.2,
     openHours: v.openHours || [],
+    businessHours: Array.isArray(v.businessHours) ? v.businessHours : [],
     isOpen: !!v.isOpen,
+    isKitchenOpen: v.isKitchenOpen !== false,
     isAvailable: !!agg.isAvailable,
     status: v.status,
     tags: Array.isArray(v.tags) ? v.tags : []
@@ -710,6 +713,65 @@ app.post('/api/auth/send-otp', (req, res) => {
   }
 });
 
+// Send an email-verification code to the authenticated user.
+app.post('/api/auth/send-verification', requireAuth, (req, res) => {
+  const currentUserId = (req as any).currentUserId;
+  const user = db.users.find((u: any) => u.id === currentUserId);
+  if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+  if (user.isEmailVerified) {
+    return res.json({ success: true, emailVerified: true, message: 'Your email is already verified.' });
+  }
+
+  const userKey = user.email.toLowerCase();
+  if (otpBlockedByCooldown(userKey)) {
+    return res.status(429).json({ success: false, message: 'Please wait a moment before requesting another code.' });
+  }
+
+  const code = generateOtp();
+  storeOtp(userKey, code);
+  queueEmail({ to: user.email, template: 'email_verification', data: { firstName: user.firstName, code } });
+  console.log(`[OTP] Email verification code sent to ${user.email} (demo code 123456 also works)`);
+  res.json({ success: true, message: 'Verification code sent to your email.' });
+});
+
+// Verify the authenticated user's email using the OTP that was emailed to them.
+app.post('/api/auth/verify-email', requireAuth, (req, res) => {
+  const { code } = req.body.body ?? req.body;
+  const currentUserId = (req as any).currentUserId;
+  const user = db.users.find((u: any) => u.id === currentUserId);
+  if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+  if (user.isEmailVerified) {
+    return res.json({ success: true, emailVerified: true, user: safeUser(user) });
+  }
+
+  if (!code || !String(code).trim()) {
+    return res.status(400).json({ success: false, message: 'Verification code is required.' });
+  }
+
+  const userKey = user.email.toLowerCase();
+  const isDemo = code === '123456';
+  const validCode = isDemo || otpMatches(userKey, code);
+
+  if (!validCode) {
+    const stored = otpStore.get(userKey);
+    if (stored) {
+      stored.attempts += 1;
+      if (stored.attempts >= OTP_MAX_ATTEMPTS) consumeOtp(userKey);
+    }
+    return res.status(400).json({ success: false, message: 'Invalid or expired verification code.' });
+  }
+
+  consumeOtp(userKey);
+  user.isEmailVerified = true;
+  user.isVerified = true;
+  user.auditTrail = user.auditTrail || [];
+  logAudit(user, 'Email verified', 'user', user.id, 'success', { email: user.email });
+
+  res.json({ success: true, emailVerified: true, user: safeUser(user) });
+});
+
 // Return the current user profile from a valid access token (used on page refresh)
 app.get('/api/auth/me', (req, res) => {
   const authHeader = req.headers.authorization || '';
@@ -1027,6 +1089,16 @@ app.get('/api/vendors', (req, res) => {
     const agg = vendorAggregate(v);
     return isAdmin ? agg : publicVendor(v, agg);
   }));
+});
+app.get('/api/vendors/:id', (req, res) => {
+  const vendor = db.vendors.find(v => v.id === req.params.id);
+  if (!vendor) return res.status(404).json({ error: 'Vendor not found' });
+  const userId = getAuthUserId(req);
+  const user = userId ? db.users.find((u: any) => u.id === userId) : null;
+  const isAdmin = user && ['administrator', 'super-administrator'].includes(user.role);
+  const isOwner = user && (user.vendorId === vendor.id || user.ownerId === vendor.ownerId);
+  const agg = vendorAggregate(vendor);
+  res.json(isAdmin || isOwner ? agg : publicVendor(vendor, agg));
 });
 app.get('/api/products', (req, res) => {
   const userId = getAuthUserId(req);
@@ -1985,7 +2057,11 @@ app.get('/api/vendors/:id/dashboard', (req, res) => {
 app.get('/api/vendors/:id/hours', (req, res) => {
   const vendor = db.vendors.find(v => v.id === req.params.id);
   if (!vendor) return res.status(404).json({ error: 'Vendor not found' });
-  res.json({ openHours: vendor.openHours || '08:00 AM - 10:00 PM', hours: vendor.hours || null });
+  res.json({
+    openHours: vendor.openHours || '08:00 AM - 10:00 PM',
+    hours: vendor.hours || null,
+    businessHours: Array.isArray(vendor.businessHours) ? vendor.businessHours : []
+  });
 });
 
 app.put('/api/vendors/:id/hours', (req, res) => {
@@ -1999,7 +2075,20 @@ app.put('/api/vendors/:id/hours', (req, res) => {
   const body = req.body.body ?? req.body;
   if (body.openHours) vendor.openHours = body.openHours;
   if (body.hours !== undefined) vendor.hours = body.hours;
-  res.json({ openHours: vendor.openHours, hours: vendor.hours || null });
+  // Weekly schedule used by customer-facing "Open/Closed" logic
+  if (Array.isArray(body.businessHours)) {
+    vendor.businessHours = body.businessHours.map((h: any) => ({
+      day: String(h.day || ''),
+      isOpen: !!h.isOpen,
+      open: String(h.open || '08:00'),
+      close: String(h.close || '22:00')
+    }));
+  }
+  res.json({
+    openHours: vendor.openHours,
+    hours: vendor.hours || null,
+    businessHours: vendor.businessHours || []
+  });
 });
 
 // Toggle kitchen open/closed (vendor portal "Open/Pause kitchen")
@@ -2260,6 +2349,56 @@ app.get('/api/messages/:conversationId', (req, res) => {
   const isParticipant = currentUser && conv.participantIds.includes(currentUser.id);
   if (!isAdmin && !isParticipant) return res.status(403).json({ error: 'Forbidden' });
   res.json(db.messages.filter(m => m.conversationId === req.params.conversationId));
+});
+
+// Open (or reuse) a support conversation between a user and the platform's
+// admin/super-admin team. Alerts every admin so the request really reaches them.
+app.post('/api/messages/support', (req, res) => {
+  const currentUserId = getAuthUserId(req);
+  const currentUser = currentUserId ? db.users.find((u: any) => u.id === currentUserId) : null;
+  if (!currentUser) return res.status(401).json({ error: 'Authentication required' });
+
+  const admins = db.users.filter((u: any) => ['administrator', 'super-administrator'].includes(u.role));
+  const supportAdmin = admins.find((a: any) => a.id !== currentUser.id) || admins[0];
+  if (!supportAdmin) return res.status(500).json({ error: 'No support staff available' });
+
+  const type = currentUser.role === 'rider' ? 'rider_support'
+    : currentUser.role === 'vendor' ? 'vendor_support'
+    : 'customer_support';
+  const requested = (req.body.body ?? req.body).subject;
+  const subject = requested || `Support Request - ${currentUser.displayName || currentUser.firstName}`;
+
+  const existing = db.conversations.find((c: any) =>
+    c.type === type &&
+    c.participantIds.includes(currentUser.id) &&
+    c.participantIds.includes(supportAdmin.id)
+  );
+  if (existing) return res.json(existing);
+
+  const conversation = {
+    id: `c-${uuidv4().slice(0, 8)}`,
+    type,
+    participantIds: [currentUser.id, supportAdmin.id],
+    orderId: null,
+    subject,
+    lastMessage: '',
+    lastMessageAt: null,
+    unreadCount: 0,
+    createdAt: new Date().toISOString()
+  };
+  db.conversations.push(conversation);
+
+  // Notify the whole support team (except the requester) so the ticket is seen.
+  admins.filter((a: any) => a.id !== currentUser.id).forEach((a: any) => {
+    notifyUser(
+      a.id,
+      'Support Request',
+      `${currentUser.displayName || currentUser.firstName} (${currentUser.role}) opened a support conversation: ${subject}`,
+      'info'
+    );
+  });
+
+  res.status(201).json(conversation);
 });
 
 app.post('/api/messages', (req, res) => {

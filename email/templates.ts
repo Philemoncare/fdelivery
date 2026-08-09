@@ -1,5 +1,6 @@
 export type TemplateName =
   | 'otp'
+  | 'email_verification'
   | 'welcome'
   | 'registration_pending'
   | 'account_approved'
@@ -99,6 +100,18 @@ export function renderTemplate(name: TemplateName, data: TemplateData): { subjec
         <p>Use the code below to complete your sign-in. It expires in <strong>10 minutes</strong>.</p>
         <div style="font-size:32px;font-weight:800;letter-spacing:8px;color:${green};background:#ecfdf5;border-radius:12px;padding:16px;text-align:center;margin:20px 0;">${data.code}</div>
         <p style="font-size:12px;color:#6b7280;">If you did not attempt to log in, please secure your account immediately by resetting your password.</p>
+        ${footerNote()}
+      `);
+      break;
+
+    case 'email_verification':
+      subject = `${data.code} is your OmniMarket email verification code`;
+      html = layout(subject, `
+        <h2 style="margin-top:0;color:#111827;">Confirm your email</h2>
+        ${greetLine(data)}
+        <p>Use the code below to verify your email address. Verifying your email unlocks your full profile and brings your account trust to <strong>100%</strong>. The code expires in <strong>10 minutes</strong>.</p>
+        <div style="font-size:32px;font-weight:800;letter-spacing:8px;color:${green};background:#ecfdf5;border-radius:12px;padding:16px;text-align:center;margin:20px 0;">${data.code}</div>
+        <p style="font-size:12px;color:#6b7280;">If you did not request this, you can safely ignore this email.</p>
         ${footerNote()}
       `);
       break;

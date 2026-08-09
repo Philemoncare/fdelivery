@@ -81,6 +81,8 @@ export function VendorDashboardPage() {
     ];
   }, [vendorOrders, currentVendor, formatPrice, vendorDashboard, todayCompleted]);
 
+  const [showReport, setShowReport] = useState(false);
+
   if (isLoading || !currentVendor) {
     return <div className="flex items-center justify-center min-h-[400px]">
       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
@@ -90,8 +92,15 @@ export function VendorDashboardPage() {
   const liveOrders = vendorOrders.filter(o => ['pending', 'confirmed', 'preparing', 'ready_for_pickup'].includes(o.status)).slice(0, 5);
   const bestSellers = [...vendorProducts].sort((a, b) => (productStats.get(b.id)?.revenue || 0) - (productStats.get(a.id)?.revenue || 0)).slice(0, 4);
 
-  const handlePauseOrders = () => {
-    toggleKitchenStatus(currentVendor.id);
+  const handlePauseOrders = async () => {
+    try {
+      await toggleKitchenStatus(currentVendor.id);
+      showToast('Kitchen Updated', currentVendor.isKitchenOpen
+        ? 'Kitchen paused — customers will see your restaurant as closed.'
+        : 'Kitchen is now open and accepting orders.');
+    } catch (err) {
+      showToast('Error', 'Could not update kitchen status. Please try again.', 'warning');
+    }
   };
 
   return (
@@ -102,6 +111,9 @@ export function VendorDashboardPage() {
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
           className="lg:col-span-2 relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-violet-600 via-violet-500 to-purple-500 p-8 text-white shadow-xl shadow-purple-500/20"
         >
+          {currentVendor.banner && (
+            <img src={currentVendor.banner} className="absolute inset-0 w-full h-full object-cover opacity-30 mix-blend-luminosity" />
+          )}
           <div className="absolute inset-0 bg-grid opacity-10" />
           <div className="relative z-10 space-y-6">
             <div className="flex items-start justify-between">
@@ -133,7 +145,7 @@ export function VendorDashboardPage() {
                 {currentVendor.isKitchenOpen ? <Pause className="w-4 h-4 mr-2" /> : <Play className="w-4 h-4 mr-2" />}
                 {currentVendor.isKitchenOpen ? 'Pause Kitchen' : 'Resume Kitchen'}
               </Button>
-              <Button variant="ghost" className="rounded-xl border border-white/20 font-bold backdrop-blur-sm hover:bg-white/10" onClick={() => showToast('Printing...', 'Generating daily sales report.')}>
+              <Button variant="ghost" className="rounded-xl border border-white/20 font-bold backdrop-blur-sm hover:bg-white/10" onClick={() => setShowReport(true)}>
                 <Printer className="w-4 h-4 mr-2" /> Daily Report
               </Button>
             </div>
@@ -386,6 +398,59 @@ export function VendorDashboardPage() {
           </div>
         </Card>
       </section>
+
+      {showReport && (() => {
+        const today = new Date().toDateString();
+        const todays = vendorOrders.filter(o => new Date(o.createdAt).toDateString() === today);
+        const revenue = todays.filter(o => !['cancelled', 'Cancelled'].includes(o.status)).reduce((s, o) => s + (o.totalAmount || 0), 0);
+        const delivered = todays.filter(o => ['delivered', 'completed', 'Delivered'].includes(o.status));
+        return (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+            <div className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto border border-gray-100 dark:border-slate-800">
+              <div className="om-receipt bg-white text-gray-900 p-6 font-mono text-sm">
+                <div className="text-center pb-4 border-b-2 border-dashed border-gray-300">
+                  <p className="text-lg font-black tracking-widest">OMNIMARKET</p>
+                  <p className="text-[10px] tracking-widest text-gray-500 mt-1 uppercase">Daily Sales Report</p>
+                  <p className="text-[11px] font-bold text-gray-700 mt-2">{currentVendor.name}</p>
+                  <p className="text-[10px] text-gray-500">{new Date().toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                </div>
+
+                <div className="py-4 space-y-2 text-[11px] border-b border-dashed border-gray-300">
+                  <div className="flex justify-between"><span className="text-gray-500">Orders Received</span><span className="font-bold">{todays.length}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-500">Delivered</span><span className="font-bold">{delivered.length}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-500">In Progress</span><span className="font-bold">{todays.filter(o => !['delivered', 'completed', 'cancelled', 'Cancelled', 'Delivered'].includes(o.status)).length}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-500">Daily Revenue</span><span className="font-bold text-emerald-600">{formatPrice(revenue)}</span></div>
+                  {todays.length > 0 && (
+                    <>
+                      <p className="font-black uppercase tracking-wider text-gray-700 pt-3 pb-1">Orders</p>
+                      {todays.slice(0, 20).map(o => (
+                        <div key={o.id} className="flex justify-between gap-2">
+                          <span className="flex-1 truncate">#{o.id.slice(0, 8)} · {o.customerName}</span>
+                          <span className="font-bold whitespace-nowrap">{formatPrice(o.totalAmount)}</span>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  <div className="flex justify-between pt-2 border-t border-gray-300 text-sm font-black">
+                    <span>NET TOTAL</span>
+                    <span>{formatPrice(revenue)}</span>
+                  </div>
+                </div>
+
+                <div className="text-center pt-3 text-[9px] text-gray-400">Generated by OmniMarket Vendor Portal</div>
+              </div>
+              <div className="om-receipt-nobutton flex gap-3 p-5 bg-gray-50 dark:bg-slate-800/60">
+                <button onClick={() => setShowReport(false)} className="flex-1 h-12 rounded-xl border-2 border-gray-200 dark:border-slate-700 text-xs font-black uppercase tracking-widest text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-all">
+                  Close
+                </button>
+                <button onClick={() => window.print()} className="flex-1 h-12 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all">
+                  <Printer className="w-4 h-4" /> Print / Save PDF
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

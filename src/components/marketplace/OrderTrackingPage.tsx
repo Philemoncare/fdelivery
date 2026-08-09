@@ -175,10 +175,72 @@ export const OrderTrackingPage: React.FC = () => {
   const rider = activeOrder.dispatchRider || (riders?.length > 0 ? riders[0] : null);
 
   if (!rider) {
-    return <div className="max-w-4xl mx-auto py-16 px-4 text-center">
-      <h3 className="text-lg font-bold text-amber-600">Assigning a Rider...</h3>
-      <p className="text-gray-500 mt-2">We are matching your order with the nearest dispatch rider in Takoradi.</p>
-    </div>;
+    return (
+      <div className="max-w-3xl mx-auto py-10 px-4 space-y-6">
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+          <div className="text-sm">
+            <p className="font-bold text-amber-800 dark:text-amber-200">Assigning a Rider...</p>
+            <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">We are matching your order #{activeOrder.id} with the nearest dispatch rider in Takoradi. Your order is confirmed — keep this reference handy.</p>
+          </div>
+        </div>
+
+        {/* Printable confirmation receipt */}
+        <div className="om-receipt bg-white text-gray-900 rounded-3xl border border-gray-200 shadow-xl p-6 font-mono text-sm">
+          <div className="flex items-center justify-between border-b-2 border-dashed border-gray-300 pb-4">
+            <div>
+              <p className="text-lg font-black tracking-widest">OMNIMARKET</p>
+              <p className="text-[10px] tracking-widest text-gray-500 uppercase">Order Confirmation</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-bold text-emerald-600">#{activeOrder.orderNumber || activeOrder.id}</p>
+              <p className="text-[10px] text-gray-400">{new Date(activeOrder.createdAt).toLocaleString()}</p>
+            </div>
+          </div>
+
+          <div className="py-4 space-y-1.5 text-[11px]">
+            <div className="flex justify-between"><span className="text-gray-500">Restaurant</span><span className="font-bold">{activeOrder.vendorName}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Status</span><span className="font-bold uppercase">{activeOrder.status.replace('_', ' ')}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Payment</span><span className="font-bold">{activeOrder.paymentMethod}</span></div>
+          </div>
+
+          <div className="py-4 border-t border-dashed border-gray-300 space-y-1.5">
+            {(activeOrder.items || []).map((it: any, idx: number) => (
+              <div key={idx} className="flex justify-between gap-2 text-[11px]">
+                <span className="flex-1">{it.quantity} x {it.productName || 'Meal'}</span>
+                <span className="font-bold whitespace-nowrap">{formatPrice((it.unitPrice || it.price || 0) * it.quantity)}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="py-4 border-t border-dashed border-gray-300 space-y-1 text-[11px]">
+            <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span className="font-bold">{formatPrice(activeOrder.subtotal || activeOrder.totalAmount)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Delivery Fee</span><span className="font-bold">{formatPrice(activeOrder.deliveryFee || 0)}</span></div>
+            <div className="flex justify-between pt-2 border-t border-gray-300 text-sm font-black">
+              <span>GRAND TOTAL</span>
+              <span className="text-emerald-600">{formatPrice(activeOrder.totalAmount)}</span>
+            </div>
+          </div>
+
+          <p className="text-[9px] text-gray-400 text-center pt-2">Keep this reference for rider coordination. Thank you for ordering with OmniMarket.</p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3">
+          <button
+            onClick={() => window.print()}
+            className="flex-1 h-12 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
+          >
+            <Printer className="w-4 h-4" /> Print / Save Receipt
+          </button>
+          <button
+            onClick={() => navigate('/customer/orders')}
+            className="flex-1 h-12 rounded-2xl bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 text-gray-800 dark:text-gray-200 font-bold text-xs flex items-center justify-center gap-2"
+          >
+            <ArrowRight className="w-4 h-4" /> View My Orders
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
