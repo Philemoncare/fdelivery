@@ -40,7 +40,19 @@ export function RiderDeliveriesPage() {
       .reduce((a, d) => a + (d.deliveryFee || 0), 0);
   }, [riderOrders]);
 
-  const avgRating = riderRecord?.rating !== undefined ? riderRecord.rating.toFixed(1) : '0.0';
+  const avgRating = riderRecord?.rating != null ? riderRecord.rating.toFixed(1) : '—';
+
+  const handleConfirmDelivered = async () => {
+    const del = deliverConfirm;
+    setDeliverConfirm(null);
+    if (!del) return;
+    try {
+      await updateOrderStatus(del.id, 'delivered');
+      showToast('Delivery Completed', `Order #${del.orderNumber || del.id.slice(-6).toUpperCase()} marked as delivered.`);
+    } catch {
+      showToast('Delivery Failed', 'Could not confirm the delivery. Check your connection.', 'warning');
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -115,8 +127,8 @@ export function RiderDeliveriesPage() {
                   </div>
                   {['rider_assigned', 'picked_up', 'in_transit'].includes(del.status) && (
                     <div className="flex gap-1">
-                      <Button size="sm" variant="ghost" className="p-2"><Phone className="w-4 h-4" /></Button>
-                      <Button size="sm" variant="primary" className="px-3" onClick={(e) => { e.stopPropagation(); updateOrderStatus(del.id, 'delivered'); }}>
+                      <Button size="sm" variant="ghost" className="p-2" aria-label={`Call ${del.customerName}`} onClick={(e) => { e.stopPropagation(); if (del.customerPhone) window.open(`tel:${del.customerPhone}`); }}><Phone className="w-4 h-4" /></Button>
+                      <Button size="sm" variant="primary" className="px-3" aria-label="Mark as delivered" onClick={(e) => { e.stopPropagation(); setDeliverConfirm(del); }}>
                         <CheckCircle className="w-4 h-4" />
                       </Button>
                     </div>
@@ -134,6 +146,36 @@ export function RiderDeliveriesPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Confirm Delivery Modal */}
+      <AnimatePresence>
+        {deliverConfirm && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.92 }}
+              className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden border border-gray-100 dark:border-slate-800">
+              <div className="p-7 space-y-5">
+                <div className="flex justify-between items-start">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center text-emerald-600">
+                    <CheckCircle className="w-6 h-6" />
+                  </div>
+                  <button onClick={() => setDeliverConfirm(null)} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"><X className="w-5 h-5" /></button>
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-gray-900 dark:text-white">Confirm Delivery?</h3>
+                  <p className="text-sm text-gray-500 mt-1.5">
+                    Mark order <span className="font-bold text-gray-900 dark:text-white">#{deliverConfirm.orderNumber || deliverConfirm.id.slice(-6).toUpperCase()}</span> as delivered to
+                    <span className="font-bold text-gray-900 dark:text-white"> {deliverConfirm.customerName}</span>? Your payout and the customer's rating will be unlocked.
+                  </p>
+                </div>
+                <div className="flex gap-3">
+                  <Button variant="outline" className="flex-1 h-12 rounded-xl font-bold" onClick={() => setDeliverConfirm(null)}>CANCEL</Button>
+                  <Button className="flex-1 h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 font-bold" onClick={handleConfirmDelivered}>CONFIRM</Button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

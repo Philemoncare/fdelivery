@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
   Bike, DollarSign, Star, TrendingUp, Wallet,
-  Navigation, Clock, CheckCircle, X, Phone, MessageSquare, AlertCircle
+  Navigation, CheckCircle, X, Phone, MessageSquare, AlertCircle
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/src/components/ui/card';
 import { Badge } from '@/src/components/ui/badge';

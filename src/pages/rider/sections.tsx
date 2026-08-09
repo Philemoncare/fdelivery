@@ -6,7 +6,7 @@ import {
   Truck, TrendingUp, Clock, Radio, MessageSquare, Bell, DollarSign,
   ChefHat, PackageCheck, Phone, CheckCircle, Navigation as NavigationIcon,
   RefreshCw, Search, Camera, Upload, MessageCircle, ChevronRight, Send,
-  X, Image as ImageIcon, Moon, Sun
+  X, Image as ImageIcon, Moon, Sun, AlertCircle
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/src/components/ui/card';
 import { Badge } from '@/src/components/ui/badge';
@@ -14,12 +14,23 @@ import { Button } from '@/src/components/ui/button';
 import { Input } from '@/src/components/ui/input';
 import { Switch } from '@/src/components/ui/switch';
 import { Label } from '@/src/components/ui/label';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/src/components/ui/select';
 import { useApp } from '@/src/context/AppContext';
 import { useAuth } from '@/src/lib/auth/auth-store';
-import { cn } from '@/src/lib/utils';
+import { cn, getInitials } from '@/src/lib/utils';
 import { MessagingService } from '@/src/services/api';
 
 const ACCENT = 'from-amber-400 to-orange-600';
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number | null {
+  if (![lat1, lng1, lat2, lng2].every(v => typeof v === 'number' && Number.isFinite(v))) return null;
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
 
 function PageHeader({ title, description, icon: Icon, count }: { title: string; description: string; icon: any; count?: string }) {
   return (
@@ -82,7 +93,7 @@ export function RiderJobsPage() {
              <p className="text-sm font-black text-gray-400 uppercase tracking-widest">Scanning for nearby jobs...</p>
           </div>
         ) : (
-          availableJobs.map((job, i) => (
+          availableJobs.map((job, i) =>
             <motion.div key={job.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
               className="group bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-gray-100 dark:border-slate-800 shadow-xl shadow-gray-200/30 dark:shadow-none hover:border-amber-500/50 transition-all">
               <div className="flex justify-between items-start mb-4">
@@ -112,7 +123,7 @@ export function RiderJobsPage() {
                 </div>
                 <div className="flex-1 space-y-1 text-right">
                    <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Distance</p>
-                   <p className="text-xs font-bold text-gray-700 dark:text-gray-300">~2.5 km</p>
+                   <p className="text-xs font-bold text-gray-700 dark:text-gray-300">{(() => { const km = haversineKm(Number(job.vendorLat), Number(job.vendorLng), Number(job.customerLat), Number(job.customerLng)); return km != null ? `${km.toFixed(1)} km` : '—'; })()}</p>
                 </div>
               </div>
 
@@ -120,7 +131,7 @@ export function RiderJobsPage() {
                 Accept Delivery
               </Button>
             </motion.div>
-          ))
+          )
         )}
       </div>
     </div>
@@ -362,7 +373,7 @@ export function RiderHistoryPage() {
   const stats = [
     { label: 'Deliveries', value: completed.length.toString(), icon: Truck, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
     { label: 'Total Earned', value: formatPrice(completed.reduce((a, o) => a + o.deliveryFee, 0)), icon: DollarSign, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
-    { label: 'Avg Rating', value: rating !== undefined ? rating.toFixed(1) : '0.0', icon: Star, color: 'text-violet-500', bg: 'bg-violet-50 dark:bg-violet-900/20' },
+    { label: 'Avg Rating', value: rating != null ? rating.toFixed(1) : '—', icon: Star, color: 'text-violet-500', bg: 'bg-violet-50 dark:bg-violet-900/20' },
     { label: 'Avg Payout', value: completed.length ? formatPrice(completed.reduce((a, o) => a + o.deliveryFee, 0) / completed.length) : formatPrice(0), icon: Wallet, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20' },
   ];
 
@@ -457,7 +468,7 @@ export function RiderWalletPage() {
  */
 export function RiderProfilePage() {
   const navigate = useNavigate();
-  const { riders, updateProfile, showToast, orders, customerProfile, startConversation } = useApp();
+  const { riders, updateProfile, updateRiderProfile, showToast, orders, customerProfile, startConversation } = useApp();
   const { user } = useAuth();
   const [showEditModal, setShowEditModal] = useState(false);
   const [showBannerPicker, setShowBannerPicker] = useState(false);
@@ -466,10 +477,10 @@ export function RiderProfilePage() {
   const deliveredCount = orders.filter(o => o.riderId === user?.id && ['delivered', 'completed'].includes(o.status)).length;
 
   const [form, setForm] = useState({
-    name: user?.displayName || '',
-    phone: user?.phone || '',
-    phoneSecondary: '',
-    about: '',
+    name: user?.displayName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || '',
+    phone: user?.phone || rider?.phone || '',
+    phoneSecondary: rider?.phoneSecondary || '',
+    about: rider?.about || '',
     vehicleType: rider?.vehicleType || 'Motorcycle',
     vehicleNumber: rider?.vehicleNumber || '',
   });
@@ -507,8 +518,12 @@ export function RiderProfilePage() {
           ctx?.drawImage(img, 0, 0, width, height);
           const base64 = canvas.toDataURL('image/jpeg', 0.8);
           if (isBanner) {
-            updateProfile({ bannerUrl: base64 } as any);
-            showToast('Banner Updated', 'Your cover photo has been changed.');
+            if (rider) {
+              updateRiderProfile(rider.id, { bannerUrl: base64 });
+              showToast('Banner Updated', 'Your cover photo has been changed.');
+            } else {
+              showToast('Error', 'Rider record not found.', 'warning');
+            }
           } else {
             updateProfile({ avatar: base64 });
             showToast('Profile Updated', 'Your profile image has been changed.');
@@ -523,11 +538,15 @@ export function RiderProfilePage() {
 
   const handleSaveProfile = async () => {
     try {
-      await updateProfile({
-        name: form.name,
-        phone: form.phone,
-        about: form.about,
-      } as any);
+      await updateProfile({ name: form.name, phone: form.phone });
+      if (rider) {
+        await updateRiderProfile(rider.id, {
+          phoneSecondary: form.phoneSecondary,
+          about: form.about,
+          vehicleType: form.vehicleType as any,
+          vehicleNumber: form.vehicleNumber,
+        });
+      }
       setShowEditModal(false);
     } catch (err) {
       showToast('Error', 'Failed to update profile. Please try again.', 'warning');
@@ -545,7 +564,7 @@ export function RiderProfilePage() {
     { label: 'Vehicle Fleet', value: rider?.vehicleType || 'Motorcycle' },
     { label: 'Plate Number', value: rider?.vehicleNumber || '—' },
     { label: 'Account Status', value: rider?.verificationStatus || (user?.isVerified ? 'verified' : 'pending') },
-    { label: 'Service Rating', value: rider?.rating !== undefined ? `${rider.rating.toFixed(1)}★` : '5.0★' },
+    { label: 'Service Rating', value: rider?.rating != null ? `${rider.rating.toFixed(1)}★` : 'No ratings yet' },
   ];
 
   const handleContactSupport = async () => {
@@ -569,7 +588,7 @@ export function RiderProfilePage() {
         {/* Modern Banner */}
         <div className="h-40 sm:h-56 bg-slate-900 relative group/banner">
           <img
-            src={(user as any)?.bannerUrl || 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=1200&q=80'}
+            src={(rider?.bannerUrl || (user as any)?.bannerUrl) || 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=1200&q=80'}
             className="w-full h-full object-cover opacity-60 transition-transform duration-500 group-hover/banner:scale-105"
             alt="Banner"
           />
@@ -617,7 +636,7 @@ export function RiderProfilePage() {
                 </Badge>
                 <div className="flex items-center gap-2 bg-white dark:bg-slate-800 px-4 py-1.5 rounded-xl shadow-lg border border-gray-100 dark:border-slate-700">
                   <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-                  <span className="text-xs font-black text-gray-700 dark:text-gray-200">{rider?.rating?.toFixed(1) || '5.0'}</span>
+                  <span className="text-xs font-black text-gray-700 dark:text-gray-200">{rider?.rating != null ? rider.rating.toFixed(1) : '—'}</span>
                 </div>
                 <div className="flex items-center gap-2 bg-white dark:bg-slate-800 px-4 py-1.5 rounded-xl shadow-lg border border-gray-100 dark:border-slate-700">
                   <Truck className="w-4 h-4 text-orange-500" />
@@ -672,14 +691,14 @@ export function RiderProfilePage() {
               <div className="space-y-4 pt-4 border-t border-white/20">
                 <div className="flex justify-between items-center">
                   <span className="text-xs font-bold opacity-80">Platform Rating</span>
-                  <span className="text-sm font-black">{rider?.rating?.toFixed(1) || '5.0'} ★</span>
+                  <span className="text-sm font-black">{rider?.rating != null ? `${rider.rating.toFixed(1)} ★` : '—'}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-xs font-bold opacity-80">Total Trips</span>
                   <span className="text-sm font-black">{deliveredCount}</span>
                 </div>
               </div>
-              <Button className="w-full h-12 rounded-xl bg-white text-orange-600 font-black uppercase tracking-widest hover:bg-white/90">
+              <Button className="w-full h-12 rounded-xl bg-white text-orange-600 font-black uppercase tracking-widest hover:bg-white/90" onClick={() => navigate('/rider/earnings')}>
                 Withdraw
               </Button>
             </div>
@@ -716,6 +735,21 @@ export function RiderProfilePage() {
                     <Label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Bio / About</Label>
                     <textarea value={form.about} onChange={e => setForm({ ...form, about: e.target.value })} className="w-full rounded-xl p-3 h-24 font-medium text-sm bg-gray-50 dark:bg-slate-800 border-none outline-none focus:ring-1 focus:ring-amber-500" placeholder="Tell us about your service..." />
                   </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <Label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Vehicle Type</Label>
+                      <Select value={form.vehicleType} onValueChange={(v) => setForm({ ...form, vehicleType: v })} className="w-full">
+                        <SelectTrigger className="h-12 rounded-xl bg-gray-50 dark:bg-slate-800 border-none"><SelectValue placeholder="Select vehicle" /></SelectTrigger>
+                        <SelectContent>
+                          {(['Motorcycle', 'Scooter', 'Bicycle', 'Van', 'Car'] as const).map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Plate Number</Label>
+                      <Input value={form.vehicleNumber} onChange={e => setForm({ ...form, vehicleNumber: e.target.value })} placeholder="e.g. GT 1234-20" className="rounded-xl h-12 font-bold" />
+                    </div>
+                  </div>
                 </div>
 
                 <div className="flex gap-3">
@@ -745,7 +779,7 @@ export function RiderProfilePage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   {bannerOptions.map(banner => (
-                    <button key={banner.id} onClick={() => { updateProfile({ bannerUrl: banner.url } as any); setShowBannerPicker(false); }}
+                    <button key={banner.id} onClick={() => { if (rider) updateRiderProfile(rider.id, { bannerUrl: banner.url }); setShowBannerPicker(false); }}
                       className="group relative h-24 rounded-2xl overflow-hidden border-2 border-transparent hover:border-amber-500 transition-all">
                       <img src={banner.url} className="w-full h-full object-cover" />
                       <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -774,9 +808,19 @@ export function RiderProfilePage() {
  * ------------------------------------------------------------
  */
 export function RiderSettingsPage() {
-  const { riderStatus, updateRiderStatus, showToast, theme, toggleTheme } = useApp();
+  const navigate = useNavigate();
+  const { riderStatus, updateRiderStatus, showToast, theme, toggleTheme, riders } = useApp();
   const { user } = useAuth();
   const online = riderStatus !== 'OFFLINE' && riderStatus !== 'LOCATION_PERMISSION_DENIED' && riderStatus !== 'LOCATION_UNAVAILABLE';
+  const [pushPref, setPushPref] = useState(() => localStorage.getItem('om_rider_push') !== 'off');
+  const [showDeactivate, setShowDeactivate] = useState(false);
+
+  const rider = riders.find(r => r.userId === user?.id || r.id === user?.id);
+
+  const handlePushToggle = (v: boolean) => {
+    setPushPref(v);
+    localStorage.setItem('om_rider_push', v ? 'on' : 'off');
+  };
 
   const settingsGroups = [
     {
@@ -797,6 +841,29 @@ export function RiderSettingsPage() {
       ]
     },
     {
+      title: 'Profile & Delivery',
+      items: [
+        {
+          label: 'Vehicle Type',
+          desc: rider?.vehicleType || 'Not set — add it in Profile',
+          icon: Bike,
+          action: <Button size="sm" variant="outline" className="rounded-lg" onClick={() => navigate('/rider/profile')}>Edit</Button>
+        },
+        {
+          label: 'Plate Number',
+          desc: rider?.vehicleNumber || 'Not set — add it in Profile',
+          icon: Truck,
+          action: <Button size="sm" variant="outline" className="rounded-lg" onClick={() => navigate('/rider/profile')}>Edit</Button>
+        },
+        {
+          label: 'Service Area',
+          desc: rider?.serviceArea || 'Takoradi, Western Region',
+          icon: MapPin,
+          action: <Badge variant="default" className="rounded-lg">Active</Badge>
+        }
+      ]
+    },
+    {
       title: 'Preferences',
       items: [
         {
@@ -809,7 +876,7 @@ export function RiderSettingsPage() {
           label: 'Push Notifications',
           desc: 'Receive alerts for new jobs and message updates.',
           icon: Bell,
-          action: <Switch checked={true} />
+          action: <Switch checked={pushPref} onCheckedChange={handlePushToggle} />
         }
       ]
     },
@@ -862,11 +929,40 @@ export function RiderSettingsPage() {
             <h3 className="text-lg font-black text-rose-600 dark:text-rose-400 uppercase tracking-wider">Danger Zone</h3>
             <p className="text-xs text-rose-500/70 font-bold mt-1">Actions here are permanent and cannot be undone.</p>
           </div>
-          <Button variant="danger" className="rounded-2xl h-14 px-8 font-black uppercase tracking-widest shadow-xl shadow-rose-600/10" onClick={() => showToast('Account', 'Deletion requested. Contact admin.')}>
+          <Button variant="danger" className="rounded-2xl h-14 px-8 font-black uppercase tracking-widest shadow-xl shadow-rose-600/10" onClick={() => setShowDeactivate(true)}>
             Deactivate Account
           </Button>
         </div>
       </Card>
+
+      {/* Deactivate Confirmation Modal */}
+      <AnimatePresence>
+        {showDeactivate && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.92 }}
+              className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden border border-gray-100 dark:border-slate-800">
+              <div className="p-7 space-y-5">
+                <div className="flex justify-between items-start">
+                  <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/40 flex items-center justify-center text-rose-600">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <button onClick={() => setShowDeactivate(false)} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"><X className="w-5 h-5" /></button>
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-gray-900 dark:text-white">Deactivate your rider account?</h3>
+                  <p className="text-sm text-gray-500 mt-1.5">
+                    This stops new job offers and hides your availability. Active deliveries must be finished first, and a support representative will confirm your request.
+                  </p>
+                </div>
+                <div className="flex gap-3">
+                  <Button variant="outline" className="flex-1 h-12 rounded-xl font-bold" onClick={() => setShowDeactivate(false)}>CANCEL</Button>
+                  <Button className="flex-1 h-12 rounded-xl bg-rose-600 hover:bg-rose-700 font-bold" onClick={() => { setShowDeactivate(false); navigate('/rider/messages'); }}>CONTACT SUPPORT</Button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -905,6 +1001,29 @@ export function RiderRatingsPage() {
           </Card>
         ))}
       </div>
+
+      {rider?.rating == null && deliveredCount === 0 ? (
+        <Card className="rounded-[2.5rem] border-2 border-dashed border-gray-100 dark:border-slate-800">
+          <CardContent className="text-center py-14">
+            <div className="w-16 h-16 bg-amber-50 dark:bg-amber-900/20 rounded-full flex items-center justify-center mx-auto mb-5">
+              <Star className="w-8 h-8 text-amber-500" />
+            </div>
+            <h3 className="text-lg font-black text-gray-900 dark:text-white">No ratings yet</h3>
+            <p className="text-sm text-gray-500 mt-2 max-w-sm mx-auto">
+              Your rating is calculated from customer feedback on completed deliveries. Go online to start earning your first reviews.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="rounded-[2.5rem] border-gray-100 dark:border-slate-800 shadow-xl">
+          <CardHeader><CardTitle className="text-base flex items-center gap-2"><PackageCheck className="w-4 h-4 text-amber-500" /> Delivery Performance</CardTitle></CardHeader>
+          <CardContent>
+            <p className="text-sm text-gray-500">
+              You have <span className="font-bold text-gray-900 dark:text-white">{deliveredCount}</span> completed delivery{deliveredCount === 1 ? '' : 'ies'}. Keep completing deliveries and keep ratings high to unlock priority dispatch.
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
@@ -931,6 +1050,8 @@ export function RiderMessagesPage() {
   });
 
   const selectedConv = conversations.find(c => c.id === selectedConvId) || null;
+  const convPartner = selectedConv?.participants?.find((p: any) => p.id !== user?.id) || selectedConv?.participants?.[0] || null;
+  const convPartnerInitials = getInitials(convPartner?.name || '');
 
   const loadMessages = async (convId: string) => {
     setSelectedConvId(convId);
@@ -981,12 +1102,12 @@ export function RiderMessagesPage() {
             ) : filteredChats.map(chat => {
               const partner = chat.participants && chat.participants.find((p: any) => p.id !== user?.id);
               const partnerName = partner?.name || chat.subject || 'User';
-              const partnerInitials = partnerName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || 'U';
+              const partnerInitials = getInitials(partnerName);
 
               return (
                 <div key={chat.id} onClick={() => loadMessages(chat.id)} className={cn("p-4 rounded-2xl flex items-center gap-3 cursor-pointer transition-all mb-1 hover:bg-amber-50 dark:hover:bg-amber-950/20", selectedConvId === chat.id && "bg-amber-50 dark:bg-amber-950/20 ring-1 ring-amber-500/20")}>
                   <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center text-white text-xs font-black shadow-md overflow-hidden">
-                    {partner?.avatar ? <img src={partner.avatar} className="w-full h-full object-cover" /> : partnerInitials}
+                    {partner?.avatar ? <img src={partner.avatar} className="w-full h-full object-cover" /> : (partnerInitials ? <span>{partnerInitials}</span> : <MessageCircle className="w-5 h-5" />)}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-center mb-0.5">
@@ -1017,10 +1138,10 @@ export function RiderMessagesPage() {
               <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex items-center gap-3 bg-gray-50/50 dark:bg-slate-950/30">
                 <button onClick={() => setSelectedConvId(null)} className="md:hidden p-2 rounded-xl bg-gray-100 dark:bg-slate-800 text-gray-500"><ChevronRight className="w-4 h-4 rotate-180" /></button>
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center text-white font-bold overflow-hidden">
-                  {selectedConv.participants?.[0]?.avatar ? <img src={selectedConv.participants[0].avatar} className="w-full h-full object-cover" /> : (selectedConv.participants?.[0]?.name?.charAt(0) || 'U')}
+                  {convPartner?.avatar ? <img src={convPartner.avatar} className="w-full h-full object-cover" /> : (convPartnerInitials ? <span>{convPartnerInitials}</span> : <MessageCircle className="w-5 h-5" />)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-black text-gray-900 dark:text-white truncate">{selectedConv.participants?.find((p: any) => p.id !== user?.id)?.name || selectedConv.subject}</p>
+                  <p className="text-xs font-black text-gray-900 dark:text-white truncate">{convPartner?.name || selectedConv.subject}</p>
                   <p className="text-[10px] text-gray-500 truncate">{selectedConv.orderId ? `Order #${selectedConv.orderId.slice(-6).toUpperCase()}` : 'Support Thread'}</p>
                 </div>
               </div>
