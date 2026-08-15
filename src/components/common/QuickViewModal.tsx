@@ -17,7 +17,8 @@ export const QuickViewModal: React.FC = () => {
     setSelectedProduct,
     selectedRider,
     vendors,
-    showToast
+    showToast,
+    t
   } = useApp();
 
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -203,10 +204,10 @@ export const QuickViewModal: React.FC = () => {
               <Truck className="w-5 h-5 text-emerald-600 flex-shrink-0" />
               <div>
                 <p className="font-bold text-gray-900 dark:text-white">
-                  Express Rider ETA: {selectedRider?.etaMinutes || 15} Mins
+                  {t('quickView.expressRider')}: {selectedRider?.etaMinutes || 15} {t('common.eta')}
                 </p>
                 <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                  Dispatched by {selectedRider?.name || 'Nearby Dispatcher'} ({selectedRider?.vehicleType || 'Motorcycle'})
+                  {t('quickView.dispatchedBy')} {selectedRider?.name || t('deliver.fastestRider')} ({selectedRider?.vehicleType || 'Motorcycle'})
                 </p>
               </div>
             </div>
@@ -229,7 +230,7 @@ export const QuickViewModal: React.FC = () => {
                   className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs py-3 rounded-xl transition shadow-md shadow-emerald-500/20 flex items-center justify-center space-x-2 cursor-pointer"
                 >
                   <ShoppingCart className="w-4 h-4" />
-                  <span>Add to Cart</span>
+                  <span>{t('common.addToCart')}</span>
                 </button>
 
                 <button
@@ -249,7 +250,7 @@ export const QuickViewModal: React.FC = () => {
                 className="w-full bg-gray-900 hover:bg-black dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-bold text-xs py-2.5 rounded-xl transition flex items-center justify-center space-x-2 cursor-pointer"
               >
                 <Zap className="w-4 h-4 text-amber-400" />
-                <span>Order Now with Express Rider</span>
+                <span>{t('quickView.orderNow')}</span>
               </button>
             </div>
 

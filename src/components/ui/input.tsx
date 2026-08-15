@@ -14,13 +14,13 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className="space-y-1.5">
         {label && (
-          <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+          <label htmlFor={inputId} className="block text-[10px] font-black uppercase tracking-widest text-ink-3 dark:text-slate-400 ml-1">
             {label}
           </label>
         )}
         <div className="relative">
           {icon && (
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500 pointer-events-none">
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-3 dark:text-slate-500 pointer-events-none">
               {icon}
             </div>
           )}
@@ -28,19 +28,19 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             ref={ref}
             id={inputId}
             className={cn(
-              'w-full px-4 py-2.5 bg-white dark:bg-slate-800/80 border rounded-xl text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-slate-500',
-              'focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200',
-              icon && 'pl-10',
+              'w-full px-4 py-3 bg-surface dark:bg-slate-900/50 border rounded-2xl text-sm text-ink dark:text-slate-100 placeholder:text-ink-3 dark:placeholder:text-slate-500',
+              'focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200',
+              icon && 'pl-12',
               error
-                ? 'border-red-300 dark:border-red-700 focus:ring-red-500/30'
-                : 'border-gray-200 dark:border-slate-700 focus:ring-emerald-500/30 focus:border-emerald-500',
+                ? 'border-danger/60 dark:border-red-800 focus:ring-danger/30'
+                : 'border-line dark:border-slate-800',
               className
             )}
             {...props}
           />
         </div>
-        {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
-        {helperText && !error && <p className="text-xs text-gray-400 dark:text-slate-500 mt-1">{helperText}</p>}
+        {error && <p className="text-xs text-danger mt-1">{error}</p>}
+        {helperText && !error && <p className="text-xs text-ink-3 dark:text-slate-500 mt-1">{helperText}</p>}
       </div>
     );
   }

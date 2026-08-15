@@ -1,0 +1,26 @@
+﻿1840:   if (!rec || rec.expiresAt < Date.now()) return false;
+1841:   return safeEqual(rec.codeHash, hashOtp(code));
+1842: }
+1843: 
+1844: function consumeOtp(id: string) {
+1845:   otpStore.delete(id);
+1846: }
+1847: 
+1848: function safeEqual(a: string, b: string): boolean {
+1849:   if (a.length !== b.length) return false;
+1850:   let diff = 0;
+1851:   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+1852:   return diff === 0;
+1853: }
+1854: 
+1855: function generateOtp(): string {
+1856:   // Cryptographically strong codes (spec: no plaintext generation weaknesses).
+1857:   const buf = crypto.randomInt(0, 1000000).toString().padStart(6, '0');
+1858:   return buf;
+1859: }
+1860: 
+1861: function generateTempPassword(): string {
+1862:   return crypto.randomBytes(4).toString('hex'); // 8 char hex string
+1863: }
+1864: 
+1865: // ------------------------------------------------------------

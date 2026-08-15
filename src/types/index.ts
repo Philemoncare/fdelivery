@@ -1,10 +1,22 @@
 export type Role = 'customer' | 'vendor' | 'rider' | 'admin' | 'store-manager' | 'vendor-staff' | 'super-administrator';
 
+/** Resolved theme actually applied to the document (never 'system'). */
 export type ThemeMode = 'light' | 'dark';
+
+/** User's theme preference — may follow the operating system. */
+export type ThemeModePreference = ThemeMode | 'system';
+
+export type AccentKey = 'omnimarket' | 'ocean' | 'emerald' | 'amber';
+
+/** Unified, role-scoped portal theme. The primary header control cycles
+ *  through these states in order; each state carries its own complete
+ *  visual system (surfaces, text, borders, accent). `'system'` follows the
+ *  operating system colour scheme at runtime (resolves to light/dark). */
+export type ThemeKey = 'light' | 'dark' | 'system' | 'omnimarket' | 'ocean' | 'emerald' | 'amber';
 
 export type CurrencyCode = 'GHS' | 'USD' | 'EUR' | 'GBP' | 'NGN' | 'JPY';
 
-export type LanguageCode = 'EN' | 'ES' | 'FR' | 'DE' | 'ZH';
+export type LanguageCode = 'EN' | 'FR' | 'ES' | 'DE' | 'ZH-CN' | 'AR';
 
 export type OrderStatus =
   | 'pending'
@@ -15,6 +27,7 @@ export type OrderStatus =
   | 'picked_up'
   | 'in_transit'
   | 'arriving'
+  | 'awaiting_confirmation'
   | 'delivered'
   | 'completed'
   | 'cancelled'
@@ -39,6 +52,9 @@ export interface Address {
   longitude: number;
   isDefault: boolean;
   deliveryInstructions?: string;
+  /** JSON API compatibility aliases for persisted delivery addresses. */
+  title?: string;
+  address?: string;
 }
 
 export interface Vendor {
@@ -82,6 +98,9 @@ export interface Vendor {
     close: string;
     isOpen: boolean;
   }[];
+  /** Legacy dashboard aliases accepted by the JSON API. */
+  category?: string;
+  openHours?: string;
 }
 
 export interface ProductVariant {
@@ -208,6 +227,7 @@ export interface OrderItem {
 export interface Order {
   id: string;
   orderNumber: string;
+  deliveryRef?: string;
   invoiceNumber: string;
   customerId: string;
   customerName: string;
@@ -244,6 +264,117 @@ export interface Order {
   customerLng?: number;
   currentRiderLocation?: { lat: number; lng: number };
   routeProgress?: number;
+  statusUpdatedAt?: string;
+  statusTimestamps?: Partial<Record<OrderStatus, string>>;
+  /** Delivery-type discriminator — every booking reuses the same order engine. */
+  deliveryType?: 'FOOD_ORDER' | 'PACKAGE' | 'PASS';
+  /** Package / PASS booking fields. */
+  pickupAddress?: string;
+  pickupLat?: number | null;
+  pickupLng?: number | null;
+  pickupArea?: string;
+  pickupCity?: string;
+  pickupRegion?: string;
+  pickupLandmark?: string;
+  pickupInstructions?: string;
+  dropoffAddress?: string;
+  dropoffLat?: number | null;
+  dropoffLng?: number | null;
+  dropoffArea?: string;
+  dropoffCity?: string;
+  dropoffRegion?: string;
+  dropoffLandmark?: string;
+  dropoffInstructions?: string;
+  receiverName?: string;
+  receiverPhone?: string;
+  receiverNote?: string;
+  packageSize?: string;
+  packageType?: string;
+  weightKg?: number;
+  service?: 'Standard' | 'Express';
+  packageNote?: string;
+  priceBreakdown?: PackagePriceBreakdown;
+  confirmationCode?: string;
+  receiverConfirmed?: boolean;
+  receiverConfirmedAt?: string;
+  confirmationMethod?: 'code' | 'sender' | 'admin';
+}
+
+/** Package / PASS booking payload for POST /orders/package. */
+export interface PackageDeliveryRequest {
+  customerId: string;
+  deliveryType?: 'PACKAGE' | 'PASS';
+  riderId?: string;
+  pickupAddress: string;
+  pickupLat?: number | null;
+  pickupLng?: number | null;
+  pickupArea?: string;
+  pickupCity?: string;
+  pickupRegion?: string;
+  pickupLandmark?: string;
+  pickupInstructions?: string;
+  dropoffAddress: string;
+  dropoffLat?: number | null;
+  dropoffLng?: number | null;
+  dropoffArea?: string;
+  dropoffCity?: string;
+  dropoffRegion?: string;
+  dropoffLandmark?: string;
+  dropoffInstructions?: string;
+  receiverName: string;
+  receiverPhone: string;
+  receiverNote?: string;
+  packageSize?: string;
+  packageType?: string;
+  weightKg?: number;
+  service?: 'Standard' | 'Express';
+  note?: string;
+  specialInstructions?: string;
+  paymentMethod?: string;
+  couponCode?: string;
+}
+
+/** Server-authoritative price breakdown for a PACKAGE / PASS booking. */
+export interface PackagePriceBreakdown {
+  baseFee: number;
+  sizeFee: number;
+  riderFee: number;
+  distanceFee: number;
+  weightFee: number;
+  distanceKm: number | null;
+  serviceMultiplier: number;
+  serviceFee: number;
+  subtotal: number;
+  platformFee: number;
+}
+
+/** Response from POST /orders/package/quote. */
+export interface PackageQuote {
+  success: boolean;
+  deliveryType: 'PACKAGE' | 'PASS';
+  packageSize: string;
+  weightKg: number;
+  service: 'Standard' | 'Express';
+  distanceKm: number | null;
+  estimatedDeliveryTime: string;
+  breakdown: PackagePriceBreakdown;
+  discount: number;
+  couponCode?: string | null;
+  total: number;
+  currency: string;
+}
+
+/** Structured delivery location used across the booking flow. */
+export interface DeliveryLocation {
+  address: string;
+  area?: string;
+  city?: string;
+  region?: string;
+  landmark?: string;
+  instructions?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  source?: 'geocoder' | 'seed' | 'saved' | 'manual' | 'gps';
 }
 
 export interface CustomerProfile {
@@ -266,6 +397,10 @@ export interface CustomerProfile {
   walletBalance: number;
   loyaltyPoints: number;
   referralCode: string;
+  /** Back-end update payload fields used when saving a delivery location. */
+  address?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface Review {
@@ -278,9 +413,15 @@ export interface Review {
   reply?: string;
   date: string;
   orderId: string;
+  deliveryId?: string;
+  riderId?: string;
+  target?: 'rider' | 'vendor' | 'product' | 'experience';
   vendorId?: string;
   productId?: string;
 }
+
+export type NotificationCategory = 'orders' | 'deliveries' | 'messages' | 'payments' | 'account' | 'system';
+export type NotificationPriority = 'NORMAL' | 'IMPORTANT' | 'CRITICAL';
 
 export interface NotificationItem {
   id: string;
@@ -288,10 +429,20 @@ export interface NotificationItem {
   title: string;
   message: string;
   time: string;
+  createdAt?: string;
   read: boolean;
-  type: 'order' | 'delivery' | 'promo' | 'system';
+  readAt?: string | null;
+  type: string;
+  category?: NotificationCategory;
+  priority?: NotificationPriority;
   referenceId?: string;
-  referenceType?: 'order' | 'vendor' | 'message' | 'system';
+  referenceType?: string;
+  relatedOrderId?: string;
+  relatedDeliveryId?: string;
+  relatedConversationId?: string;
+  relatedRestaurantId?: string;
+  relatedUserId?: string;
+  action?: string;
 }
 
 export interface WalletTransaction {
@@ -304,7 +455,7 @@ export interface WalletTransaction {
   balanceAfter: number;
   description: string;
   date: string;
-  status: 'Completed' | 'Pending' | 'Failed';
+  status: 'completed' | 'pending' | 'failed';
   referenceId?: string;
   referenceType?: string;
 }

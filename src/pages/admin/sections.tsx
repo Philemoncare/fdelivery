@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useApp } from '@/src/context/AppContext';
 import { useAuth } from '@/src/lib/auth/auth-store';
 import { AdminService, MessagingService } from '@/src/services/api';
+import { NotificationCenter } from '@/src/components/common/NotificationCenter';
 import { cn } from '@/src/lib/utils';
 
 const ACCENT = 'from-blue-500 to-indigo-600';
@@ -788,37 +789,7 @@ export function AdminPromotionsPage() {
 
 /* NOTIFICATIONS — real admin inbox */
 export function AdminNotificationsPage() {
-  const { notifications, markNotificationRead, clearNotifications } = useApp();
-  const unread = notifications.filter(n => !n.read).length;
-  return (
-    <div className="space-y-6 pb-10">
-      <PageHeader icon={Bell} title="Notifications" description="Operational alerts delivered to this account." count={`${unread} unread`} />
-      <Card className="rounded-2xl">
-        <CardHeader className="border-b flex items-center justify-between">
-          <CardTitle className="text-base flex items-center gap-2"><Bell className="w-5 h-5 text-amber-500" /> Inbox</CardTitle>
-          <Button variant="outline" size="sm" onClick={clearNotifications}><RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Clear</Button>
-        </CardHeader>
-        <CardContent>
-          {notifications.length === 0 ? (
-            <p className="text-center text-gray-400 py-10 italic">No notifications yet.</p>
-          ) : (
-            <div className="space-y-2">
-              {notifications.map(n => (
-                <button key={n.id} onClick={() => markNotificationRead(n.id)} className="w-full text-left flex items-start gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800/50">
-                  <div className={`w-2.5 h-2.5 rounded-full mt-1.5 ${n.read ? 'bg-gray-300' : 'bg-blue-500'}`} />
-                  <div className="flex-1">
-                    <p className={`text-sm ${n.read ? 'text-gray-500' : 'font-bold text-gray-900 dark:text-white'}`}>{n.title}</p>
-                    <p className="text-xs text-gray-500">{n.message}</p>
-                  </div>
-                  <span className="text-[10px] text-gray-400">{fmtDate(n.time)}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
+  return <NotificationCenter role="admin" />;
 }
 
 /* MESSAGES — real threads */

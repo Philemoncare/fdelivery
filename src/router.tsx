@@ -27,8 +27,11 @@ import { DealsPage } from '@/src/components/marketplace/DealsPage';
 import { BecomeVendorPage } from '@/src/components/static/BecomeVendorPage';
 import { BecomeRiderPage } from '@/src/components/static/BecomeRiderPage';
 import { StaticPages } from '@/src/components/static/StaticPages';
+import { BlogPage } from '@/src/components/static/BlogPage';
+import { CareersPage } from '@/src/components/static/CareersPage';
+import { PrivacyPage } from '@/src/components/static/PrivacyPage';
+import { ApplicationStatusPage } from '@/src/components/static/ApplicationStatusPage';
 
-import { CustomerDashboardPage } from '@/src/pages/customer/dashboard';
 import {
   CustomerOrdersPage, CustomerOrderDetailsPage, CustomerCartPage, CustomerWishlistPage, CustomerWalletPage,
   CustomerMessagesPage, CustomerAddressesPage, CustomerSettingsPage,
@@ -36,6 +39,7 @@ import {
   CustomerFavoritesPage, CustomerCouponsPage, CustomerPaymentMethodsPage,
   CustomerSupportPage
 } from '@/src/pages/customer/sections';
+import { DeliverSomethingPage } from '@/src/pages/customer/deliver';
 
 import { VendorDashboardPage } from '@/src/pages/vendor/dashboard';
 import { VendorProductsPage } from '@/src/pages/vendor/products';
@@ -46,15 +50,16 @@ import {
   VendorNotificationsPage, VendorMessagesPage,
   VendorKitchenStatusPage, VendorOrderQueuePage, VendorDeliveryRequestsPage,
   VendorRidersPage, VendorReviewsPage, VendorPromotionsPage, VendorOpeningHoursPage,
+  VendorStaffPage,
 } from '@/src/pages/vendor/sections';
 
 import { RiderDashboardPage } from '@/src/pages/rider/dashboard';
 import { RiderDeliveriesPage } from '@/src/pages/rider/deliveries';
 import {
-  RiderJobsPage, RiderNavigationPage, RiderHistoryPage,
-  RiderWalletPage, RiderProfilePage, RiderSettingsPage,
-  RiderRatingsPage, RiderMessagesPage, RiderNotificationsPage,
-  RiderPickupQueuePage, RiderOrderStatusPage,
+  RiderJobsPage, RiderNavigationPage,
+  RiderWalletPage, RiderProfilePage,
+  RiderMessagesPage, RiderNotificationsPage,
+  RiderSubscriptionPage,
 } from '@/src/pages/rider/sections';
 
 import { AdminDashboardPage } from '@/src/pages/admin/dashboard';
@@ -63,7 +68,7 @@ import { AdminVendorsPage } from '@/src/pages/admin/vendors';
 import { AdminOrdersPage } from '@/src/pages/admin/orders';
 import { AdminDeliveriesPage } from '@/src/pages/admin/Deliveries';
 import { AdminLiveOperationsPage } from '@/src/pages/admin/admin-live-operations';
-import { AdminManagersPage, AdminReviewsPage, AdminAdministratorsPage, AdminAuditLogPage } from '@/src/pages/admin/admin-modules';
+import { AdminManagersPage, AdminReviewsPage, AdminAdministratorsPage, AdminAuditLogPage, AdminReferralsPage } from '@/src/pages/admin/admin-modules';
 import {
   AdminUsersPage, AdminRidersPage, AdminPaymentsPage, AdminReportsPage, AdminSupportPage, AdminSettingsPage,
   AdminProductsPage, AdminCategoriesPage, AdminNotificationsPage, AdminMessagesPage,
@@ -75,11 +80,15 @@ import { SuperAdminSettingsPage } from '@/src/pages/super-admin/settings';
 import {
   SuperAdminAdminsPage, SuperAdminSecurityPage, SuperAdminSystemPage,
   SuperAdminDatabasePage, SuperAdminApiPage, SuperAdminAuditPage,
-  SuperAdminRolesPage, SuperAdminPermissionsPage, SuperAdminBackupPage,
+  SuperAdminBackupPage,
   SuperAdminNotificationsPage,
   SuperAdminRestaurantApprovalsPage, SuperAdminRiderApprovalsPage,
   SuperAdminPaymentGatewaysPage, SuperAdminUsersPage,
+  SuperAdminSecurityEventsPage, SuperAdminSessionsPage,
 } from '@/src/pages/super-admin/sections';
+import { SuperAdminRolesPage, SuperAdminPermissionsPage } from '@/src/pages/super-admin/rbac';
+import { SuperAdminMaintenancePage } from '@/src/pages/super-admin/maintenance';
+import { SuperAdminMessagesPage, SuperAdminDeliveryLogPage } from '@/src/pages/super-admin/messages';
 
 /** Legacy redirect: maps old /vendor/* URLs to the restaurant portal. */
 function LegacyVendorRedirect() {
@@ -156,11 +165,18 @@ export const router = createBrowserRouter([
       { path: 'product/:id', element: <ProductDetailPage /> },
       { path: 'deals', element: <DealsPage /> },
       { path: 'track-order', element: <OrderTrackingPage /> },
-      { path: 'checkout', element: <CheckoutPage /> },
+      { path: 'checkout', element: (
+          <AuthGuard portal="public" module="customer" roles={['customer']}>
+            <CheckoutPage />
+          </AuthGuard>
+        ) },
       { path: 'become-vendor', element: <BecomeVendorPage /> },
       { path: 'become-rider', element: <BecomeRiderPage /> },
       { path: 'how-delivery-works', element: <StaticPages type="how-it-works" /> },
       { path: 'about', element: <StaticPages type="about" /> },
+      { path: 'blog', element: <BlogPage /> },
+      { path: 'careers', element: <CareersPage /> },
+      { path: 'privacy', element: <PrivacyPage /> },
       { path: 'faq', element: <StaticPages type="faq" /> },
       { path: 'contact', element: <StaticPages type="contact" /> },
       { path: 'terms', element: <StaticPages type="terms" /> },
@@ -183,8 +199,9 @@ export const router = createBrowserRouter([
       </AuthGuard>
     ),
     children: [
-      { index: true, element: <Navigate to="/customer/dashboard" replace /> },
-      { path: 'dashboard', element: <CustomerDashboardPage /> },
+      { index: true, element: <Navigate to="/" replace /> },
+      { path: 'home', element: <Navigate to="/" replace /> },
+      { path: 'deliver', element: <DeliverSomethingPage /> },
       { path: 'orders', element: <CustomerOrdersPage /> },
       { path: 'orders/:id', element: <CustomerOrderDetailsPage /> },
       { path: 'cart', element: <CustomerCartPage /> },
@@ -218,6 +235,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/restaurant/dashboard" replace /> },
       { path: 'dashboard', element: <VendorDashboardPage /> },
+      { path: 'onboarding', element: <ApplicationStatusPage role="vendor" /> },
       { path: 'menu', element: <VendorProductsPage /> },
       { path: 'products', element: <Navigate to="/restaurant/menu" replace /> },
       { path: 'orders', element: <VendorOrdersPage /> },
@@ -238,6 +256,7 @@ export const router = createBrowserRouter([
       { path: 'categories', element: <VendorCategoriesPage /> },
       { path: 'coupons', element: <VendorCouponsPage /> },
       { path: 'withdrawals', element: <VendorWithdrawalsPage /> },
+      { path: 'staff', element: <VendorStaffPage /> },
       { path: 'support', element: <VendorSupportPage /> },
       { path: 'notifications', element: <VendorNotificationsPage /> },
       { path: 'messages', element: <VendorMessagesPage /> },
@@ -262,20 +281,24 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/rider/dashboard" replace /> },
       { path: 'dashboard', element: <RiderDashboardPage /> },
+      { path: 'application-status', element: <ApplicationStatusPage role="rider" /> },
       { path: 'jobs', element: <RiderJobsPage /> },
-      { path: 'pickup-queue', element: <RiderPickupQueuePage /> },
-      { path: 'order-status', element: <RiderOrderStatusPage /> },
       { path: 'navigation', element: <RiderNavigationPage /> },
       { path: 'deliveries', element: <RiderDeliveriesPage /> },
-      { path: 'active-delivery', element: <RiderDeliveriesPage /> }, // Unified view
-      { path: 'history', element: <RiderHistoryPage /> },
-      { path: 'wallet', element: <RiderWalletPage /> },
-      { path: 'profile', element: <RiderProfilePage /> },
-      { path: 'settings', element: <RiderSettingsPage /> },
       { path: 'earnings', element: <RiderWalletPage /> },
-      { path: 'ratings', element: <RiderRatingsPage /> },
       { path: 'messages', element: <RiderMessagesPage /> },
       { path: 'notifications', element: <RiderNotificationsPage /> },
+      { path: 'profile', element: <RiderProfilePage /> },
+      // Legacy aliases — consolidate into the spec navigation without breaking links.
+      { path: 'wallet', element: <Navigate to="/rider/earnings" replace /> },
+      { path: 'history', element: <Navigate to="/rider/deliveries" replace /> },
+      { path: 'onboarding', element: <Navigate to="/rider/application-status" replace /> },
+      { path: 'pickup-queue', element: <Navigate to="/rider/deliveries" replace /> },
+      { path: 'order-status', element: <Navigate to="/rider/deliveries" replace /> },
+      { path: 'active-delivery', element: <Navigate to="/rider/deliveries" replace /> },
+      { path: 'ratings', element: <Navigate to="/rider/profile" replace /> },
+      { path: 'settings', element: <Navigate to="/rider/profile" replace /> },
+      { path: 'subscription', element: <RiderSubscriptionPage /> },
     ],
   },
 
@@ -316,6 +339,7 @@ export const router = createBrowserRouter([
       { path: 'analytics', element: <AdminReportsPage /> },
       { path: 'administrators', element: <AdminAdministratorsPage /> },
       { path: 'audit-log', element: <AdminAuditLogPage /> },
+      { path: 'referrals', element: <AdminReferralsPage /> },
       { path: 'settings', element: <AdminSettingsPage /> },
     ],
   },
@@ -337,6 +361,8 @@ export const router = createBrowserRouter([
       { path: 'dashboard', element: <SuperAdminDashboardPage /> },
       { path: 'admins', element: <SuperAdminAdminsPage /> },
       { path: 'security', element: <SuperAdminSecurityPage /> },
+      { path: 'security-events', element: <SuperAdminSecurityEventsPage /> },
+      { path: 'sessions', element: <SuperAdminSessionsPage /> },
       { path: 'system', element: <SuperAdminSystemPage /> },
       { path: 'database', element: <SuperAdminDatabasePage /> },
       { path: 'api', element: <SuperAdminApiPage /> },
@@ -351,6 +377,9 @@ export const router = createBrowserRouter([
       { path: 'payment-gateways', element: <SuperAdminPaymentGatewaysPage /> },
       { path: 'backup', element: <SuperAdminBackupPage /> },
       { path: 'notifications', element: <SuperAdminNotificationsPage /> },
+      { path: 'deliveries', element: <SuperAdminDeliveryLogPage /> },
+      { path: 'messages', element: <SuperAdminMessagesPage /> },
+      { path: 'maintenance', element: <SuperAdminMaintenancePage /> },
     ],
   },
 

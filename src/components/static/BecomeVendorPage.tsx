@@ -5,7 +5,7 @@ import { Store, ShieldCheck, UtensilsCrossed, CheckCircle2, ArrowRight, ChefHat,
 
 export const BecomeVendorPage: React.FC = () => {
   const navigate = useNavigate();
-  const { showToast } = useApp();
+  const { showToast, t } = useApp();
   const [restaurantName, setRestaurantName] = useState('');
   const [cuisineType, setCuisineType] = useState('Local Dishes');
   const [submitted, setSubmitted] = useState(false);
@@ -25,36 +25,36 @@ export const BecomeVendorPage: React.FC = () => {
           <span>Restaurant Partner Program</span>
         </div>
         <h1 className="text-3xl sm:text-4xl font-heading font-black text-gray-900 dark:text-white">
-          Partner With OmniMarket to Reach More Food Lovers
+          {t('partner.vendor.title')}
         </h1>
         <p className="text-xs sm:text-sm text-gray-500 max-w-xl mx-auto">
-          Join the fastest-growing food delivery network in Takoradi. Get access to our dispatch riders, automated payouts, and professional kitchen management tools.
+          {t('partner.vendor.subtitle')}
         </p>
       </div>
 
       {submitted ? (
         <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 border border-emerald-500/30 text-center space-y-4 shadow-xl">
           <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto" />
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white">Application Successfully Received!</h3>
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white">{t('partner.vendor.successTitle')}</h3>
           <p className="text-xs text-gray-500 max-w-md mx-auto">
-            Thank you for applying to become a Restaurant Partner. Our operations team will contact you shortly to verify your kitchen and menu.
+            {t('partner.vendor.successDesc')}
           </p>
           <button
             onClick={() => navigate('/register')}
             className="bg-emerald-500 text-white font-bold text-xs px-6 py-3 rounded-xl shadow hover:bg-emerald-600 transition"
           >
-            Create Your Partner Account
+            {t('auth.createAccount')}
           </button>
         </div>
       ) : (
         <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 border border-gray-200 dark:border-slate-800 shadow-xl space-y-6">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white border-b pb-3 border-gray-100 dark:border-slate-800">
-            Restaurant Partner Registration
+            {t('partner.vendor.formTitle')}
           </h2>
 
           <form onSubmit={handleSubmit} className="space-y-4 text-xs">
             <div>
-              <label className="font-bold block mb-1 text-gray-700 dark:text-gray-300">Restaurant Name</label>
+              <label className="font-bold block mb-1 text-gray-700 dark:text-gray-300">{t('partner.vendor.restaurantName')}</label>
               <input
                 type="text"
                 required
@@ -67,13 +67,13 @@ export const BecomeVendorPage: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="font-bold block mb-1 text-gray-700 dark:text-gray-300">Cuisine Type</label>
+                <label className="font-bold block mb-1 text-gray-700 dark:text-gray-300">{t('partner.vendor.cuisineType')}</label>
                 <select
                   value={cuisineType}
                   onChange={(e) => setCuisineType(e.target.value)}
                   className="w-full bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 rounded-xl text-gray-900 dark:text-white focus:border-emerald-500 outline-none"
                 >
-                  <option value="Local Dishes">Local Ghana Dishes</option>
+                  <option value="Local Dishes">{t('auth.register.customer')}</option>
                   <option value="Continental">Continental</option>
                   <option value="Fast Food">Fast Food</option>
                   <option value="Pastries & Bakery">Bakery & Pastries</option>
@@ -82,7 +82,7 @@ export const BecomeVendorPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="font-bold block mb-1 text-gray-700 dark:text-gray-300">Location in Takoradi</label>
+                <label className="font-bold block mb-1 text-gray-700 dark:text-gray-300">{t('partner.vendor.location')}</label>
                 <input
                   type="text"
                   required
@@ -93,7 +93,7 @@ export const BecomeVendorPage: React.FC = () => {
             </div>
 
             <div>
-              <label className="font-bold block mb-1 text-gray-700 dark:text-gray-300">Contact Information (Phone)</label>
+              <label className="font-bold block mb-1 text-gray-700 dark:text-gray-300">{t('partner.vendor.contact')}</label>
               <input
                 type="tel"
                 required
@@ -106,7 +106,7 @@ export const BecomeVendorPage: React.FC = () => {
               type="submit"
               className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs py-4 rounded-xl transition shadow-xl shadow-emerald-500/20"
             >
-              Submit Partner Application
+              {t('partner.vendor.submit')}
             </button>
           </form>
         </div>

@@ -14,6 +14,19 @@
   --color-brand-700: #047857;
   --color-brand-800: #065f46;
   --color-brand-900: #064e3b;
+  --color-royal-50: #eff6ff;
+  --color-royal-100: #dbeafe;
+  --color-royal-200: #bfdbfe;
+  --color-royal-300: #93c5fd;
+  --color-royal-400: #60a5fa;
+  --color-royal-500: #2563eb;
+  --color-royal-600: #1d4ed8;
+  --color-royal-700: #1e40af;
+  --color-royal-800: #1e3a8a;
+  --color-royal-900: #172554;
+  --color-accent-orange: #f97316;
+  --color-accent-red: #ef4444;
+  --color-accent-success: #22c55e;
   --color-surface: #ffffff;
   --color-surface-muted: #f8fafc;
   --color-surface-elevated: #ffffff;
@@ -22,46 +35,384 @@
   --color-soft: #f1f5f9;
 }
 
+/* Runtime-resolved token utilities. `inline` makes each utility reference
+   the CSS variable directly, so `bg-primary`, `text-ink`, `border-line`,
+   etc. re-resolve when the accent theme or mode changes — no rebuild. */
+@theme inline {
+  --color-primary: var(--om-primary);
+  --color-primary-hover: var(--om-primary-hover);
+  --color-primary-strong: var(--om-primary-strong);
+  --color-primary-soft: var(--om-primary-soft);
+  --color-primary-border: var(--om-primary-border);
+  --color-primary-glow: var(--om-primary-glow);
+  --color-app: var(--om-app-bg);
+  --color-surface-2: var(--om-surface-2);
+  --color-surface-3: var(--om-surface-3);
+  --color-sidebar: var(--om-sidebar-bg);
+  --color-header: var(--om-header-bg);
+  --color-line: var(--om-border);
+  --color-line-strong: var(--om-border-strong);
+  --color-ink: var(--om-ink-1);
+  --color-ink-2: var(--om-ink-2);
+  --color-ink-3: var(--om-ink-3);
+  --color-ok: var(--om-ok);
+  --color-ok-soft: var(--om-ok-soft);
+  --color-warn: var(--om-warn);
+  --color-warn-soft: var(--om-warn-soft);
+  --color-danger: var(--om-danger);
+  --color-danger-soft: var(--om-danger-soft);
+  --color-info: var(--om-info);
+  --color-info-soft: var(--om-info-soft);
+
+  /* Semantic design-token aliases (task spec): */
+  --color-background: var(--om-app-bg);
+  --color-surface-elevated: var(--om-surface-elevated);
+  --color-surface-muted: var(--om-surface-muted);
+  --color-text-primary: var(--om-ink-1);
+  --color-text-secondary: var(--om-ink-2);
+  --color-text-muted: var(--om-ink-3);
+  --color-text-inverse: var(--om-text-inverse);
+  --color-border-strong: var(--om-border-strong);
+  --color-accent: var(--om-primary);
+  --color-accent-hover: var(--om-primary-hover);
+  --color-accent-soft: var(--om-primary-soft);
+  --color-success: var(--om-ok);
+  --color-success-soft: var(--om-ok-soft);
+  --color-warning: var(--om-warn);
+  --color-warning-soft: var(--om-warn-soft);
+  --color-danger-strong: var(--om-danger);
+  --color-danger-strong-soft: var(--om-danger-soft);
+  --color-info-strong: var(--om-info);
+  --color-info-strong-soft: var(--om-info-soft);
+}
+
+/* ============================================================
+   OMNIMARKET DESIGN TOKEN SYSTEM
+   ------------------------------------------------------------
+   A single source of truth for surfaces, text, borders and the
+   primary accent. Four accent themes (omnimarket / ocean /
+   emerald / amber) are selected with `data-accent` on <html>;
+   light and dark modes toggle the `.dark` class. Every utility
+   below resolves through CSS variables so components never
+   hardcode an accent colour.
+   ============================================================ */
+
 @layer base {
+  /* Smooth, non-flickering theme swap. The `.theme-anim` class is toggled by
+     the theme engine around a theme change so surfaces, text and borders
+     cross-fade briefly without affecting component hover/transform animation. */
+  html.theme-anim,
+  html.theme-anim *,
+  html.theme-anim *::before,
+  html.theme-anim *::after {
+    transition: background-color 0.35s ease, border-color 0.32s ease,
+                color 0.28s ease, fill 0.3s ease, stroke 0.3s ease !important;
+  }
+}
+  :root {
+    /* ---- Surfaces & elevation (light) ---- */
+    --om-app-bg: #f4f5f7;
+    --om-surface: #ffffff;
+    --om-surface-2: #f7f8fa;
+    --om-surface-3: #eceef2;
+    --om-sidebar-bg: #fbfbfc;
+    --om-header-bg: rgba(255, 255, 255, 0.82);
+
+    /* ---- Borders (light) ---- */
+    --om-border: #e5e7eb;
+    --om-border-strong: #d2d6dd;
+
+    /* ---- Text (light) ---- */
+    --om-ink-1: #10131a;
+    --om-ink-2: #4b5563;
+    --om-ink-3: #8a93a1;
+
+    /* ---- Status semantics (light) ---- */
+    --om-ok: #10b981;
+    --om-ok-soft: #e8f8f1;
+    --om-warn: #f59e0b;
+    --om-warn-soft: #fdf3e3;
+    --om-danger: #ef4444;
+    --om-danger-soft: #fdecec;
+    --om-info: #3b82f6;
+    --om-info-soft: #eaf2fe;
+
+    /* ---- Semantic design tokens (light) ---- */
+    --om-surface-elevated: #ffffff;
+    --om-surface-muted: #f8fafc;
+    --om-text-primary: var(--om-ink-1);
+    --om-text-secondary: var(--om-ink-2);
+    --om-text-muted: var(--om-ink-3);
+    --om-text-inverse: #ffffff;
+    --om-accent: var(--om-primary);
+    --om-accent-hover: var(--om-primary-hover);
+    --om-accent-soft: var(--om-primary-soft);
+    --om-success: var(--om-ok);
+    --om-success-soft: var(--om-ok-soft);
+    --om-warning: var(--om-warn);
+    --om-warning-soft: var(--om-warn-soft);
+    --om-danger-strong: var(--om-danger);
+    --om-danger-strong-soft: var(--om-danger-soft);
+    --om-info-strong: var(--om-info);
+    --om-info-strong-soft: var(--om-info-soft);
+
+    /* ---- Primary accent scale (default: OmniMarket magenta) ---- */
+    --om-primary: hsl(330 84% 56%);
+    --om-primary-hover: hsl(330 84% 47%);
+    --om-primary-strong: hsl(330 90% 64%);
+    --om-primary-soft: color-mix(in srgb, var(--om-primary) 11%, var(--om-surface));
+    --om-primary-border: color-mix(in srgb, var(--om-primary) 32%, var(--om-border));
+    --om-primary-glow: color-mix(in srgb, var(--om-primary) 22%, transparent);
+
+    --color-primary: var(--om-primary);
+    --color-primary-hover: var(--om-primary-hover);
+    --color-primary-strong: var(--om-primary-strong);
+    --color-primary-soft: var(--om-primary-soft);
+    --color-primary-border: var(--om-primary-border);
+    --color-primary-glow: var(--om-primary-glow);
+    --color-app: var(--om-app-bg);
+    --color-surface: var(--om-surface);
+    --color-border: var(--om-border);
+    --color-border-muted: var(--om-border);
+    --color-surface-2: var(--om-surface-2);
+    --color-surface-3: var(--om-surface-3);
+    --color-sidebar: var(--om-sidebar-bg);
+    --color-line: var(--om-border);
+    --color-line-strong: var(--om-border-strong);
+    --color-ink: var(--om-ink-1);
+    --color-ink-2: var(--om-ink-2);
+    --color-ink-3: var(--om-ink-3);
+    --color-ok: var(--om-ok);
+    --color-ok-soft: var(--om-ok-soft);
+    --color-warn: var(--om-warn);
+    --color-warn-soft: var(--om-warn-soft);
+    --color-danger: var(--om-danger);
+    --color-danger-soft: var(--om-danger-soft);
+    --color-info: var(--om-info);
+    --color-info-soft: var(--om-info-soft);
+  }
+
+  .dark,
+  [data-theme="dark"] {
+    /* ---- Surfaces & elevation (dark, layered — never flat black) ---- */
+    /* Hierarchy: page < sidebar/header < card < elevated card < modal. Each
+       layer lifts by a restrained step so depth reads without noise. */
+    --om-app-bg: #0e1013;
+    --om-surface: #171a1f;
+    --om-surface-2: #1c2026;
+    --om-surface-3: #242933;
+    --om-sidebar-bg: #13161b;
+    --om-header-bg: rgba(14, 16, 19, 0.82);
+
+    /* ---- Borders (dark) ---- */
+    --om-border: #262b34;
+    --om-border-strong: #333a46;
+
+    /* ---- Text (dark) — full contrast on layered surfaces ---- */
+    --om-ink-1: #f1f3f6;
+    --om-ink-2: #a5aeb9;
+    --om-ink-3: #6e7885;
+
+    /* ---- Status semantics (dark) ---- */
+    --om-ok: #34d399;
+    --om-ok-soft: rgba(16, 185, 129, 0.14);
+    --om-warn: #fbbf24;
+    --om-warn-soft: rgba(245, 158, 11, 0.14);
+    --om-danger: #f87171;
+    --om-danger-soft: rgba(239, 68, 68, 0.14);
+    --om-info: #60a5fa;
+    --om-info-soft: rgba(59, 130, 246, 0.16);
+
+    /* ---- Semantic design tokens (dark) — layered, high-contrast ---- */
+    --om-surface-elevated: #1c2026;
+    --om-surface-muted: #1a1e24;
+    --om-text-primary: var(--om-ink-1);
+    --om-text-secondary: var(--om-ink-2);
+    --om-text-muted: var(--om-ink-3);
+    --om-text-inverse: #ffffff;
+    --om-accent: var(--om-primary);
+    --om-accent-hover: var(--om-primary-hover);
+    --om-accent-soft: var(--om-primary-soft);
+    --om-success: var(--om-ok);
+    --om-success-soft: var(--om-ok-soft);
+    --om-warning: var(--om-warn);
+    --om-warning-soft: var(--om-warn-soft);
+    --om-danger-strong: var(--om-danger);
+    --om-danger-strong-soft: var(--om-danger-soft);
+    --om-info-strong: var(--om-info);
+    --om-info-strong-soft: var(--om-info-soft);
+
+    /* ---- Primary accent (dark) ---- */
+    --om-primary-soft: color-mix(in srgb, var(--om-primary) 20%, var(--om-surface));
+    --om-primary-border: color-mix(in srgb, var(--om-primary) 38%, var(--om-border));
+
+    /* Re-map the entire slate scale to neutral grays so the legacy
+       `dark:bg-slate-*` utilities stop rendering blue-tinted panels. */
+    --color-slate-50: #f5f6f8;
+    --color-slate-100: #e7e9ee;
+    --color-slate-200: #cdd1d9;
+    --color-slate-300: #a8afbc;
+    --color-slate-400: #79828f;
+    --color-slate-500: #565e6b;
+    --color-slate-600: #3a414d;
+    --color-slate-700: #2b313b;
+    --color-slate-800: #20252d;
+    --color-slate-900: #171a20;
+    --color-slate-950: #111318;
+  }
+
+  /* ---- Accent theme: OmniMarket (pink / magenta) ---- */
+  [data-accent="omnimarket"] {
+    --om-primary: hsl(330 84% 56%);
+    --om-primary-hover: hsl(330 84% 47%);
+    --om-primary-strong: hsl(330 90% 64%);
+  }
+
+  /* ---- Accent theme: Ocean (electric blue) ---- */
+  [data-accent="ocean"] {
+    --om-primary: hsl(204 92% 52%);
+    --om-primary-hover: hsl(204 92% 44%);
+    --om-primary-strong: hsl(204 94% 60%);
+  }
+
+  /* ---- Accent theme: Emerald ---- */
+  [data-accent="emerald"] {
+    --om-primary: hsl(158 82% 40%);
+    --om-primary-hover: hsl(158 82% 32%);
+    --om-primary-strong: hsl(158 78% 48%);
+  }
+
+  /* ---- Accent theme: Amber / Gold ---- */
+  [data-accent="amber"] {
+    --om-primary: hsl(36 94% 52%);
+    --om-primary-hover: hsl(34 94% 44%);
+    --om-primary-strong: hsl(38 96% 60%);
+  }
+
+  /* ============================================================
+     UNIFIED THEMES (data-theme)
+     ------------------------------------------------------------
+     Each entry is a complete visual system: tinted surfaces, text
+     and borders that keep full readability. These are light-
+     rendering brand skins; only the Dark theme applies the `.dark`
+     class (above). They override the `:root` light base.
+     ============================================================ */
+
+  /* ---- OmniMarket (pink / magenta) ---- */
+  [data-theme="omnimarket"] {
+    --om-app-bg: #faf3f8;
+    --om-surface: #ffffff;
+    --om-surface-2: #f9f1f6;
+    --om-surface-3: #f2e3ee;
+    --om-sidebar-bg: #fdf7fb;
+    --om-header-bg: rgba(255, 255, 255, 0.85);
+    --om-border: #ecd8e6;
+    --om-border-strong: #d9b8d0;
+    --om-ink-1: #2a1421;
+    --om-ink-2: #5c4a55;
+    --om-ink-3: #8e7a87;
+    --om-surface-elevated: #ffffff;
+    --om-surface-muted: #f7eaf4;
+    --om-primary-soft: color-mix(in srgb, var(--om-primary) 12%, var(--om-surface));
+    --om-primary-border: color-mix(in srgb, var(--om-primary) 34%, var(--om-border));
+  }
+
+  /* ---- Ocean (electric blue) ---- */
+  [data-theme="ocean"] {
+    --om-app-bg: #eff6fc;
+    --om-surface: #ffffff;
+    --om-surface-2: #eef5fb;
+    --om-surface-3: #dfeaf6;
+    --om-sidebar-bg: #f4f9fd;
+    --om-header-bg: rgba(255, 255, 255, 0.85);
+    --om-border: #d5e4f2;
+    --om-border-strong: #b6cde3;
+    --om-ink-1: #10233a;
+    --om-ink-2: #40566e;
+    --om-ink-3: #70879e;
+    --om-surface-elevated: #ffffff;
+    --om-surface-muted: #e9f3fb;
+    --om-primary-soft: color-mix(in srgb, var(--om-primary) 12%, var(--om-surface));
+    --om-primary-border: color-mix(in srgb, var(--om-primary) 34%, var(--om-border));
+  }
+
+  /* ---- Emerald (green) ---- */
+  [data-theme="emerald"] {
+    --om-app-bg: #eef8f3;
+    --om-surface: #ffffff;
+    --om-surface-2: #eef7f2;
+    --om-surface-3: #ddeee6;
+    --om-sidebar-bg: #f4fbf8;
+    --om-header-bg: rgba(255, 255, 255, 0.85);
+    --om-border: #d3e8dd;
+    --om-border-strong: #b2d2c2;
+    --om-ink-1: #102a1f;
+    --om-ink-2: #3f5c4d;
+    --om-ink-3: #6f8a7d;
+    --om-surface-elevated: #ffffff;
+    --om-surface-muted: #e7f5ee;
+    --om-primary-soft: color-mix(in srgb, var(--om-primary) 12%, var(--om-surface));
+    --om-primary-border: color-mix(in srgb, var(--om-primary) 34%, var(--om-border));
+  }
+
+  /* ---- Amber / Gold (warm) ---- */
+  [data-theme="amber"] {
+    --om-app-bg: #fbf6ef;
+    --om-surface: #ffffff;
+    --om-surface-2: #faf3ea;
+    --om-surface-3: #f2e6d4;
+    --om-sidebar-bg: #fdfaf5;
+    --om-header-bg: rgba(255, 255, 255, 0.85);
+    --om-border: #ece0cf;
+    --om-border-strong: #ddc7a8;
+    --om-ink-1: #331f0d;
+    --om-ink-2: #6a5133;
+    --om-ink-3: #99805f;
+    --om-surface-elevated: #ffffff;
+    --om-surface-muted: #f6ecdd;
+    --om-primary-soft: color-mix(in srgb, var(--om-primary) 12%, var(--om-surface));
+    --om-primary-border: color-mix(in srgb, var(--om-primary) 34%, var(--om-border));
+  }
+
   * { @apply border-border; }
   body {
-    @apply bg-gray-50 text-gray-900 dark:bg-slate-950 dark:text-gray-100 font-sans antialiased;
+    @apply bg-app text-ink font-sans antialiased;
     overflow-x: clip;
+    transition: background-color 0.35s ease, color 0.28s ease;
   }
-  ::selection { @apply bg-emerald-500/20 text-emerald-900 dark:text-emerald-100; }
+  ::selection { @apply bg-primary/20 text-ink; }
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { @apply bg-transparent; }
-  ::-webkit-scrollbar-thumb { @apply bg-gray-300 dark:bg-slate-700 rounded-full; }
-  ::-webkit-scrollbar-thumb:hover { @apply bg-gray-400 dark:bg-slate-600; }
-}
+  ::-webkit-scrollbar-thumb { @apply bg-ink-3/40 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-ink-3/60; }
 
 @layer utilities {
   .glass {
-    @apply bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border border-white/20 dark:border-slate-700/30;
+    @apply bg-surface/70 dark:bg-slate-900/70 backdrop-blur-xl border border-line;
   }
   .glass-card {
-    @apply bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl border border-gray-100/50 dark:border-slate-700/30 shadow-sm hover:shadow-md transition-all duration-300;
+    @apply bg-surface/80 dark:bg-slate-800/80 backdrop-blur-xl border border-line shadow-sm hover:shadow-md transition-all duration-300;
   }
   .glass-nav {
-    @apply bg-white/60 dark:bg-slate-950/60 backdrop-blur-2xl border-b border-gray-100/50 dark:border-slate-800/50;
+    @apply bg-header backdrop-blur-2xl border-b border-line;
   }
   .sleek-card {
-    @apply bg-white dark:bg-slate-800/90 rounded-2xl border border-gray-100 dark:border-slate-700/50 shadow-sm hover:shadow-md transition-all duration-300;
+    @apply bg-surface dark:bg-slate-800/90 rounded-2xl border border-line shadow-sm hover:shadow-md transition-all duration-300;
   }
   .input-sleek {
-    @apply w-full px-4 py-2.5 bg-white dark:bg-slate-800/80 border border-gray-200 dark:border-slate-700 rounded-xl text-sm placeholder:text-gray-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all duration-200;
+    @apply w-full px-4 py-2.5 bg-surface dark:bg-slate-800/80 border border-line rounded-xl text-sm placeholder:text-ink-3 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all duration-200;
   }
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-xl text-sm transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary-hover text-white font-medium rounded-xl text-sm transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-300 font-medium rounded-xl text-sm transition-all duration-200 active:scale-[0.98];
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-surface-2 dark:bg-slate-800 hover:bg-surface-3 text-ink-2 font-medium rounded-xl text-sm transition-all duration-200 active:scale-[0.98];
   }
   .btn-outline {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800 text-gray-700 dark:text-gray-300 font-medium rounded-xl text-sm transition-all duration-200 active:scale-[0.98];
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 border border-line-strong hover:bg-surface-2 text-ink-2 font-medium rounded-xl text-sm transition-all duration-200 active:scale-[0.98];
   }
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400 rounded-xl text-sm transition-all duration-200;
+    @apply inline-flex items-center justify-center gap-2 px-3 py-2 hover:bg-surface-2 text-ink-3 rounded-xl text-sm transition-all duration-200;
   }
   .pulse-subtle {
     animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
@@ -100,7 +451,16 @@
     @apply bg-clip-text text-transparent bg-gradient-to-r from-emerald-500 to-emerald-600;
   }
   .text-gradient-brand {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-500;
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 via-emerald-500 to-blue-500;
+  }
+  .text-gradient-premium {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-emerald-500 via-blue-600 to-blue-500;
+  }
+  .btn-royal {
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl text-sm transition-all duration-200 active:scale-[0.98];
+  }
+  .card-lift {
+    @apply transition-all duration-300 hover:-translate-y-1 hover:shadow-xl;
   }
   .gradient-border {
     position: relative;
@@ -130,7 +490,8 @@
     background-image: linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.03) 1px, transparent 1px);
     background-size: 40px 40px;
   }
-  .dark .bg-grid {
+  .dark .bg-grid,
+  [data-theme="dark"] .bg-grid {
     background-image: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
   }
 
@@ -204,6 +565,15 @@
 }
 .auth-gradient-light {
   background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 30%, #d1fae5 60%, #f0fdf4 100%);
+}
+.dark .auth-gradient-light,
+[data-theme="dark"] .auth-gradient-light {
+  background: #020617; /* slate-950 */
+  background-image: radial-gradient(circle at 0% 0%, rgba(16, 185, 129, 0.05) 0%, transparent 50%),
+                    radial-gradient(circle at 100% 100%, rgba(59, 130, 246, 0.05) 0%, transparent 50%);
+}
+.auth-gradient-dark {
+  background: #020617;
 }
 .dashboard-gradient {
   background: linear-gradient(135deg, #059669 0%, #10b981 50%, #34d399 100%);

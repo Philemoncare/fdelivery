@@ -10,14 +10,14 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = 'primary', size = 'md', loading, icon, children, disabled, ...props }, ref) => {
-    const base = 'inline-flex items-center justify-center gap-2 font-medium rounded-xl transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-1';
+    const base = 'inline-flex items-center justify-center gap-2 font-medium rounded-xl transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface dark:focus-visible:ring-offset-slate-950';
     const variants: Record<string, string> = {
-      primary: 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm hover:shadow-md focus:ring-emerald-500/40',
-      secondary: 'bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-300 focus:ring-gray-400/30',
-      outline: 'border-2 border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800 text-gray-700 dark:text-gray-300 focus:ring-gray-400/30',
-      ghost: 'hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400 focus:ring-gray-400/20',
-      danger: 'bg-red-500 hover:bg-red-600 text-white shadow-sm focus:ring-red-500/40',
-      brand: 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-white shadow-md hover:shadow-lg focus:ring-emerald-500/40',
+      primary: 'bg-primary hover:bg-primary-hover text-white shadow-sm hover:shadow-md',
+      secondary: 'bg-surface-2 hover:bg-surface-3 text-ink-2 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-gray-300',
+      outline: 'border border-line-strong hover:bg-surface-2 dark:border-slate-700 dark:hover:bg-slate-800 text-ink-2 dark:text-gray-300',
+      ghost: 'hover:bg-surface-2 dark:hover:bg-slate-800 text-ink-3 dark:text-gray-400',
+      danger: 'bg-danger hover:bg-red-600 text-white shadow-sm focus-visible:ring-danger/40',
+      brand: 'bg-primary hover:bg-primary-hover text-white shadow-md hover:shadow-lg bg-gradient-to-br from-primary-strong to-primary',
     };
     const sizes: Record<string, string> = {
       sm: 'px-3 py-1.5 text-xs',

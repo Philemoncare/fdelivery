@@ -1,27 +1,30 @@
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Mail, Lock, Eye, EyeOff, Chrome, Apple, Smartphone,
-  AlertCircle, ArrowRight, Store, Bike, ShoppingBag, Zap, KeyRound, ArrowLeft
+  AlertCircle, ArrowRight, Store, Bike, ShoppingBag, Zap, KeyRound, ArrowLeft, CheckCircle
 } from 'lucide-react';
 import { useAuth } from '@/src/lib/auth/auth-store';
 import { useToast } from '@/src/components/ui/toast';
 import { checkRateLimit } from '@/src/lib/auth/security';
+import { APP_VERSION_LABEL } from '@/src/lib/app-version';
 import { cn } from '@/src/lib/utils';
 import { resolvePostLoginRoute } from '@/src/lib/auth/types';
+import { Button } from '@/src/components/ui/button';
+import { Input } from '@/src/components/ui/input';
+import { useApp } from '@/src/context/AppContext';
 
-type IdentifierTab = 'email' | 'phone';
 type Step = 'login' | 'otp';
 
 export function PublicLoginPage() {
   const { login, loginWithGoogle, loginWithApple, loginWithOtp, sendLoginOtp, user } = useAuth();
   const { showToast } = useToast();
+  const { t } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
 
   const [step, setStep] = useState<Step>('login');
-  const [tab, setTab] = useState<IdentifierTab>('email');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
@@ -30,15 +33,14 @@ export function PublicLoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
+
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const expired = params.get('expired');
     if (expired) {
       showToast('warning', 'Session expired', 'Please sign in again to continue.');
-      const newSearch = new URLSearchParams(location.search);
-      newSearch.delete('expired');
-      const searchStr = newSearch.toString();
-      navigate(location.pathname + (searchStr ? '?' + searchStr : ''), { replace: true });
+      navigate(location.pathname, { replace: true });
     }
   }, [location.search, showToast, navigate, location.pathname]);
 
@@ -47,30 +49,37 @@ export function PublicLoginPage() {
     setError('');
     if (!identifier.trim()) { setError('Enter your email or phone number.'); return; }
     if (!password) { setError('Enter your password.'); return; }
+
     const rate = checkRateLimit(identifier);
     if (!rate.allowed) { setError('Too many attempts. Please wait.'); return; }
+
     setLoading(true);
     const result = await login(identifier, password, 'public', remember);
     setLoading(false);
+
     if (!result.success) {
       setError(result.error || 'Login failed.');
-      showToast('error', 'Sign in failed', result.error);
       return;
     }
 
     if (result.requiresOtp) {
       setStep('otp');
-      showToast('info', 'Verification Required', 'A verification code has been sent to your email.');
+      showToast('info', 'Verification Required', 'A verification code has been sent to your device.');
       return;
     }
 
-    showToast('success', 'Welcome back!', 'Redirecting to your dashboard...');
-    setTimeout(() => {
-      if (result.user) {
-        const dash = resolvePostLoginRoute(result.user);
-        navigate(dash, { replace: true });
-      }
-    }, 500);
+    showToast('success', 'Welcome back!', 'Redirecting...');
+    if (result.user) {
+      navigate(resolvePostLoginRoute(result.user), { replace: true });
+    }
+  };
+
+  const handleOtpChange = (index: number, value: string) => {
+    if (!/^\d*$/.test(value)) return;
+    const newOtp = [...otp];
+    newOtp[index] = value.slice(-1);
+    setOtp(newOtp);
+    if (value && index < 5) otpRefs.current[index + 1]?.focus();
   };
 
   const handleVerifyOtp = async (e: FormEvent) => {
@@ -85,233 +94,206 @@ export function PublicLoginPage() {
 
     if (!result.success) {
       setError(result.error || 'Invalid verification code.');
-      return;
     }
-
-    showToast('success', 'Verified!', 'Welcome back.');
   };
 
   useEffect(() => {
-    if (user && step === 'otp') {
-      const dash = resolvePostLoginRoute(user);
-      navigate(dash, { replace: true });
+    if (user) {
+      navigate(resolvePostLoginRoute(user), { replace: true });
     }
-  }, [user, step, navigate]);
-
-  const floatShapes = [
-    { className: 'w-72 h-72 bg-emerald-400/20 blur-3xl', top: '10%', left: '5%', delay: 0 },
-    { className: 'w-96 h-96 bg-teal-400/20 blur-3xl', top: '50%', left: '30%', delay: 1 },
-    { className: 'w-64 h-64 bg-emerald-500/20 blur-3xl', top: '20%', left: '70%', delay: 2 },
-  ];
+  }, [user, navigate]);
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left: form panel */}
-      <div className="flex-1 flex items-center justify-center p-4 sm:p-8 relative overflow-hidden bg-white dark:bg-slate-950">
-        <div className="absolute inset-0 auth-gradient-light dark:bg-slate-950" />
-        <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} className="relative z-10 w-full max-w-md">
-          {/* Logo */}
-          <div className="mb-8 text-center">
-            <Link to="/" className="inline-flex items-center gap-2">
-              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-emerald-500 flex items-center justify-center text-white shadow-lg">
-                <Bike className="w-5 h-5 sm:w-6 sm:h-6" />
-              </div>
-              <div className="text-left">
-                <span className="block font-heading font-extrabold text-2xl text-black dark:text-white leading-tight">OmniMarket</span>
-                <span className="block text-[10px] text-gray-500 dark:text-slate-400 font-medium uppercase tracking-wider -mt-1">Takoradi Express</span>
-              </div>
-            </Link>
+    <div className="min-h-screen flex bg-white dark:bg-slate-950 font-sans">
+
+      {/* Visual Panel (Desktop) */}
+      <div className="hidden lg:flex flex-1 relative overflow-hidden bg-slate-950">
+        <div className="absolute inset-0 bg-[url('/assets/auth/takoradi-food-delivery-auth.png')] bg-cover bg-center" />
+        <div className="absolute inset-0 bg-gradient-to-r from-slate-950/95 via-slate-950/55 to-slate-950/10" />
+
+        <div className="relative z-10 flex flex-col justify-between p-16 h-full text-white">
+          <Link to="/" className="flex items-center gap-2.5 group w-fit">
+            <div className="w-10 h-10 rounded-2xl bg-emerald-500 flex items-center justify-center text-white shadow-xl group-hover:scale-105 transition-transform">
+              <Bike className="w-6 h-6" />
+            </div>
+            <span className="text-xl font-black tracking-tight">OmniMarket<span className="text-emerald-400">.</span></span>
+          </Link>
+
+          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
+            <div className="w-16 h-16 rounded-3xl bg-emerald-500 text-white flex items-center justify-center mb-8 shadow-2xl">
+              <Zap className="w-8 h-8 fill-current" />
+            </div>
+            <h2 className="text-5xl font-black mb-6 leading-[0.95] tracking-tighter">{t('auth.deliveryPromise')}</h2>
+            <p className="text-lg text-white/80 font-medium leading-relaxed max-w-sm">{t('auth.deliveryCopy')}</p>
+          </motion.div>
+
+          <div className="flex items-center gap-4 text-white/55 text-[10px] font-black uppercase tracking-[0.2em]">
+            <span>OmniMarket Ghana</span><div className="w-1 h-1 rounded-full bg-white/30" /><span>Takoradi</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Form Panel */}
+      <div className="flex-1 flex flex-col relative overflow-hidden bg-white dark:bg-slate-950 px-6 py-12 sm:px-12 lg:px-20">
+        <div className="absolute inset-0 auth-gradient-light opacity-50 dark:opacity-0 transition-opacity" />
+
+        <div className="relative z-10 w-full max-w-md mx-auto my-auto">
+          <div className="mb-12 text-center lg:hidden">
+             <Link to="/" className="inline-flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500 flex items-center justify-center text-white shadow-lg">
+                  <Bike className="w-6 h-6" />
+                </div>
+                <span className="text-xl font-black text-slate-900 dark:text-white">OmniMarket<span className="text-emerald-500">.</span></span>
+             </Link>
           </div>
 
           <AnimatePresence mode="wait">
             {step === 'login' ? (
-              <motion.div key="login" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
-                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-1">Welcome back</h1>
-                <p className="text-gray-500 dark:text-slate-400 text-sm mb-6">Sign in to shop, sell, or deliver.</p>
+              <motion.div key="login" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+                <div className="mb-10">
+                  <h1 className="text-4xl font-black text-slate-900 dark:text-white mb-3">{t('auth.welcome')}</h1>
+                  <p className="text-slate-500 dark:text-slate-400 font-medium text-lg">{t('auth.signInPrompt')}</p>
+                </div>
 
-                <form onSubmit={handleLogin} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                      Email or Phone Number
-                    </label>
-                    <div className="relative">
-                      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400">
-                        <Smartphone className="w-4 h-4" />
-                      </div>
-                      <input
-                        type="text"
-                        value={identifier}
-                        onChange={e => setIdentifier(e.target.value)}
-                        placeholder="you@gmail.com or +233 2X XXX XXXX"
-                        className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-800/80 border border-gray-200 dark:border-slate-700 rounded-xl text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all"
-                      />
-                    </div>
-                  </div>
+                <form onSubmit={handleLogin} className="space-y-6">
+                  <Input
+                    label={t('auth.emailOrPhone')}
+                    type="text"
+                    value={identifier}
+                    onChange={e => setIdentifier(e.target.value)}
+                    placeholder="you@gmail.com"
+                    icon={<Smartphone className="w-5 h-5 text-slate-400" />}
+                    className="rounded-2xl h-14 bg-gray-50 dark:bg-slate-900/50 border-none focus-visible:ring-emerald-500/50"
+                  />
 
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
-                      <Link to="/forgot-password" className="text-xs text-emerald-600 hover:text-emerald-700 font-medium">Forgot password?</Link>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{t('auth.password')}</label>
+                      <Link to="/forgot-password" title="Forgot Password" className="text-[10px] font-black text-emerald-600 hover:text-emerald-500 uppercase tracking-widest">
+                        {t('auth.forgotPassword')}
+                      </Link>
                     </div>
-                    <div className="relative">
-                      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"><Lock className="w-4 h-4" /></div>
+                    <div className="relative group">
                       <input
                         type={showPassword ? 'text' : 'password'}
                         value={password}
                         onChange={e => setPassword(e.target.value)}
-                        placeholder="Enter your password"
-                        className="w-full pl-10 pr-11 py-3 bg-white dark:bg-slate-800/80 border border-gray-200 dark:border-slate-700 rounded-xl text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all"
+                        placeholder="••••••••"
+                        className="w-full h-14 bg-gray-50 dark:bg-slate-900/50 border-none rounded-2xl px-12 text-sm font-bold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
                       />
+                      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors">
+                        <Lock className="w-5 h-5" />
+                      </div>
                       <button type="button" onClick={() => setShowPassword(s => !s)}
-                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                       </button>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <button type="button" onClick={() => setRemember(r => !r)} className="flex items-center gap-2">
-                      <div className={cn('relative w-9 h-5 rounded-full transition-colors duration-200', remember ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-slate-600')}>
-                        <div className={cn('absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all duration-200', remember ? 'left-4' : 'left-0.5')} />
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => setRemember(!remember)} className="flex items-center gap-2 group">
+                      <div className={cn(
+                        "w-5 h-5 rounded-md border-2 transition-all flex items-center justify-center",
+                        remember ? "bg-emerald-500 border-emerald-500" : "border-slate-200 dark:border-slate-800"
+                      )}>
+                        {remember && <CheckCircle className="w-3 h-3 text-white" />}
                       </div>
-                      <span className="text-sm text-gray-600 dark:text-gray-400">Remember me</span>
+                      <span className="text-sm font-bold text-slate-600 dark:text-slate-400">{t('auth.remember')}</span>
                     </button>
                   </div>
 
                   {error && (
-                    <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
-                      className="flex items-center gap-2 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-600 dark:text-red-400">
-                      <AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
+                      className="text-xs font-bold text-rose-500 bg-rose-50 dark:bg-rose-500/10 p-4 rounded-2xl border border-rose-100 dark:border-rose-500/20">
+                      {error}
                     </motion.div>
                   )}
 
-                  <button type="submit" disabled={loading}
-                    className="w-full py-3 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-white font-semibold rounded-xl transition-all duration-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20">
-                    {loading ? (
-                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                    ) : (
-                      <>Login <ArrowRight className="w-4 h-4" /></>
-                    )}
-                  </button>
+                  <Button type="submit" loading={loading} className="w-full h-14 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-black tracking-widest shadow-xl shadow-emerald-500/20">
+                    {t('auth.signIn')} <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
 
-                  <div className="relative my-5">
-                    <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200 dark:border-slate-700" /></div>
-                    <div className="relative flex justify-center"><span className="bg-white dark:bg-slate-950 px-3 text-xs text-gray-400 dark:text-slate-500">or continue with</span></div>
+                  <div className="flex items-center gap-4 py-4">
+                    <div className="h-px flex-1 bg-gray-100 dark:bg-slate-800" />
+                    <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Social Connect</span>
+                    <div className="h-px flex-1 bg-gray-100 dark:bg-slate-800" />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <button type="button" onClick={() => loginWithGoogle()}
-                      className="flex items-center justify-center gap-2 py-2.5 border border-gray-200 dark:border-slate-700 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800 transition-all">
-                      <Chrome className="w-5 h-5 text-emerald-600" />
-                      <span className="text-sm text-gray-600 dark:text-gray-300 font-medium">Continue with Google</span>
+                      className="flex items-center justify-center gap-3 h-12 border border-slate-100 dark:border-slate-800 rounded-2xl bg-white/50 dark:bg-slate-900/50 hover:bg-gray-50 dark:hover:bg-slate-900 transition-all group">
+                      <img src="https://www.gstatic.com/images/branding/product/2x/googleg_48dp.png" alt="Google" className="w-5 h-5 group-hover:scale-110 transition-transform" />
                     </button>
                     <button type="button" onClick={() => loginWithApple()}
-                      className="flex items-center justify-center gap-2 py-2.5 border border-gray-200 dark:border-slate-700 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800 transition-all">
-                      <Apple className="w-5 h-5 text-gray-700 dark:text-gray-300" />
-                      <span className="text-sm text-gray-600 dark:text-gray-300 font-medium">Continue with Apple</span>
+                      className="flex items-center justify-center gap-3 h-12 border border-slate-100 dark:border-slate-800 rounded-2xl bg-white/50 dark:bg-slate-900/50 hover:bg-gray-50 dark:hover:bg-slate-900 transition-all group">
+                      <Apple className="w-5 h-5 group-hover:scale-110 transition-transform" />
                     </button>
                   </div>
 
-                  <p className="text-center text-sm text-gray-500 dark:text-slate-400 mt-6">
-                    Don't have an account? <Link to="/register" className="text-emerald-600 hover:text-emerald-700 font-medium">Create Account</Link>
+                  <p className="text-center text-sm font-bold text-slate-500 mt-8">
+                    {t('auth.noAccount')} <Link to="/register" className="text-slate-900 dark:text-white underline decoration-2 underline-offset-4 font-black ml-1">{t('auth.createAccount')}</Link>
                   </p>
                 </form>
               </motion.div>
             ) : (
-              <motion.div key="otp" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                <button onClick={() => setStep('login')} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-emerald-600 mb-6 transition-colors">
-                  <ArrowLeft className="w-4 h-4" /> Back to login
-                </button>
-
-                <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center mb-4">
-                  <KeyRound className="w-6 h-6 text-emerald-600" />
+              <motion.div key="otp" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8">
+                <div className="text-center">
+                  <div className="w-16 h-16 rounded-[2rem] bg-emerald-100 dark:bg-emerald-50/20 flex items-center justify-center text-emerald-600 mx-auto mb-6">
+                    <KeyRound className="w-8 h-8" />
+                  </div>
+                  <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-2">{t('auth.forgot.checkEmail')}</h2>
+                  <p className="text-slate-500 dark:text-slate-400 font-medium">
+                    {t('auth.2fa.desc')} <br />
+                    <span className="text-slate-900 dark:text-white font-bold">{identifier}</span>
+                  </p>
                 </div>
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Verify your email</h2>
-                <p className="text-sm text-gray-500 dark:text-slate-400 mb-8">
-                  We've sent a 6-digit code to your email. Please enter it below to verify your identity.
-                </p>
+
+                <div className="flex items-center gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 px-4 py-3">
+                  <KeyRound className="w-5 h-5 text-emerald-500 dark:text-emerald-400 shrink-0" />
+                  <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                    Demo build — no email is sent. Use the demo code <span className="font-black">123456</span>.
+                  </p>
+                </div>
 
                 <form onSubmit={handleVerifyOtp} className="space-y-6">
-                  <div className="flex justify-center gap-2 sm:gap-3">
+                  <div className="flex justify-between gap-2">
                     {otp.map((d, i) => (
                       <input
                         key={i}
+                        ref={el => { otpRefs.current[i] = el; }}
                         type="text"
                         inputMode="numeric"
                         maxLength={1}
                         value={d}
-                        id={`otp-${i}`}
-                        onChange={e => {
-                          const val = e.target.value.slice(-1);
-                          if (val && !/^\d$/.test(val)) return;
-                          const n = [...otp];
-                          n[i] = val;
-                          setOtp(n);
-                          if (val && i < 5) document.getElementById(`otp-${i + 1}`)?.focus();
-                        }}
+                        onChange={e => handleOtpChange(i, e.target.value)}
                         onKeyDown={e => {
-                          if (e.key === 'Backspace' && !otp[i] && i > 0) {
-                            document.getElementById(`otp-${i - 1}`)?.focus();
-                          }
+                          if (e.key === 'Backspace' && !d && i > 0) otpRefs.current[i - 1]?.focus();
                         }}
-                        className="w-10 h-12 sm:w-12 sm:h-14 text-center text-xl font-bold bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                        className="w-full h-16 text-center text-2xl font-black bg-gray-50 dark:bg-slate-900/50 border-2 border-transparent focus:border-emerald-500 rounded-2xl outline-none transition-all dark:text-white"
                       />
                     ))}
                   </div>
 
-                  {error && (
-                    <p className="text-sm text-red-500 text-center font-medium">{error}</p>
-                  )}
+                  <Button type="submit" disabled={loading || otp.join('').length !== 6} className="w-full h-14 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black tracking-widest">
+                    {t('auth.2fa.verify').toUpperCase()}
+                  </Button>
 
-                  <button type="submit" disabled={loading || otp.join('').length !== 6}
-                    className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl transition-all disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20">
-                    {loading ? <Zap className="w-4 h-4 animate-spin" /> : 'Verify & Sign In'}
-                  </button>
-
-                  <p className="text-center text-sm text-gray-500">
-                    Didn't receive the code? <button type="button" onClick={() => sendLoginOtp(identifier, 'email')} className="text-emerald-600 font-medium hover:underline">Resend</button>
-                  </p>
+                  <div className="text-center">
+                    <button type="button" onClick={() => sendLoginOtp(identifier, 'email')} className="text-xs font-black text-emerald-500 uppercase tracking-widest hover:text-emerald-400 transition-colors">
+                      {t('auth.2fa.resend')}
+                    </button>
+                  </div>
                 </form>
               </motion.div>
             )}
           </AnimatePresence>
-        </motion.div>
-      </div>
+        </div>
 
-      {/* Right: visual panel */}
-      <div className="hidden lg:flex flex-1 relative overflow-hidden auth-gradient">
-        <div className="absolute inset-0 bg-grid opacity-20" />
-        {floatShapes.map((s, i) => (
-          <motion.div key={i} className={cn('absolute rounded-full', s.className)} style={{ top: s.top, left: s.left }}
-            animate={{ scale: [1, 1.15, 1], opacity: [0.5, 0.8, 0.5] }} transition={{ duration: 6 + i, repeat: Infinity, delay: s.delay }} />
-        ))}
-        <div className="relative z-10 flex flex-col items-center justify-center p-12 text-white text-center">
-          <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-            <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-md rounded-full border border-white/20 text-sm mb-6">
-              <Zap className="w-4 h-4 text-emerald-400" /> One account for the whole ecosystem
-            </div>
-            <h2 className="text-4xl font-bold mb-6">Shop. Sell. Deliver.</h2>
-            <p className="text-white/70 max-w-md text-lg leading-relaxed mb-10">
-              Your role is detected automatically. Whether you're a customer, restaurant
-              partner, or dispatch rider - we'll route you to the right dashboard.
-            </p>
-            <div className="grid grid-cols-3 gap-4 max-w-lg mx-auto">
-              {[
-                { icon: ShoppingBag, label: 'Customers', desc: 'Order meals & more' },
-                { icon: Store, label: 'Restaurants', desc: 'Grow your business' },
-                { icon: Bike, label: 'Riders', desc: 'Deliver & earn' },
-              ].map(f => (
-                <div key={f.label} className="bg-white/5 backdrop-blur-md rounded-2xl p-5 border border-white/10 hover:bg-white/10 transition-all">
-                  <f.icon className="w-8 h-8 text-emerald-400 mb-3 mx-auto" />
-                  <p className="font-semibold">{f.label}</p>
-                  <p className="text-xs text-white/60 mt-1">{f.desc}</p>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-          <div className="absolute bottom-8 left-0 right-0 text-center text-white/30 text-xs">
-            Protected by JWT | 2FA | Rate limiting | Device recognition
-          </div>
+        <div className="relative z-10 flex items-center justify-center gap-2 mt-8">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 text-[9px] font-black uppercase tracking-widest">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> {APP_VERSION_LABEL} · Stable
+          </span>
         </div>
       </div>
     </div>

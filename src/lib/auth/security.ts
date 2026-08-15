@@ -165,28 +165,18 @@ export function getDeviceInfo(): { deviceId: string; deviceName: string; platfor
 // --- Audit trail ---
 import type { AuditEvent } from './types';
 
-const auditBuffer: AuditEvent[] = [];
-
-export function logAudit(event: Omit<AuditEvent, 'timestamp' | 'userAgent' | 'ipAddress'>): void {
-  auditBuffer.push({
-    ...event,
-    ipAddress: getClientIp(),
-    userAgent: navigator.userAgent,
-    timestamp: new Date().toISOString(),
-  });
-  // In production, flush to backend
-  try {
-    localStorage.setItem('om_audit_trail', JSON.stringify(auditBuffer.slice(-200)));
-  } catch { /* ignore */ }
+// Frontend helpers kept for caller compatibility. The authoritative, immutable
+// audit trail lives on the backend (`/api/audit`, written by the server as
+// events fire). The browser no longer writes a parallel, editable, local-only
+// "audit" store — that duplicated the real record and could mislead operators,
+// since it could not be trusted as history. Login, logout, failed login and
+// security events are recorded server-side instead.
+export function logAudit(_event: Omit<AuditEvent, 'timestamp' | 'userAgent' | 'ipAddress'>): void {
+  // No-op: audit is owned by the backend, not localStorage.
 }
 
 export function getAuditTrail(): AuditEvent[] {
-  try {
-    const raw = localStorage.getItem('om_audit_trail');
-    return raw ? (JSON.parse(raw) as AuditEvent[]) : [];
-  } catch {
-    return [];
-  }
+  return [];
 }
 
 // --- Password strength ---

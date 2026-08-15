@@ -1,0 +1,17 @@
+﻿function hashPasswordLegacy(password: string): string {
+  return OLD_SHA + crypto.createHash('sha256').update(String(password)).digest('hex');
+}
+
+function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(String(password), salt, 64).toString('hex');
+  return `scrypt$${salt}$${hash}`;
+}
+
+function isScryptHash(stored: string): boolean {
+  return String(stored || '').startsWith('scrypt$');
+}
+
+// Verify a password against any supported stored format (scrypt, legacy SHA-256,
+// or legacy plaintext). Returns true only for a genuine match.
+function verifyPassword(stored: string | null | undefined, attempt

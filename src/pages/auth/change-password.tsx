@@ -8,11 +8,13 @@ import { useToast } from '@/src/components/ui/toast';
 import { useAuth } from '@/src/lib/auth/auth-store';
 import { AuthApiService } from '@/src/services/auth-api';
 import { validatePassword, evaluatePasswordStrength } from '@/src/lib/auth/security';
+import { useApp } from '@/src/context/AppContext';
 
 export function ChangePasswordPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { user, logout } = useAuth();
+  const { t } = useApp();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -66,8 +68,8 @@ export function ChangePasswordPage() {
           <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
             <CheckCircle className="w-8 h-8 text-emerald-500" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Success!</h2>
-          <p className="text-gray-500 dark:text-slate-400 mb-6">Your password has been changed. Redirecting to login...</p>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">{t('common.success')}!</h2>
+          <p className="text-gray-500 dark:text-slate-400 mb-6">{t('auth.register.success')}</p>
           <Loader2 className="w-6 h-6 animate-spin mx-auto text-emerald-500" />
         </motion.div>
       </div>
@@ -83,8 +85,8 @@ export function ChangePasswordPage() {
               <Lock className="w-5 h-5 text-rose-600" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Change Password</h2>
-              <p className="text-xs text-gray-500 dark:text-slate-400">Secure your account with a new password.</p>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('settings.changePassword')}</h2>
+              <p className="text-xs text-gray-500 dark:text-slate-400">{t('settings.securityDesc')}</p>
             </div>
           </div>
 
@@ -92,14 +94,14 @@ export function ChangePasswordPage() {
             <div className="mb-6 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/30 flex gap-3">
               <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0" />
               <p className="text-xs text-amber-700 dark:text-amber-400">
-                <strong>Password Reset Required:</strong> An administrator has requested that you change your password before continuing.
+                <strong>{t('settings.updatePassword')}:</strong> {t('auth.signInPrompt')}
               </p>
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <Input
-              label="Current Password"
+              label={t('settings.currentPassword')}
               type="password"
               placeholder="••••••••"
               value={currentPassword}
@@ -109,7 +111,7 @@ export function ChangePasswordPage() {
 
             <div className="space-y-2">
               <Input
-                label="New Password"
+                label={t('settings.newPassword')}
                 type="password"
                 placeholder="••••••••"
                 value={newPassword}
@@ -119,7 +121,7 @@ export function ChangePasswordPage() {
               {newPassword && (
                 <div className="space-y-1">
                   <div className="flex justify-between items-center px-1">
-                    <span className="text-[10px] uppercase font-black text-gray-400">Strength: {strength.label}</span>
+                    <span className="text-[10px] uppercase font-black text-gray-400">{t('common.strength')}: {strength.label}</span>
                   </div>
                   <div className="h-1 w-full bg-gray-100 dark:bg-slate-700 rounded-full overflow-hidden">
                     <motion.div
@@ -133,7 +135,7 @@ export function ChangePasswordPage() {
             </div>
 
             <Input
-              label="Confirm New Password"
+              label={t('settings.confirmPassword')}
               type="password"
               placeholder="••••••••"
               value={confirmPassword}
@@ -144,12 +146,12 @@ export function ChangePasswordPage() {
             {error && <p className="text-sm text-red-500 font-medium">{error}</p>}
 
             <Button type="submit" className="w-full h-12 rounded-xl" loading={loading}>
-              Update Password
+              {t('settings.updatePassword')}
             </Button>
 
             {!user?.mustChangePassword && (
               <Button type="button" variant="ghost" className="w-full" onClick={() => navigate(-1)}>
-                Cancel
+                {t('common.cancel')}
               </Button>
             )}
           </form>

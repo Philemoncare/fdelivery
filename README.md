@@ -1,20 +1,21 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# OmniMarket Ghana
 
-# Run and deploy your AI Studio app
+OmniMarket is a multi-vendor food delivery marketplace for Takoradi, Ghana. It includes customer ordering, restaurant operations, dispatch-rider workflows, and administrative portals.
 
-This contains everything you need to run your app locally.
+## Local development
 
-View your app in AI Studio: https://ai.studio/apps/72964d23-b21a-4b00-8d01-7fbffb1087d8
+Prerequisites: Node.js 20+.
 
-## Run Locally
+1. Copy `.env.example` to `.env` and set a strong `JWT_SECRET`.
+2. Install dependencies with `npm install`.
+3. Run `npm run dev` to start the API and web client together.
 
-**Prerequisites:**  Node.js
+The web client runs on port `3000` and proxies `/api` calls to the Express API on port `3999`.
 
+## Validation
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Run `npm run lint` for the TypeScript check and `npm run build` for a production web build.
+
+## Data and production readiness
+
+The running API currently persists development data in `omnimarket-db.json`. PostgreSQL schema and seed scripts are available under `database/`, but production deployment needs a database-backed API adapter, managed payments, and environment-specific operational configuration before launch.

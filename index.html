@@ -3,7 +3,35 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>OmniMarket</title>
+    <meta name="description" content="OmniMarket — Ghana's premium multi-vendor marketplace and express delivery platform connecting customers, vendors, and dispatch riders." />
+    <meta name="theme-color" content="#059669" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800;900&display=swap" rel="stylesheet" />
+    <title>OmniMarket — Multi-Vendor Marketplace & Delivery</title>
+    <script>
+      // Apply the saved theme before first paint so there is no flash of the
+      // wrong theme. Runs before the app bundle loads; AppContext re-applies.
+      (function () {
+        try {
+          var valid = ['light', 'dark', 'system', 'omnimarket', 'ocean', 'emerald', 'amber'];
+          var pref = localStorage.getItem('om_theme');
+          if (valid.indexOf(pref) === -1) pref = 'system';
+          var dark = pref === 'dark' ||
+            (pref === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (dark) document.documentElement.classList.add('dark');
+          var resolved = pref === 'system' ? (dark ? 'dark' : 'light') : pref;
+          document.documentElement.setAttribute('data-theme', resolved);
+          document.documentElement.setAttribute('data-theme-mode', pref);
+          var accent = localStorage.getItem('om_accent');
+          if (resolved === 'omnimarket' || resolved === 'ocean' || resolved === 'emerald' || resolved === 'amber') {
+            document.documentElement.setAttribute('data-accent', resolved);
+          } else if (accent) {
+            document.documentElement.setAttribute('data-accent', accent);
+          }
+        } catch (e) { /* ignore storage errors */ }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

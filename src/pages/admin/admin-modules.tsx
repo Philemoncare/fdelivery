@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import {
   Users, Store, Star, ScrollText, Shield, UserCog, Search,
   Phone, Mail, BadgeCheck, MessageSquare, XCircle, CheckCircle, Filter,
-  UserRound
+  UserRound, Gift
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/src/components/ui/card';
 import { Badge } from '@/src/components/ui/badge';
@@ -11,7 +11,7 @@ import { Input } from '@/src/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/src/components/ui/select';
 import { useApp } from '@/src/context/AppContext';
 import { useAuth } from '@/src/lib/auth/auth-store';
-import { AdminService } from '@/src/services/api';
+import { AdminService, ReferralService } from '@/src/services/api';
 import { ROLE_LABELS, ROLE_PERMISSIONS, type Role } from '@/src/lib/auth/types';
 import { cn } from '@/src/lib/utils';
 
@@ -244,7 +244,7 @@ export function AdminAuditLogPage() {
   const [audit, setAudit] = useState<any[]>([]);
   const [filter, setFilter] = useState('all');
   useEffect(() => {
-    AdminService.getAudit().then(r => setAudit(Array.isArray(r) ? r : [])).catch(() => setAudit([]));
+    AdminService.getAudit().then(r => setAudit(Array.isArray(r) ? r : (r?.items || []))).catch(() => setAudit([]));
   }, []);
   const types = Array.from(new Set(audit.map(e => e.entity)));
   const filtered = audit.filter(e => filter === 'all' || e.entity === filter);
@@ -259,7 +259,7 @@ export function AdminAuditLogPage() {
               <SelectTrigger className="w-44 rounded-lg"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All resources</SelectItem>
-                {types.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+                {types.map(a => <SelectItem key={String(a)} value={String(a)}>{String(a)}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -289,6 +289,104 @@ export function AdminAuditLogPage() {
                       <td className="py-3 px-6 font-mono text-xs text-gray-500">{e.entityId || '—'}</td>
                       <td className="py-3 px-6"><Badge variant={e.result === 'success' ? 'success' : 'danger'}>{e.result}</Badge></td>
                       <td className="py-3 px-6 text-gray-500">{new Date(e.timestamp).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+/*
+ * ------------------------------------------------------------
+ * REFERRAL AUDIT — who introduced whom, from the server trail
+ * ------------------------------------------------------------
+ */
+export function AdminReferralsPage() {
+  const [records, setRecords] = useState<any[]>([]);
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [search, setSearch] = useState('');
+  useEffect(() => {
+    ReferralService.getAll()
+      .then(r => setRecords(Array.isArray(r) ? r : []))
+      .catch(() => setRecords([]));
+  }, []);
+
+  const total = records.length;
+  const approved = records.filter(r => (r.referredStatus || '').toLowerCase() === 'approved').length;
+  const roles: string[] = Array.from(new Set(records.map(r => r.referredRole).filter((x): x is string => !!x)));
+
+  const filtered = records.filter(r => {
+    if (roleFilter !== 'all' && r.referredRole !== roleFilter) return false;
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      (r.referredEmail || '').toLowerCase().includes(q) ||
+      (r.referredName || '').toLowerCase().includes(q) ||
+      (r.referrerEmail || '').toLowerCase().includes(q) ||
+      (r.referralCode || '').toLowerCase().includes(q)
+    );
+  });
+
+  return (
+    <div className="space-y-6 pb-10">
+      <PageHeader icon={Gift} title="Referrals" description="Every account created with a referral code — full audit trail of who referred whom." count={`${total} records`} />
+      <div className="grid grid-cols-2 gap-4">
+        <Card><CardContent className="p-4"><p className="text-sm text-gray-500">Total referrals</p><p className="text-2xl font-bold text-gray-900 dark:text-white">{total}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-sm text-gray-500">Approved signups</p><p className="text-2xl font-bold text-emerald-500">{approved}</p></CardContent></Card>
+      </div>
+      <Card className="rounded-2xl">
+        <CardHeader className="border-b flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <CardTitle className="text-base flex items-center gap-2"><Gift className="w-5 h-5 text-amber-500" /> Referral Audit Trail</CardTitle>
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input placeholder="Search email, name, or code…" value={search} onChange={e => setSearch(e.target.value)} className="pl-9 rounded-lg w-64" />
+            </div>
+            <Select value={roleFilter} onValueChange={setRoleFilter}>
+              <SelectTrigger className="w-36 rounded-lg"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All roles</SelectItem>
+                {roles.map(r => <SelectItem key={r} value={r}>{ROLE_LABELS[r as Role] || r}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {filtered.length === 0 ? (
+            <p className="text-center text-gray-400 py-12 italic">No referral activity recorded yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead>
+                  <tr className="border-b text-[10px] font-black uppercase tracking-wider text-gray-400">
+                    <th className="py-4 px-6">Code</th>
+                    <th className="py-4 px-6">Referrer</th>
+                    <th className="py-4 px-6">Referred User</th>
+                    <th className="py-4 px-6">Role</th>
+                    <th className="py-4 px-6">Status</th>
+                    <th className="py-4 px-6">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map(r => (
+                    <tr key={r.id} className="border-b border-gray-50 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/50">
+                      <td className="py-3 px-6 font-mono text-xs font-bold text-gray-900 dark:text-white">{r.referralCode}</td>
+                      <td className="py-3 px-6">
+                        <p className="font-medium text-gray-900 dark:text-white">{r.referrerName || '—'}</p>
+                        <p className="text-xs text-gray-500">{r.referrerEmail}</p>
+                      </td>
+                      <td className="py-3 px-6">
+                        <p className="font-medium">{r.referredName || '—'}</p>
+                        <p className="text-xs text-gray-500">{r.referredEmail}</p>
+                      </td>
+                      <td className="py-3 px-6"><Badge variant="outline">{ROLE_LABELS[r.referredRole as Role] || r.referredRole}</Badge></td>
+                      <td className="py-3 px-6"><Badge variant={(r.referredStatus || '') === 'approved' ? 'success' : 'warning'}>{r.referredStatus || '—'}</Badge></td>
+                      <td className="py-3 px-6 text-gray-500">{new Date(r.createdAt).toLocaleString()}</td>
                     </tr>
                   ))}
                 </tbody>

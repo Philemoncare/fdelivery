@@ -18,7 +18,8 @@ export const VendorDetailPage: React.FC = () => {
     setSelectedProduct,
     toggleWishlist,
     isInWishlist,
-    isLoading
+    isLoading,
+    t
   } = useApp();
 
   const vendor = vendors.find((v) => v.id === id) || selectedVendor;
@@ -33,9 +34,9 @@ export const VendorDetailPage: React.FC = () => {
 
   if (!vendor) {
     return <div className="max-w-7xl mx-auto py-16 px-4 text-center">
-      <h3 className="text-xl font-bold text-gray-900 dark:text-white">Restaurant not found</h3>
-      <p className="text-gray-500 mt-2">The kitchen you are looking for may have moved or changed names.</p>
-      <button onClick={() => navigate('/vendors')} className="mt-6 bg-emerald-500 text-white px-6 py-3 rounded-2xl font-bold shadow-lg">Back to Directory</button>
+      <h3 className="text-xl font-bold text-gray-900 dark:text-white">{t('common.noResults')}</h3>
+      <p className="text-gray-500 mt-2">{t('vendorListing.noResultsText')}</p>
+      <button onClick={() => navigate('/vendors')} className="mt-6 bg-emerald-500 text-white px-6 py-3 rounded-2xl font-bold shadow-lg">{t('common.back')}</button>
     </div>;
   }
 
@@ -46,14 +47,14 @@ export const VendorDetailPage: React.FC = () => {
   );
 
   const status = getVendorOperationalStatus(vendor);
-  const statusLabel = status === 'OPEN' ? 'Open Now' : status === 'BUSY' ? 'Busy' : status === 'TEMPORARILY_PAUSED' ? 'Temporarily Paused' : status.replace('_', ' ');
+  const statusLabel = status === 'OPEN' ? t('common.open') : status === 'BUSY' ? t('common.busy') : status === 'TEMPORARILY_PAUSED' ? t('common.paused') : status.replace('_', ' ');
 
   const todayHours = (() => {
     if (!Array.isArray(vendor.businessHours) || vendor.businessHours.length === 0) return null;
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const h = vendor.businessHours.find((x: any) => x.day === dayNames[new Date().getDay()]);
     if (!h) return null;
-    if (!h.isOpen) return 'Closed today';
+    if (!h.isOpen) return t('common.closedToday');
     const fmt = (v: string) => {
       if (!v) return '';
       const [hr, min] = v.split(':').map(Number);
@@ -70,7 +71,7 @@ export const VendorDetailPage: React.FC = () => {
         className="flex items-center space-x-2 text-xs font-bold text-gray-500 hover:text-emerald-600 transition"
       >
         <ArrowLeft className="w-4 h-4" />
-        <span>Back to All Restaurants</span>
+        <span>{t('common.back')}</span>
       </button>
 
       {/* Restaurant Header Section */}
@@ -167,11 +168,11 @@ export const VendorDetailPage: React.FC = () => {
             {/* Summary Action Cards */}
             <div className="flex items-center gap-3 lg:mb-1">
               <div className="bg-slate-900 dark:bg-slate-950 px-6 py-4 rounded-2xl border border-slate-800 shadow-xl text-center min-w-[120px]">
-                <span className="text-slate-500 block text-[8px] uppercase font-black tracking-[0.2em] mb-1.5">ETA Delivery</span>
+                <span className="text-slate-500 block text-[8px] uppercase font-black tracking-[0.2em] mb-1.5">{t('common.eta')}</span>
                 <span className="text-xl font-black text-emerald-400 leading-none">{vendor.deliveryTime || '25-35 min'}</span>
               </div>
               <div className="bg-slate-900 dark:bg-slate-950 px-6 py-4 rounded-2xl border border-slate-800 shadow-xl text-center min-w-[120px]">
-                <span className="text-slate-500 block text-[8px] uppercase font-black tracking-[0.2em] mb-1.5">Min Order</span>
+                <span className="text-slate-500 block text-[8px] uppercase font-black tracking-[0.2em] mb-1.5">{t('common.minOrder')}</span>
                 <span className="text-xl font-black text-white leading-none">{formatPrice(vendor.minOrder || 0)}</span>
               </div>
             </div>
@@ -182,7 +183,7 @@ export const VendorDetailPage: React.FC = () => {
       {/* About / Our Story */}
       {(vendor.about || vendor.description) && (
         <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-gray-200 dark:border-slate-800 shadow-xl">
-          <h3 className="text-lg font-heading font-bold text-gray-900 dark:text-white mb-3">Our Story</h3>
+          <h3 className="text-lg font-heading font-bold text-gray-900 dark:text-white">{t('product.description')}</h3>
           <p className="text-sm leading-relaxed text-gray-600 dark:text-gray-300 whitespace-pre-line">
             {vendor.about || vendor.description}
           </p>
@@ -193,13 +194,13 @@ export const VendorDetailPage: React.FC = () => {
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
           <h2 className="text-xl sm:text-2xl font-heading font-black text-slate-900 dark:text-white">
-            Available Menu <span className="text-emerald-500 font-bold ml-1">({displayProds.length})</span>
+            {t('menu.title')} <span className="text-emerald-500 font-bold ml-1">({displayProds.length})</span>
           </h2>
           <div className="relative w-full sm:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
-              placeholder="Search items in this menu..."
+              placeholder={t('header.search')}
               value={searchKey}
               onChange={(e) => setSearchKey(e.target.value)}
               className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs px-9 py-2.5 rounded-2xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm"
@@ -260,14 +261,14 @@ export const VendorDetailPage: React.FC = () => {
                   </h3>
                   <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 dark:text-slate-500">
                     <Clock className="w-3.5 h-3.5 text-emerald-500/50" />
-                    <span>Prep: {product.prepTime || '15'} mins</span>
+                    <span>{t('status.preparing')}: {product.prepTime || '15'} mins</span>
                   </div>
                 </div>
               </div>
 
               <div className="mt-6 pt-4 border-t border-slate-50 dark:border-slate-800/50 flex items-center justify-between px-1">
                 <div className="flex flex-col">
-                   <span className="text-[10px] uppercase font-black tracking-widest text-slate-400 leading-none mb-1">Price</span>
+                   <span className="text-[10px] uppercase font-black tracking-widest text-slate-400 leading-none mb-1">{t('product.price')}</span>
                    <span className="text-base font-black text-emerald-600 dark:text-emerald-400 leading-none">
                     {formatPrice(product.price)}
                   </span>
@@ -278,7 +279,7 @@ export const VendorDetailPage: React.FC = () => {
                   className="bg-emerald-500 hover:bg-emerald-600 text-white h-10 px-5 rounded-2xl shadow-[0_10px_20px_rgba(16,185,129,0.3)] transition-all hover:translate-y-[-2px] active:translate-y-0 active:shadow-none flex items-center gap-2 font-bold text-xs"
                 >
                   <ShoppingBag className="w-4 h-4" />
-                  <span>Order</span>
+                  <span>{t('common.addToCart')}</span>
                 </button>
               </div>
             </div>
@@ -288,8 +289,8 @@ export const VendorDetailPage: React.FC = () => {
         {displayProds.length === 0 && (
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-12 text-center border border-gray-200 dark:border-slate-800 space-y-3">
             <ShoppingBag className="w-10 h-10 text-gray-400 mx-auto" />
-            <h3 className="text-base font-bold text-gray-900 dark:text-white">No meals found</h3>
-            <p className="text-xs text-gray-500">This kitchen hasn&apos;t uploaded any meals matching your search yet.</p>
+            <h3 className="text-base font-bold text-gray-900 dark:text-white">{t('common.noResults')}</h3>
+            <p className="text-xs text-gray-500">{t('vendorListing.noResultsText')}</p>
           </div>
         )}
       </div>

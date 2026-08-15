@@ -5,7 +5,7 @@ import { Bike, ShieldCheck, CheckCircle2 } from 'lucide-react';
 
 export const BecomeRiderPage: React.FC = () => {
   const navigate = useNavigate();
-  const { showToast } = useApp();
+  const { showToast, t } = useApp();
   const [riderName, setRiderName] = useState('');
   const [vehicle, setVehicle] = useState('E-Bike');
   const [submitted, setSubmitted] = useState(false);
@@ -25,36 +25,36 @@ export const BecomeRiderPage: React.FC = () => {
           <span>Fleet Rider Opportunities</span>
         </div>
         <h1 className="text-3xl sm:text-4xl font-heading font-black text-gray-900 dark:text-white">
-          Deliver Orders & Earn on Your Own Schedule
+          {t('partner.rider.title')}
         </h1>
         <p className="text-xs sm:text-sm text-gray-500 max-w-xl mx-auto">
-          Set your own hours, pick your preferred delivery zones, and receive instant daily payouts with 100% customer tips.
+          {t('partner.rider.subtitle')}
         </p>
       </div>
 
       {submitted ? (
         <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 border border-blue-500/30 text-center space-y-4 shadow-xl">
           <CheckCircle2 className="w-12 h-12 text-blue-500 mx-auto" />
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white">Application Received!</h3>
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white">{t('partner.rider.successTitle')}</h3>
           <p className="text-xs text-gray-500 max-w-md mx-auto">
-            Your rider profile is being processed. Download the rider app or click below to launch the rider dashboard.
+            {t('partner.rider.successDesc')}
           </p>
           <button
             onClick={() => navigate('/register')}
             className="bg-blue-600 text-white font-bold text-xs px-6 py-3 rounded-xl shadow hover:bg-blue-700 transition"
           >
-            Create Your Rider Account
+            {t('auth.createAccount')}
           </button>
         </div>
       ) : (
         <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 border border-gray-200 dark:border-slate-800 shadow-xl space-y-6">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white border-b pb-3 border-gray-100 dark:border-slate-800">
-            Rider Registration Form
+            {t('partner.rider.formTitle')}
           </h2>
 
           <form onSubmit={handleSubmit} className="space-y-4 text-xs">
             <div>
-              <label className="font-bold block mb-1">Full Name</label>
+              <label className="font-bold block mb-1">{t('partner.rider.fullName')}</label>
               <input
                 type="text"
                 required
@@ -67,13 +67,13 @@ export const BecomeRiderPage: React.FC = () => {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="font-bold block mb-1">Vehicle Type</label>
+                <label className="font-bold block mb-1">{t('partner.rider.vehicleType')}</label>
                 <select
                   value={vehicle}
                   onChange={(e) => setVehicle(e.target.value)}
                   className="w-full bg-gray-50 dark:bg-slate-800 border p-3 rounded-xl text-gray-900 dark:text-white"
                 >
-                  <option value="Bicycle">Bicycle</option>
+                  <option value="Bicycle">{t('common.small')}</option>
                   <option value="E-Bike">E-Bike</option>
                   <option value="Scooter / Moped">Scooter / Moped</option>
                   <option value="Motorcycle">Motorcycle</option>
@@ -82,7 +82,7 @@ export const BecomeRiderPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="font-bold block mb-1">Driver License / ID #</label>
+                <label className="font-bold block mb-1">{t('partner.rider.vehicleNumber')}</label>
                 <input
                   type="text"
                   required
@@ -96,7 +96,7 @@ export const BecomeRiderPage: React.FC = () => {
               type="submit"
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-4 rounded-xl transition shadow-xl"
             >
-              Submit Rider Registration
+              {t('partner.rider.submit')}
             </button>
           </form>
         </div>

@@ -7,22 +7,33 @@ interface BadgeProps {
   size?: 'sm' | 'md';
   className?: string;
   dot?: boolean;
+  icon?: ReactNode;
 }
 
-export function Badge({ children, variant = 'default', size = 'sm', className, dot }: BadgeProps) {
+export function Badge({ children, variant = 'default', size = 'sm', className, dot, icon }: BadgeProps) {
   const variants: Record<string, string> = {
-    default: 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300',
-    success: 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400',
-    warning: 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
-    danger: 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400',
-    info: 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400',
-    brand: 'bg-gradient-to-r from-emerald-500/10 to-emerald-600/10 text-emerald-700 dark:text-emerald-400',
-    outline: 'border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-300 bg-transparent',
+    default: 'bg-surface-3 text-ink-2 dark:bg-slate-800 dark:text-slate-300',
+    success: 'bg-ok-soft text-ok dark:bg-ok-soft',
+    warning: 'bg-warn-soft text-warn dark:bg-warn-soft',
+    danger: 'bg-danger-soft text-danger dark:bg-danger-soft',
+    info: 'bg-info-soft text-info dark:bg-info-soft',
+    brand: 'bg-primary-soft text-primary dark:bg-primary-soft',
+    outline: 'border border-line-strong text-ink-2 dark:border-slate-600 dark:text-slate-300 bg-transparent',
   };
-  const sizes: Record<string, string> = { sm: 'px-2 py-0.5 text-xs', md: 'px-3 py-1 text-sm' };
+  const sizes: Record<string, string> = { sm: 'px-2 py-0.5 text-[11px]', md: 'px-3 py-1 text-sm' };
+  const dotColor: Record<string, string> = {
+    success: 'bg-ok',
+    warning: 'bg-warn',
+    danger: 'bg-danger',
+    info: 'bg-info',
+    brand: 'bg-primary',
+    default: 'bg-ink-3',
+    outline: 'bg-ink-3',
+  };
   return (
-    <span className={cn('inline-flex items-center gap-1.5 font-medium rounded-full', variants[variant], sizes[size], className)}>
-      {dot && <span className={cn('w-1.5 h-1.5 rounded-full', variant === 'success' ? 'bg-emerald-500' : variant === 'warning' ? 'bg-amber-500' : variant === 'danger' ? 'bg-red-500' : 'bg-gray-400')} />}
+    <span className={cn('inline-flex items-center gap-1.5 font-semibold rounded-full', variants[variant], sizes[size], className)}>
+      {dot && <span className={cn('w-1.5 h-1.5 rounded-full', dotColor[variant])} />}
+      {icon}
       {children}
     </span>
   );

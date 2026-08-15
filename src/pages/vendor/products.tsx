@@ -99,43 +99,45 @@ export function VendorProductsPage() {
     input.click();
   };
 
-  const stats = [
-    { label: 'Total Meals', value: vendorProducts.length, change: 'Active on menu', icon: UtensilsCrossed },
-    { label: 'In Stock', value: vendorProducts.filter(p => p.stock > 0).length, change: 'Available now', icon: Tag },
-    { label: 'Low Stock', value: vendorProducts.filter(p => p.stock < 10 && p.stock > 0).length, change: 'Needs restock', icon: Layers },
-    { label: 'Out of Stock', value: vendorProducts.filter(p => p.stock === 0).length, change: 'Hidden from app', icon: X },
-  ];
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 pb-20">
+      {/* ============ HERO HEADER ============ */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-        className="flex items-start justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 dark:text-white">Menu Management</h1>
-          <p className="text-sm text-gray-500 mt-1 font-medium">Create, edit and manage availability of your Ghanaian dishes.</p>
-        </div>
-        <Button className="rounded-xl bg-purple-600 hover:bg-purple-700 h-12 px-6 font-bold shadow-lg shadow-purple-600/20" onClick={() => { setEditingId(null); setForm(initialForm); setShowAddModal(true); }}>
-          <Plus className="w-5 h-5 mr-2" /> Add New Meal
-        </Button>
-      </motion.div>
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-purple-950 p-6 sm:p-8 text-white shadow-xl shadow-purple-900/20">
+        <div className="absolute inset-0 bg-grid opacity-5" />
+        <div className="absolute -top-24 -right-20 w-80 h-80 rounded-full bg-purple-600/30 blur-3xl" />
+        <div className="relative z-10">
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                  <UtensilsCrossed className="w-3 h-3 text-amber-300" /> Menu Manager
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight mt-3">Menu Management</h1>
+              <p className="text-sm text-slate-300 font-medium mt-1">Create, edit and manage availability of your Ghanaian dishes.</p>
+            </div>
+            <Button className="rounded-2xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 h-12 px-6 font-black text-xs uppercase tracking-widest shadow-lg shadow-violet-600/20" onClick={() => { setEditingId(null); setForm(initialForm); setShowAddModal(true); }}>
+              <Plus className="w-5 h-5 mr-2" /> Add New Meal
+            </Button>
+          </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {stats.map((s, i) => (
-          <motion.div key={s.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
-            <Card className="rounded-[1.5rem] border-gray-100 dark:border-slate-800 shadow-sm">
-              <CardContent className="p-5 flex items-center gap-4">
-                <div className="p-3 rounded-2xl bg-gray-50 dark:bg-slate-800/50 text-purple-500">
-                  <s.icon className="w-6 h-6" />
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none mb-1.5">{s.label}</p>
-                  <p className="text-2xl font-black text-gray-900 dark:text-white leading-none">{s.value}</p>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
-      </div>
+          <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 divide-x divide-white/10 rounded-2xl bg-white/5 border border-white/10 overflow-hidden backdrop-blur">
+            {[
+              { label: 'Total Meals', value: vendorProducts.length, icon: UtensilsCrossed, cls: 'text-violet-300' },
+              { label: 'In Stock', value: vendorProducts.filter(p => p.stock > 0).length, icon: Tag, cls: 'text-emerald-300' },
+              { label: 'Low Stock', value: vendorProducts.filter(p => p.stock < 10 && p.stock > 0).length, icon: Layers, cls: 'text-amber-300' },
+              { label: 'Out of Stock', value: vendorProducts.filter(p => p.stock === 0).length, icon: X, cls: 'text-rose-300' },
+            ].map(s => (
+              <div key={s.label} className="px-4 py-4 flex flex-col items-center gap-1.5">
+                <s.icon className={`w-4 h-4 ${s.cls}`} />
+                <p className="text-xl font-black leading-none">{s.value}</p>
+                <p className="text-[8px] font-black uppercase tracking-widest text-slate-300/80 text-center">{s.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </motion.div>
 
       <Card className="rounded-[2rem] border-gray-100 dark:border-slate-800 shadow-sm overflow-hidden">
         <CardHeader className="p-6 border-b border-gray-50 dark:border-slate-800 flex flex-row items-center justify-between">
@@ -282,9 +284,9 @@ className="w-full resize-y bg-gray-50 dark:bg-slate-800 border-2 border-transpar
                 </div>
               </div>
 
-              <div className="p-8 border-t border-gray-50 dark:border-slate-800 flex gap-4 bg-gray-50/50 dark:bg-slate-950/20">
+              <div className="p-6 border-t border-gray-50 dark:border-slate-800 flex gap-4 bg-gray-50/50 dark:bg-slate-950/20">
                 <Button variant="outline" className="flex-1 rounded-2xl h-14 font-black uppercase tracking-widest" onClick={() => setShowAddModal(false)}>CANCEL</Button>
-                <Button className="flex-1 rounded-2xl h-14 bg-purple-600 hover:bg-purple-700 font-black uppercase tracking-widest shadow-xl shadow-purple-600/20" onClick={handleSave}>
+                <Button className="flex-1 rounded-2xl h-14 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 font-black uppercase tracking-widest shadow-xl shadow-violet-600/20" onClick={handleSave}>
                   {editingId ? 'UPDATE MEAL' : 'ADD TO MENU'}
                 </Button>
               </div>

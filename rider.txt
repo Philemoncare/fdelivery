@@ -1,0 +1,56 @@
+﻿5515:     };
+5516:     db.users.push(user);
+5517:     db.wallets.push({ userId: ownerId, balance: 0, currency: 'GHS' });
+5518:   }
+5519: 
+5520:   logAudit(actor, 'Vendor created', 'vendor', vendor.id, 'success', { name: vendor.name, email });
+5521:   res.status(201).json(vendor);
+5522: });
+5523: 
+5524: // Remove a restaurant permanently (admin only)
+5525: app.delete('/api/vendors/:id', requireAdmin, requirePermission('restaurants:delete'), (req, res) => {
+5526:   const actor = (req as any).currentUser;
+5527:   const idx = db.vendors.findIndex(v => v.id === req.params.id);
+5528:   if (idx === -1) return res.status(404).json({ error: 'Vendor not found' });
+5529:   const removed = db.vendors[idx];
+5530:   db.vendors.splice(idx, 1);
+5531:   db.products = db.products.filter(p => p.vendorId !== req.params.id);
+5532:   logAudit(actor, 'Vendor deleted', 'vendor', removed.id, 'success', { name: removed.name });
+5533:   res.json({ success: true });
+5534: });
+5535: 
+5536: // Update a rider's profile record (approval/verification, availability, profile)
+5537: app.patch('/api/riders/:id', (req, res) => {
+5538:   const rider = db.riders.find(r => r.id === req.params.id || r.userId === req.params.id);
+5539:   if (!rider) return res.status(404).json({ error: 'Rider not found' });
+5540: 
+5541:   const currentUserId = getAuthUserId(req);
+5542:   const currentUser = currentUserId ? db.users.find((u: any) => u.id === currentUserId) : null;
+5543:   const isAdmin = currentUser && ['administrator', 'super-administrator'].includes(currentUser.role);
+5544:   const isOwner = currentUser && (rider.userId === currentUser.id || rider.id === currentUser.id);
+5545:   if (!isAdmin && !isOwner) return res.status(403).json({ error: 'Forbidden' });
+5546:   if (isAdmin && !userHasPermission(currentUser, 'riders:approve')) {
+5547:     return res.status(403).json({ success: false, message: 'You do not have permission to change rider status' });
+5548:   }
+5549: 
+5550:   const updates = req.body.body ?? req.body;
+5551:   Object.assign(rider, updates);
+5552:   if (updates.verificationStatus === 'verified') rider.isVerified = true;
+5553:   if (updates.verificationStatus === 'rejected') rider.isVerified = false;
+5554: 
+5555:   // Sync the rider's user account so a verified rider can log in
+5556:   const user = db.users.find(u => u.id === rider.userId);
+5557:   if (user && updates.verificationStatus) {
+5558:     user.isApproved = updates.verificationStatus === 'verified';
+5559:   }
+5560: 
+5561:   const actor = (req as any).currentUser || currentUser;
+5562:   if (actor && updates.verificationStatus && updates.verificationStatus !== rider.verificationStatus) {
+5563:     logAudit(actor, `Rider ${updates.verificationStatus}`, 'rider', rider.id, 'success', { name: rider.name });
+5564:   }
+5565:   if (user && updates.verificationStatus === 'verified') {
+5566:     notifyUser(user.id, 'Rider Account Verified', 'Your rider account has been verified. You can now go online.',
+5567:       { type: 'RIDER_APPROVED', category: 'account', priority: 'IMPORTANT', relatedUserId: user.id, action: `/rider/profile`, dedupeKey: `rider-verified:${rider.id}:${user.id}` });
+5568:     queueEmail({
+5569:       to: user.email,
+5570:       template: 'rider_verified',

@@ -1,0 +1,41 @@
+﻿1920|      logAudit(user, 'Account locked', 'user', user.id, 'success', { reason: 'Too many failed login attempts' });
+1921|      return res.status(403).json({ success: false, message: 'Too many failed attempts. Account locked for the configured period.' });
+1922|    }
+1923|    return res.status(401).json({ success: false, message: 'Invalid email/phone or password' });
+1924|  }
+1925|
+1926|  // Reset attempts on success
+1927|  user.loginAttempts = 0;
+1928|  user.lockedUntil = 0;
+1929|  user.loginIps = [];
+1930|
+1931|  if (portal === 'admin' && !['administrator', 'super-administrator'].includes(user.role)) {
+1932|    return res.status(403).json({ success: false, message: 'Access restricted' });
+1933|  }
+1934|
+1935|  if (user.isSuspended) {
+1936|    recordSecurityEvent({ type: 'FAILED_LOGIN', severity: 'MEDIUM', endpoint: '/api/auth/login', account: user.email, userId: user.id, ip: ctx.ip, detection: 'Login attempt against a suspended account.', actionTaken: 'Rejected', status: 'monitoring', req });
+1937|    return res.status(403).json({ success: false, message: 'Account is suspended' });
+1938|  }
+1939|
+1940|  // Enforce approval for Vendors and Riders
+1941|  if ((user.role === 'vendor' || user.role === 'rider') && !user.isApproved) {
+1942|    return res.status(403).json({ success: false, message: 'Your account is pending approval.' });
+1943|  }
+1944|
+1945|  // Device / behaviour monitoring on the credential stage (OTP is the second factor).
+1946|  const priorSessions = (db.sessions || []).filter((s: any) => s.userId === user.id && !s.revokedAt);
+1947|  const seenDevice = priorSessions.some((s: any) => s.deviceId === ctx.device.deviceId);
+1948|  if (!seenDevice) {
+1949|    recordSecurityEvent({ type: 'NEW_DEVICE_LOGIN', severity: 'MEDIUM', endpoint: '/api/auth/login', account: user.email, userId: user.id, ip: ctx.ip, detection: 'Sign-in from a device not previously used by this account.', actionTaken: 'Requiring OTP; flagged for review', status: 'monitoring', req, details: { device: ctx.device.deviceName } });
+1950|  }
+1951|  if (['administrator', 'super-administrator'].includes(user.role) && (!seenDevice || priorSessions.length >= 4)) {
+1952|    recordSecurityEvent({ type: 'ABNORMAL_ADMIN_LOGIN', severity: 'MEDIUM', endpoint: '/api/auth/login', account: user.email, userId: user.id, ip: ctx.ip, detection: 'Administrator sign-in from an unusual device or with many active sessions.', actionTaken: 'Additional verification required', status: 'monitoring', req, details: { activeSessions: priorSessions.length, device: ctx.device.deviceName } });
+1953|  }
+1954|
+1955|  // SEND LOGIN OTP AS REQUESTED (this is the second factor for every login).
+1956|  const code = generateOtp();
+1957|  storeOtp(user.email.toLowerCase(), code);
+1958|  queueEmail({ to: user.email, template: 'otp', data: { code } });
+1959|  console.log(`[OTP] Login code for ${user.email} sent (demo code 123456 also works)`);
+1960|

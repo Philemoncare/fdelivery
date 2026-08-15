@@ -34,7 +34,9 @@ interface EmailServiceConfig {
   inspectorUrl?: string;
 }
 
-let smtp: nodemailer.TransportOptions = {};
+// Nodemailer's public type is intentionally broad across supported transports.
+// Keep this internal config flexible while createTransport validates it at use.
+let smtp: any = {};
 
 function buildTransporter(): Transporter {
   const c = getConfig();

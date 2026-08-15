@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '@/src/lib/auth/auth-store';
@@ -11,17 +11,22 @@ import {
   Wallet,
   CheckCircle2,
   MapPin,
-  Tag,
   ArrowRight,
   Clock,
   AlertCircle,
   Smartphone,
   Package,
-  Star
+  Star,
+  RefreshCw,
+  Store,
+  Loader2
 } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { VendorService, PaymentService } from '@/src/services/api';
+import { LocationSearch } from '../common/LocationSearch';
+import type { DeliveryLocation } from '@/src/types';
 
 export const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
@@ -44,31 +49,94 @@ export const CheckoutPage: React.FC = () => {
     removeCoupon,
     placeOrder,
     customerProfile,
+    addAddress,
     isLoading,
     setSelectedOrder,
-    vendors,
     showToast,
     deliveryFee,
     estimatedTax,
     discountAmount,
-    grandTotal
+    grandTotal,
+    t
   } = useApp();
 
   const [step, setStep] = useState<1 | 2 | 3>(1); // 1: Address & Rider, 2: Payment, 3: Success
   const [deliveryMethod, setDeliveryMethod] = useState<'delivery' | 'pickup'>('delivery');
-  const [paymentMethod, setPaymentMethod] = useState<string>('MTN MoMo');
-  const [selectedAddress, setSelectedAddress] = useState<string>('');
+  const [paymentMethod, setPaymentMethod] = useState<string>('');
+  const [deliveryLocation, setDeliveryLocation] = useState<DeliveryLocation | null>(null);
   const [specialInstructions, setSpecialInstructions] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [placedOrder, setPlacedOrder] = useState<any>(null);
+  const [gateways, setGateways] = useState<any[]>([]);
+  const [gatewaysLoaded, setGatewaysLoaded] = useState(false);
+  const submitLockRef = useRef(false);
+
+  // Vendor availability state: 'checking' | 'available' | 'unavailable' | 'unknown'
+  const [availability, setAvailability] = useState<'checking' | 'available' | 'unavailable' | 'unknown'>('checking');
+
+  const cartVendorId = cart.length > 0 ? cart[0].product.vendorId : null;
+
+  const checkVendorAvailability = useCallback(async () => {
+    if (!cartVendorId) {
+      setAvailability('unknown');
+      return;
+    }
+    setAvailability('checking');
+    try {
+      const vendor = await VendorService.getById(cartVendorId);
+      const status = getVendorOperationalStatus(vendor);
+      setAvailability(status === 'OPEN' || status === 'BUSY' ? 'available' : 'unavailable');
+    } catch (err: any) {
+      setAvailability('unknown');
+    }
+  }, [cartVendorId]);
+
+  // Payment options come from the server's gateway configuration — the single
+  // source of truth. Only configured + enabled methods are shown as usable.
+  const availablePayments = useMemo(() => {
+    return (Array.isArray(gateways) ? gateways : [])
+      .filter((g: any) => g.configured && g.enabled)
+      .map((g: any) => {
+        const key = String((g.id || '') + ' ' + (g.name || '')).toLowerCase();
+        if (/wallet|omni/.test(key)) return { value: 'OmniWallet', label: `${t('nav.wallet')} (${formatPrice(customerProfile?.walletBalance ?? 0)})`, icon: <Wallet className="w-5 h-5" />, color: 'bg-emerald-600' };
+        if (/cod|cash on delivery/.test(key)) return { value: 'Cash on Delivery', label: t('common.paymentCash'), icon: <Smartphone className="w-5 h-5" />, color: 'bg-gray-700' };
+        if (/mtn/.test(key)) return { value: 'MTN MoMo', label: 'MTN Mobile Money', icon: 'MoMo', color: 'bg-amber-400' };
+        if (/telecel|vodafone/.test(key)) return { value: 'Telecel Cash', label: 'Telecel Cash', icon: 'Cash', color: 'bg-red-600' };
+        if (/airteltigo/.test(key)) return { value: 'AirtelTigo Money', label: 'AirtelTigo Money', icon: 'M', color: 'bg-blue-600' };
+        if (/card|visa|mastercard/.test(key)) return { value: g.id, label: `Bank Card (${g.name})`, icon: <CreditCard className="w-5 h-5" />, color: 'bg-blue-800' };
+        return { value: g.id, label: g.name, icon: <CreditCard className="w-5 h-5" />, color: 'bg-blue-800' };
+      });
+  }, [gateways, t, formatPrice, customerProfile?.walletBalance ?? 0]);
+
+  // Load the authoritative gateway list from the backend.
+  useEffect(() => {
+    PaymentService.getGateways()
+      .then(g => setGateways(Array.isArray(g) ? g : []))
+      .catch(() => setGateways([]))
+      .finally(() => setGatewaysLoaded(true));
+  }, []);
+
+  // Default the payment method to the first server-available option.
+  useEffect(() => {
+    if (!gatewaysLoaded) return;
+    if (availablePayments.length && !availablePayments.some(p => p.value === paymentMethod)) {
+      setPaymentMethod(availablePayments[0].value);
+    }
+  }, [gatewaysLoaded, availablePayments, paymentMethod]);
+
+  useEffect(() => {
+    if (step === 1) {
+      checkVendorAvailability();
+    }
+  }, [step, checkVendorAvailability]);
 
   // Initial address selection
   React.useEffect(() => {
-    if (customerProfile?.addresses?.length && !selectedAddress) {
+    if (!deliveryLocation && customerProfile?.addresses?.length) {
       const def = customerProfile.addresses.find(a => a.isDefault) || customerProfile.addresses[0];
-      setSelectedAddress(def?.address || '');
+      setDeliveryLocation({ address: def.address, area: def.address, city: def.city, latitude: def.latitude, longitude: def.longitude, source: 'saved' });
     }
-  }, [customerProfile, selectedAddress]);
+  }, [customerProfile, deliveryLocation]);
 
   // Default rider
   React.useEffect(() => {
@@ -85,36 +153,68 @@ export const CheckoutPage: React.FC = () => {
     </div>;
   }
 
-  const handlePlaceOrder = async () => {
-    if (cart.length === 0 || isSubmitting) return;
+  if (cart.length === 0) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-16 text-center space-y-6">
+        <div className="w-20 h-20 rounded-full bg-gray-100 dark:bg-slate-800 flex items-center justify-center mx-auto text-gray-400">
+          <Package className="w-10 h-10" />
+        </div>
+        <h1 className="text-2xl font-black text-gray-900 dark:text-white">{t('cart.empty')}</h1>
+        <p className="text-sm text-gray-500">{t('checkout.details')}</p>
+        <Button variant="brand" className="rounded-2xl py-6 font-black uppercase text-xs tracking-widest" onClick={() => navigate('/vendors')}>
+          {t('nav.restaurants')}
+        </Button>
+      </div>
+    );
+  }
 
-    const vendorId = cart[0].product.vendorId;
-    const vendor = vendors.find(v => v.id === vendorId);
-    if (vendor) {
-      const status = getVendorOperationalStatus(vendor);
-      if (status !== 'OPEN' && status !== 'BUSY') {
-        showToast('warning', 'Restaurant Unavailable', `Sorry, ${vendor.name} is currently ${status.replace('_', ' ')}.`);
-        return;
-      }
+  const handlePlaceOrder = async () => {
+    if (cart.length === 0 || isSubmitting || submitLockRef.current) return;
+    if (deliveryMethod === 'delivery' && !deliveryLocation?.address?.trim()) {
+      showToast('Delivery address required', t('checkout.addressRequired'), 'warning');
+      return;
     }
 
+    const vendorId = cart[0].product.vendorId;
+    if (availability === 'unavailable') {
+      showToast(t('checkout.unavailableTitle'), t('checkout.unavailableMessage'), 'error');
+      return;
+    }
+
+    submitLockRef.current = true;
     setIsSubmitting(true);
     try {
+      // Fresh availability re-check immediately before placing the order.
+      const vendor = await VendorService.getById(vendorId);
+      const status = getVendorOperationalStatus(vendor);
+      if (status !== 'OPEN' && status !== 'BUSY') {
+        setAvailability('unavailable');
+        showToast(t('checkout.unavailableTitle'), `Sorry, ${vendor.name} is currently ${status.replace('_', ' ')}.`, 'error');
+        return;
+      }
+      setAvailability('available');
+
       const order = await placeOrder({
         deliveryMethod,
         paymentMethod,
         specialInstructions: specialInstructions || 'No instructions',
         riderId: selectedRider?.id,
-        address: selectedAddress
+        address: deliveryLocation?.address || '',
+        customerLat: deliveryLocation?.latitude,
+        customerLng: deliveryLocation?.longitude,
+        city: deliveryLocation?.city,
+        country: deliveryLocation?.region,
+        location: deliveryLocation,
       });
       setPlacedOrder(order);
       setSelectedOrder(order);
       setStep(3); // Move to Success Step
       window.scrollTo(0, 0);
     } catch (err: any) {
-      showToast('error', 'Order Failed', err.message || 'Could not process your order.');
+      showToast('error', t('checkout.orderFailed'), err.message || 'Could not process your order.');
     } finally {
       setIsSubmitting(false);
+      submitLockRef.current = false;
     }
   };
 
@@ -127,39 +227,39 @@ export const CheckoutPage: React.FC = () => {
         </div>
 
         <div>
-          <h1 className="text-3xl font-black text-gray-900 dark:text-white">Order Placed Successfully!</h1>
-          <p className="text-gray-500 mt-2">Thank you, {customerProfile.name.split(' ')[0]}. Your delicious meal is on the way.</p>
+          <h1 className="text-3xl font-black text-gray-900 dark:text-white">{t('checkout.success')}</h1>
+          <p className="text-gray-500 mt-2">{t('checkout.successDesc')}</p>
         </div>
 
         <Card className="rounded-[2.5rem] border-gray-100 dark:border-slate-800 shadow-xl overflow-hidden bg-white dark:bg-slate-900">
           <div className="p-8 space-y-6">
             <div className="flex justify-between items-center border-b border-gray-100 dark:border-slate-800 pb-4">
-              <div className="text-left">
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Order ID</p>
+              <div className="text-start">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{t('checkout.orderId')}</p>
                 <p className="font-mono font-bold text-gray-900 dark:text-white">{placedOrder.orderNumber}</p>
               </div>
-              <Badge variant="success" className="rounded-xl px-4 py-1 font-black uppercase text-[10px] tracking-widest">Confirmed</Badge>
+              <Badge variant="success" className="rounded-xl px-4 py-1 font-black uppercase text-[10px] tracking-widest">{t('status.confirmed')}</Badge>
             </div>
 
-            <div className="grid grid-cols-2 gap-6 text-left">
+            <div className="grid grid-cols-2 gap-6 text-start">
               <div>
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Restaurant</p>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{t('msg.restaurant')}</p>
                 <p className="text-sm font-bold text-gray-900 dark:text-white">{placedOrder.vendorName}</p>
               </div>
               <div>
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Total Paid</p>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{t('orders.total')}</p>
                 <p className="text-sm font-black text-emerald-600">{formatPrice(placedOrder.totalAmount)}</p>
               </div>
             </div>
 
-            <div className="bg-gray-50 dark:bg-slate-800/50 rounded-2xl p-4 flex items-center gap-4 text-left">
+            <div className="bg-gray-50 dark:bg-slate-800/50 rounded-2xl p-4 flex items-center gap-4 text-start">
               <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-600 flex-shrink-0">
                 <Bike className="w-6 h-6" />
               </div>
               <div>
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Delivery Status</p>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{t('orders.status')}</p>
                 <p className="text-xs font-bold text-gray-700 dark:text-gray-300">
-                  {placedOrder.riderId ? `Assigned to ${selectedRider?.name || 'Rider'}` : 'Awaiting Assignment'}
+                  {placedOrder.riderId ? t('orders.assigningRider') : t('orders.findingRider')}
                 </p>
               </div>
             </div>
@@ -168,15 +268,15 @@ export const CheckoutPage: React.FC = () => {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Button variant="brand" className="rounded-2xl py-6 font-black uppercase text-xs tracking-widest shadow-lg" onClick={() => navigate(`/customer/orders/${placedOrder.id}`)}>
-            <Package className="w-4 h-4 mr-2" /> View Order Details
+            <Package className="w-4 h-4 mr-2" /> {t('orders.details')}
           </Button>
           <Button variant="outline" className="rounded-2xl py-6 font-black uppercase text-xs tracking-widest border-gray-200" onClick={() => navigate('/track-order')}>
-            <MapPin className="w-4 h-4 mr-2" /> Track Delivery
+            <MapPin className="w-4 h-4 mr-2" /> {t('checkout.track')}
           </Button>
         </div>
 
         <button onClick={() => navigate('/')} className="text-xs font-black text-emerald-600 uppercase tracking-[0.2em] hover:underline">
-          Back to Marketplace
+          {t('auth.forgot.backToLogin')}
         </button>
       </div>
     );
@@ -194,9 +294,9 @@ export const CheckoutPage: React.FC = () => {
             <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/20">
               <ShieldCheck className="w-7 h-7" />
             </div>
-            Checkout
+            {t('checkout.title')}
           </h1>
-          <p className="text-sm text-gray-500 mt-1 ml-1">Complete your food order from {cart[0]?.product.vendorName || 'Takoradi'}</p>
+          <p className="text-sm text-gray-500 mt-1 ms-1">Complete your food order from {cart[0]?.product.vendorName || 'Takoradi'}</p>
         </div>
         <div className="flex bg-gray-100 dark:bg-slate-800 p-1 rounded-2xl shadow-inner">
           {[1, 2].map((s) => (
@@ -207,11 +307,40 @@ export const CheckoutPage: React.FC = () => {
                 step === s ? "bg-white dark:bg-slate-700 text-emerald-600 shadow-sm" : "text-gray-400"
               )}
             >
-              Step {s}
+              {t('checkout.step')} {s}
             </div>
           ))}
         </div>
       </div>
+
+      {/* Vendor availability banner */}
+      {cart.length > 0 && availability === 'checking' && (
+        <div className="flex items-center gap-3 p-4 rounded-2xl bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-800 text-gray-500">
+          <Loader2 className="w-5 h-5 animate-spin text-emerald-600" />
+          <p className="text-[11px] font-bold uppercase tracking-widest">{t('checkout.checkingAvailability')}</p>
+        </div>
+      )}
+      {cart.length > 0 && availability === 'unavailable' && (
+        <div className="flex items-center gap-3 p-4 rounded-2xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 text-red-600">
+          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-[11px] font-black uppercase tracking-widest">{t('checkout.unavailableTitle')}</p>
+            <p className="text-[10px] font-medium text-red-500 mt-0.5">{t('checkout.unavailableMessage')}</p>
+          </div>
+          <Button variant="outline" size="sm" className="rounded-xl text-[9px] font-black uppercase tracking-widest border-red-200 text-red-600" onClick={checkVendorAvailability}>
+            <RefreshCw className="w-3 h-3 me-1.5" /> {t('checkout.recheck')}
+          </Button>
+        </div>
+      )}
+      {cart.length > 0 && availability === 'unknown' && (
+        <div className="flex items-center gap-3 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 text-amber-600">
+          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          <p className="flex-1 text-[11px] font-bold uppercase tracking-widest">{t('checkout.availabilityUnknown')}</p>
+          <Button variant="outline" size="sm" className="rounded-xl text-[9px] font-black uppercase tracking-widest border-amber-200 text-amber-600" onClick={checkVendorAvailability}>
+            <RefreshCw className="w-3 h-3 me-1.5" /> {t('checkout.retry')}
+          </Button>
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-[1fr_350px] gap-8 items-start">
 
@@ -221,7 +350,7 @@ export const CheckoutPage: React.FC = () => {
               {/* Delivery Choice */}
               <Card className="rounded-[2.5rem] border-gray-100 dark:border-slate-800 shadow-sm p-6 sm:p-8 space-y-6">
                 <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] flex items-center gap-2">
-                  <MapPin className="w-4 h-4" /> Delivery Details
+                  <MapPin className="w-4 h-4" /> {t('checkout.details')}
                 </h3>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -229,36 +358,60 @@ export const CheckoutPage: React.FC = () => {
                     className={cn("p-4 rounded-2xl border-2 flex flex-col items-center gap-2 transition-all",
                       deliveryMethod === 'delivery' ? "border-emerald-500 bg-emerald-50/20 text-emerald-700" : "border-gray-50 bg-gray-50 text-gray-400")}>
                     <Bike className="w-6 h-6" />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Doorstep</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest">{t('checkout.delivery')}</span>
                   </button>
                   <button onClick={() => setDeliveryMethod('pickup')}
                     className={cn("p-4 rounded-2xl border-2 flex flex-col items-center gap-2 transition-all",
                       deliveryMethod === 'pickup' ? "border-emerald-500 bg-emerald-50/20 text-emerald-700" : "border-gray-50 bg-gray-50 text-gray-400")}>
                     <Clock className="w-6 h-6" />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Pickup</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest">{t('checkout.pickup')}</span>
                   </button>
                 </div>
 
                 {deliveryMethod === 'delivery' && (
                   <div className="space-y-4 pt-2 animate-in slide-in-from-top-2 duration-300">
                     <div className="space-y-2">
-                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Select Saved Address</label>
-                      <div className="space-y-2">
-                        {customerProfile.addresses.map((a) => (
-                          <button key={a.id} onClick={() => setSelectedAddress(a.address)}
-                            className={cn("w-full p-4 rounded-2xl border-2 text-left flex items-center justify-between group transition-all",
-                              selectedAddress === a.address ? "border-emerald-500 bg-white dark:bg-slate-800" : "border-gray-100 bg-gray-50/50 hover:border-emerald-300")}>
-                            <div>
-                               <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-0.5">{a.title}</p>
-                               <p className="text-xs font-bold text-gray-900 dark:text-white">{a.address}</p>
-                            </div>
-                            {selectedAddress === a.address && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
-                          </button>
-                        ))}
-                      </div>
+                      <LocationSearch
+                        id="checkout-delivery-location"
+                        label={t('checkout.savedAddress')}
+                        placeholder="Search or enter your delivery location…"
+                        hint="Search, use your current location, or enter an address manually."
+                        value={deliveryLocation}
+                        onChange={(loc) => setDeliveryLocation(loc)}
+                        allowCurrentLocation
+                        savedOptions={(customerProfile.addresses || []).map((a) => ({
+                          address: a.address,
+                          area: a.address,
+                          city: a.city,
+                          latitude: a.latitude,
+                          longitude: a.longitude,
+                          source: 'saved' as const,
+                        }))}
+                        allowSave
+                        onSave={async (loc) => {
+                          await addAddress({
+                            title: loc.area || 'Saved location',
+                            address: loc.address,
+                            latitude: loc.latitude ?? undefined,
+                            longitude: loc.longitude ?? undefined,
+                            city: loc.city,
+                            isDefault: false,
+                          });
+                          return true;
+                        }}
+                      />
+                      {deliveryLocation?.address && (
+                        <div className="flex items-center gap-2.5 p-3.5 rounded-2xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-900/40">
+                          <MapPin className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-0.5">Delivering to</p>
+                            <p className="text-xs font-bold text-emerald-800 dark:text-emerald-200 truncate">{deliveryLocation.address}</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Special Note for Rider</label>
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ms-1">{t('deliver.instructions')}</label>
                       <input type="text" value={specialInstructions} onChange={e => setSpecialInstructions(e.target.value)} placeholder="e.g. Ring doorbell or leave at gate" className="w-full bg-gray-50 dark:bg-slate-800 p-4 rounded-2xl text-xs font-bold border-2 border-transparent focus:border-emerald-500 focus:bg-white outline-none transition-all" />
                     </div>
                   </div>
@@ -270,15 +423,15 @@ export const CheckoutPage: React.FC = () => {
                 <Card className="rounded-[2.5rem] border-gray-100 dark:border-slate-800 shadow-sm p-6 sm:p-8 space-y-6">
                   <div className="flex items-center justify-between">
                     <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] flex items-center gap-2">
-                      <Bike className="w-4 h-4" /> Dispatch Rider
+                      <Bike className="w-4 h-4" /> {t('common.rider')}
                     </h3>
-                    <Badge variant="outline" className="text-[8px] font-black uppercase border-gray-200">Nearby Fleet Only</Badge>
+                    <Badge variant="outline" className="text-[8px] font-black uppercase border-gray-200">{t('checkout.nearbyFleet')}</Badge>
                   </div>
 
                   <div className="grid sm:grid-cols-2 gap-3">
                     {(activeRiders.length ? activeRiders : riders.slice(0, 4)).map((r) => (
                       <button key={r.id} onClick={() => setSelectedRider(r)}
-                        className={cn("p-4 rounded-3xl border-2 flex items-center gap-4 text-left transition-all",
+                        className={cn("p-4 rounded-3xl border-2 flex items-center gap-4 text-start transition-all",
                           selectedRider?.id === r.id ? "border-emerald-500 bg-white dark:bg-slate-800 shadow-md ring-4 ring-emerald-500/5" : "border-gray-50 bg-gray-50/50 hover:border-emerald-200")}>
                         <img src={r.avatar} className="w-12 h-12 rounded-xl object-cover shadow-sm" />
                         <div className="flex-1 min-w-0">
@@ -288,7 +441,7 @@ export const CheckoutPage: React.FC = () => {
                             <span>{r.vehicleType}</span>
                           </div>
                         </div>
-                        <div className="text-right">
+                        <div className="text-end">
                           <p className="text-[10px] font-black text-emerald-600">{formatPrice(r.deliveryFee)}</p>
                           <p className="text-[8px] text-gray-400 uppercase">{r.etaMinutes}m ETA</p>
                         </div>
@@ -298,8 +451,8 @@ export const CheckoutPage: React.FC = () => {
                 </Card>
               )}
 
-              <Button className="w-full rounded-[1.75rem] py-8 bg-gray-900 text-white font-black uppercase tracking-[0.2em] text-xs shadow-xl active:scale-[0.98] transition-all" onClick={() => setStep(2)}>
-                Continue to Payment <ArrowRight className="w-4 h-4 ml-2" />
+              <Button className="w-full rounded-[1.75rem] py-8 bg-gray-900 text-white font-black uppercase tracking-[0.2em] text-xs shadow-xl active:scale-[0.98] transition-all" onClick={() => setStep(2)} disabled={availability === 'checking' || availability === 'unavailable'}>
+                {availability === 'checking' ? t('checkout.checkingAvailability') : t('common.continue')} <ArrowRight className="w-4 h-4 ms-2 rtl:rotate-180" />
               </Button>
             </>
           ) : (
@@ -307,40 +460,45 @@ export const CheckoutPage: React.FC = () => {
               {/* Payment Selection */}
               <Card className="rounded-[2.5rem] border-gray-100 dark:border-slate-800 shadow-sm p-6 sm:p-8 space-y-8">
                 <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] flex items-center gap-2">
-                  <CreditCard className="w-4 h-4" /> Payment Selection
+                  <CreditCard className="w-4 h-4" /> {t('checkout.payment')}
                 </h3>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {[
-                    { id: 'MTN MoMo', label: 'MTN Mobile Money', icon: 'MoMo', color: 'bg-amber-400' },
-                    { id: 'Telecel Cash', label: 'Telecel Cash', icon: 'Cash', color: 'bg-red-600' },
-                    { id: 'AirtelTigo Money', label: 'AirtelTigo Money', icon: 'M', color: 'bg-blue-600' },
-                    { id: 'Visa', label: 'Bank Card / Visa', icon: <CreditCard className="w-5 h-5" />, color: 'bg-blue-800' },
-                    { id: 'OmniWallet', label: `OmniWallet (${formatPrice(customerProfile.walletBalance)})`, icon: <Wallet className="w-5 h-5" />, color: 'bg-emerald-600' },
-                    { id: 'Cash on Delivery', label: 'Cash on Delivery', icon: <Smartphone className="w-5 h-5" />, color: 'bg-gray-700' },
-                  ].map((pm) => (
-                    <button key={pm.id} onClick={() => setPaymentMethod(pm.id)}
-                      className={cn("p-5 rounded-[2rem] border-2 flex items-center gap-4 text-left transition-all relative overflow-hidden group",
-                        paymentMethod === pm.id ? "border-emerald-500 bg-white dark:bg-slate-800 shadow-md" : "border-gray-50 bg-gray-50/50 hover:border-emerald-200")}>
-                      <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center text-[10px] font-black text-white shadow-lg", pm.color)}>
-                        {pm.icon}
-                      </div>
-                      <span className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-tight">{pm.label}</span>
-                      {paymentMethod === pm.id && <CheckCircle2 className="w-5 h-5 text-emerald-500 ml-auto" />}
-                    </button>
-                  ))}
+                  {!gatewaysLoaded ? (
+                    <div className="col-span-full p-8 text-center">
+                      <Loader2 className="w-5 h-5 animate-spin mx-auto text-emerald-600" />
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-2">Loading payment options…</p>
+                    </div>
+                  ) : availablePayments.length === 0 ? (
+                    <div className="col-span-full p-8 text-center border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-3xl">
+                      <p className="text-xs font-black text-gray-500 uppercase tracking-widest">No payment methods are currently available</p>
+                      <p className="text-[11px] text-gray-400 mt-1">Please try again later or contact support.</p>
+                    </div>
+                  ) : (
+                    availablePayments.map((pm) => (
+                      <button key={pm.value} onClick={() => setPaymentMethod(pm.value)}
+                        className={cn("p-5 rounded-[2rem] border-2 flex items-center gap-4 text-start transition-all relative overflow-hidden group",
+                          paymentMethod === pm.value ? "border-emerald-500 bg-white dark:bg-slate-800 shadow-md" : "border-gray-50 bg-gray-50/50 hover:border-emerald-200")}>
+                        <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center text-[10px] font-black text-white shadow-lg", pm.color)}>
+                          {pm.icon}
+                        </div>
+                        <span className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-tight">{pm.label}</span>
+                        {paymentMethod === pm.value && <CheckCircle2 className="w-5 h-5 text-emerald-500 ms-auto" />}
+                      </button>
+                    ))
+                  )}
                 </div>
 
                 <div className="p-5 rounded-2xl bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/40 flex items-start gap-4">
                   <ShieldCheck className="w-6 h-6 text-blue-500 flex-shrink-0" />
-                  <p className="text-[11px] text-blue-600 dark:text-blue-300 font-medium leading-relaxed uppercase tracking-widest">Transactions are processed securely in Ghana Cedis (GH₵). Your payment data is never stored on our servers.</p>
+                  <p className="text-[11px] text-blue-600 dark:text-blue-300 font-medium leading-relaxed uppercase tracking-widest">{t('checkout.secureNotice')}</p>
                 </div>
               </Card>
 
               <div className="flex gap-3">
-                 <Button variant="outline" className="rounded-2xl py-8 px-8 font-black uppercase text-xs tracking-widest border-gray-200" onClick={() => setStep(1)}>Back</Button>
-                 <Button className="flex-1 rounded-2xl py-8 bg-emerald-500 hover:bg-emerald-600 text-white font-black uppercase tracking-[0.2em] text-xs shadow-xl shadow-emerald-500/20" onClick={handlePlaceOrder} disabled={isSubmitting}>
-                   {isSubmitting ? 'Processing Order...' : 'Confirm & Place Order'}
+                 <Button variant="outline" className="rounded-2xl py-8 px-8 font-black uppercase text-xs tracking-widest border-gray-200" onClick={() => setStep(1)}>{t('common.back')}</Button>
+                 <Button className="flex-1 rounded-2xl py-8 bg-emerald-500 hover:bg-emerald-600 text-white font-black uppercase tracking-[0.2em] text-xs shadow-xl shadow-emerald-500/20" onClick={handlePlaceOrder} disabled={isSubmitting || availability === 'checking' || availability === 'unavailable' || !paymentMethod}>
+                   {isSubmitting ? t('common.loading') : availability === 'checking' ? t('checkout.checkingAvailability') : t('checkout.placeOrder')}
                  </Button>
               </div>
             </>
@@ -350,9 +508,9 @@ export const CheckoutPage: React.FC = () => {
         {/* Sidebar Summary */}
         <aside className="space-y-6">
           <Card className="rounded-[2.5rem] border-none bg-white dark:bg-slate-900 shadow-2xl p-8 space-y-6 border border-gray-100 dark:border-slate-800 lg:sticky lg:top-24">
-            <h3 className="font-black text-xl uppercase tracking-widest border-b pb-4">My Order</h3>
+            <h3 className="font-black text-xl uppercase tracking-widest border-b pb-4">{t('cart.summary')}</h3>
 
-            <div className="space-y-4 max-h-64 overflow-y-auto pr-2 scrollbar-none">
+            <div className="space-y-4 max-h-64 overflow-y-auto pe-2 scrollbar-none">
               {cart.map(item => (
                 <div key={item.product.id} className="flex items-center gap-3">
                    <div className="w-12 h-12 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
@@ -368,25 +526,25 @@ export const CheckoutPage: React.FC = () => {
 
             <div className="space-y-3 pt-4 border-t border-dashed">
               <div className="flex justify-between text-xs font-bold text-gray-500 uppercase tracking-widest">
-                <span>Subtotal</span>
+                <span>{t('cart.subtotal')}</span>
                 <span className="text-gray-900 dark:text-white">{formatPrice(cartTotal)}</span>
               </div>
               <div className="flex justify-between text-xs font-bold text-gray-500 uppercase tracking-widest">
-                <span>Tax & Service</span>
+                <span>{t('cart.tax')}</span>
                 <span className="text-gray-900 dark:text-white">{formatPrice(estimatedTax)}</span>
               </div>
               <div className="flex justify-between text-xs font-bold text-gray-500 uppercase tracking-widest">
-                <span>Delivery Fee</span>
+                <span>{t('cart.deliveryFee')}</span>
                 <span className="text-emerald-600">{formatPrice(deliveryFee)}</span>
               </div>
               {discountAmount > 0 && (
                 <div className="flex justify-between text-xs font-bold text-emerald-600 uppercase tracking-widest">
-                  <span>Promo Discount</span>
+                  <span>{t('cart.promo')}</span>
                   <span>-{formatPrice(discountAmount)}</span>
                 </div>
               )}
               <div className="pt-4 border-t border-gray-100 dark:border-slate-800 flex justify-between items-center">
-                <span className="text-sm font-black uppercase tracking-[0.2em]">Total</span>
+                <span className="text-sm font-black uppercase tracking-[0.2em]">{t('cart.total')}</span>
                 <span className="text-2xl font-black text-emerald-600">{formatPrice(grandTotal)}</span>
               </div>
             </div>
@@ -398,7 +556,7 @@ export const CheckoutPage: React.FC = () => {
 
           <div className="flex items-start gap-4 p-6 bg-gray-50 dark:bg-slate-800/30 rounded-[2rem] border border-gray-100 dark:border-slate-800">
              <AlertCircle className="w-6 h-6 text-gray-400 flex-shrink-0" />
-             <p className="text-[10px] text-gray-500 font-medium leading-relaxed">Estimated delivery time is 35-45 minutes. Our dispatch riders prioritize safety first.</p>
+             <p className="text-[10px] text-gray-500 font-medium leading-relaxed">{t('checkout.etaNotice')}</p>
           </div>
         </aside>
 

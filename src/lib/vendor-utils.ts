@@ -2,12 +2,28 @@ import { Vendor } from '../types';
 
 export type VendorOperationalStatus = 'OPEN' | 'CLOSED' | 'OPENING_SOON' | 'TEMPORARILY_PAUSED' | 'BUSY';
 
+/**
+ * Decide whether a restaurant is currently accepting orders.
+ *
+ * Availability is decided by explicit signals only:
+ *  - Account status gates everything: only `active` vendors take orders.
+ *  - `isKitchenOpen === false` or `isOpen === false` (explicit pause/close)
+ *    marks the vendor as not accepting orders.
+ *  - Missing/undefined `isOpen` / `isKitchenOpen` on an active vendor is NOT a
+ *    reason to close it — legacy records and partial payloads simply default
+ *    to open.
+ *  - Optional `businessHours`, when present, are respected.
+ */
 export function getVendorOperationalStatus(vendor: Vendor): VendorOperationalStatus {
-  if (!vendor.isOpen) return 'CLOSED';
+  // Account-level gating is authoritative.
+  if (!vendor || vendor.status !== 'active') return 'CLOSED';
+
+  // Explicit pause/close flags — only an actual `false` closes the kitchen.
   if (vendor.isKitchenOpen === false) return 'TEMPORARILY_PAUSED';
+  if (vendor.isOpen === false) return 'CLOSED';
 
   // If there are specific business hours, check them
-  if (vendor.businessHours) {
+  if (vendor.businessHours && vendor.businessHours.length) {
     const now = new Date();
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const todayName = dayNames[now.getDay()];
@@ -34,7 +50,5 @@ export function getVendorOperationalStatus(vendor: Vendor): VendorOperationalSta
     if (now > closeTime) return 'CLOSED';
   }
 
-  // Fallback to manual kitchen status if explicitly set
-  // This could be extended for 'BUSY' if we have a field for it
   return 'OPEN';
 }

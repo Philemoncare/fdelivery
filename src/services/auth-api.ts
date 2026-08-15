@@ -53,9 +53,16 @@ export const AuthApiService = {
     body: JSON.stringify(payload)
   }),
 
-  me: () => request<UserProfile>('/auth/me', {
-    method: 'GET'
-  }),
+  me: (overrideTokens?: AuthTokens) => {
+    const headers: Record<string, string> = {};
+    if (overrideTokens?.accessToken) {
+      headers['Authorization'] = `Bearer ${overrideTokens.accessToken}`;
+    }
+    return request<UserProfile>('/auth/me', {
+      method: 'GET',
+      headers
+    });
+  },
 
   loginWithGoogle: (intent?: string) => {
     const url = `${API_BASE_URL}/auth/google${intent ? `?intent=${intent}` : ''}`;
@@ -102,6 +109,10 @@ export const AuthApiService = {
   }),
 
   getSessions: (userId: string) => request<any[]>(`/auth/sessions/${userId}`),
+
+  logout: () => request<{ success: boolean }>('/auth/logout', {
+    method: 'POST'
+  }),
 
   revokeSession: (userId: string, sessionId: string) => request<void>(`/auth/sessions/${userId}/${sessionId}`, {
     method: 'DELETE'

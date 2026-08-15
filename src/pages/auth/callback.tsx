@@ -1,12 +1,13 @@
 import { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/src/lib/auth/auth-store';
+import { resolvePostLoginRoute } from '@/src/lib/auth/types';
 import { LoadingScreen } from '@/src/components/ui/loading-screen';
 
 export function AuthCallbackPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { refreshSessions } = useAuth();
+  const { completeSocialLogin } = useAuth();
 
   useEffect(() => {
     const handleCallback = async () => {
@@ -28,15 +29,11 @@ export function AuthCallbackPage() {
           tokenType: 'Bearer' as const
         };
 
-        // Store tokens temporarily so the next API call (me) can use them
-        localStorage.setItem('om_auth_tokens', JSON.stringify(tokens));
-
-        try {
-          // Trigger a session refresh in the store
-          // In a real implementation, the store would watch localStorage or we would call a 'completeSocialLogin' method
-          window.location.href = '/'; // Simple way to force app re-init and session validation
-        } catch (err) {
-          navigate('/login?error=Authentication failed', { replace: true });
+        const result = await completeSocialLogin(tokens);
+        if (result.success && result.user) {
+          navigate(resolvePostLoginRoute(result.user), { replace: true });
+        } else {
+          navigate(`/login?error=${encodeURIComponent(result.error || 'Authentication failed')}`, { replace: true });
         }
       } else {
         navigate('/login', { replace: true });
@@ -44,7 +41,7 @@ export function AuthCallbackPage() {
     };
 
     handleCallback();
-  }, [location, navigate, refreshSessions]);
+  }, [location, navigate, completeSocialLogin]);
 
   return <LoadingScreen label="Completing authentication..." />;
 }

@@ -58,11 +58,11 @@ interface AuthContextValue extends AuthState {
   login: (identifier: string, password: string, portal: Portal, remember?: boolean) => Promise<{ success: boolean; error?: string; requires2FA?: boolean; requiresOtp?: boolean; user?: UserProfile }>;
   loginWithGoogle: (intent?: string) => void;
   loginWithApple: (intent?: string) => void;
+  completeSocialLogin: (tokens: AuthTokens, persist?: boolean) => Promise<{ success: boolean; error?: string; user?: UserProfile }>;
   loginWithOtp: (identifier: string, code: string, portal: Portal) => Promise<{ success: boolean; error?: string; user?: UserProfile }>;
   sendLoginOtp: (identifier: string, channel: 'email' | 'phone') => Promise<{ success: boolean; error?: string }>;
-  verify2FA: (code: string, portal: Portal) => Promise<{ success: boolean; error?: string }>;
   logout: (sessionExpired?: boolean) => void;
-  register: (payload: Record<string, unknown>, role: Role) => Promise<{ success: boolean; error?: string }>;
+  register: (payload: Record<string, unknown>, role: Role) => Promise<{ success: boolean; error?: string; user?: UserProfile }>;
   requestPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
   completePasswordReset: (email: string, code: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
   refresh: () => Promise<boolean>;
@@ -180,6 +180,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback((expired = false) => {
     if (activeRole && user) {
       logAudit({ actorId: user.id, action: expired ? 'session_expired' : 'logout', resourceType: 'auth' });
+      // Terminate the real server session + audit (fire-and-forget; idempotent).
+      try { AuthApiService.logout(); } catch { /* offline logout still works */ }
       removeSession(activeRole);
     }
     setActiveRole(null);
@@ -293,6 +295,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     AuthApiService.loginWithApple(intent);
   }, []);
 
+  const completeSocialLogin = useCallback(async (tokens: AuthTokens, persist = true) => {
+    try {
+      const freshUser = await AuthApiService.me(tokens);
+      const role = freshUser.role as Role;
+      persistSession(role, { tokens, user: freshUser, persist });
+      setActiveRole(role);
+      setSessionExpired(false);
+      refreshSessions();
+      return { success: true, user: freshUser };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Could not complete sign-in.' };
+    }
+  }, [persistSession, refreshSessions]);
+
   const sendLoginOtp = useCallback(async (identifier: string, channel: 'email' | 'phone') => {
     try {
       const result = await AuthApiService.sendOtp(identifier, channel);
@@ -318,18 +334,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { success: false, error: err.message };
     }
   }, [persistSession, refreshSessions]);
-
-  const verify2FA = useCallback(async (code: string, p: Portal) => {
-    try {
-      const valid = /^\d{6}$/.test(code);
-      if (!valid) return { success: false, error: 'Invalid code format.' };
-      await new Promise(r => setTimeout(r, 800));
-      logAudit({ actorId: user?.id || 'unknown', action: '2fa_verified', resourceType: 'auth', details: { portal: p } });
-      return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err.message };
-    }
-  }, [user]);
 
   const refresh = useCallback(async () => {
     if (!activeRole || !active) return false;
@@ -429,7 +433,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value: AuthContextValue = useMemo(() => ({
     user, tokens, isAuthenticated: !!user && !!tokens, isLoading, portal, sessionExpired, csrfToken,
-    login, loginWithGoogle, loginWithApple, loginWithOtp, sendLoginOtp, verify2FA, logout, register,
+    login, loginWithGoogle, loginWithApple, completeSocialLogin, loginWithOtp, sendLoginOtp, logout, register,
     requestPasswordReset, completePasswordReset, changePassword, refresh, clearSessionExpired,
     sessions, refreshSessions, revokeSessionById, hasRole, hasPermission,
     vendorId, restaurantId, riderId,
@@ -437,7 +441,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     activateRole, getSession, hasSession, updateUser,
   }), [
     user, tokens, isLoading, portal, sessionExpired, csrfToken,
-    login, loginWithGoogle, loginWithApple, loginWithOtp, sendLoginOtp, verify2FA, logout, register,
+    login, loginWithGoogle, loginWithApple, completeSocialLogin, loginWithOtp, sendLoginOtp, logout, register,
     requestPasswordReset, completePasswordReset, changePassword, refresh, clearSessionExpired,
     sessions, refreshSessions, revokeSessionById, hasRole, hasPermission,
     vendorId, restaurantId, riderId,

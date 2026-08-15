@@ -1,4 +1,4 @@
-import { type ReactNode, createContext, useContext, useState, useEffect, useRef } from 'react';
+import { type Attributes, type ReactNode, createContext, useContext, useState, useEffect, useRef } from 'react';
 import { cn } from '@/src/lib/utils';
 
 interface SelectContextValue {
@@ -75,9 +75,9 @@ export function SelectTrigger({ children, className }: { children: ReactNode; cl
     <div
       onClick={() => setIsOpen(!isOpen)}
       className={cn(
-      'flex items-center justify-between w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border rounded-xl cursor-pointer select-none transition-all',
-      'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600',
-      isOpen && 'border-emerald-500 ring-2 ring-emerald-500/10 dark:border-emerald-500',
+      'flex items-center justify-between w-full px-3 py-2 text-sm bg-surface dark:bg-slate-900 border rounded-xl cursor-pointer select-none transition-all',
+      'border-line dark:border-slate-700 hover:border-line-strong dark:hover:border-slate-600',
+      isOpen && 'border-primary ring-2 ring-primary/10 dark:border-primary',
       className
     )}>
       <div className="flex-1 truncate mr-2 pointer-events-none text-left">
@@ -95,13 +95,14 @@ export function SelectValue({ placeholder }: { placeholder?: string }) {
   const label = value ? labels[value] : null;
 
   return (
-    <span className={cn('block truncate', value ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-400')}>
+    <span className={cn('block truncate', value ? 'text-ink dark:text-white font-medium' : 'text-ink-3')}>
       {label || value || placeholder || ''}
     </span>
   );
 }
 
-interface SelectItemProps {
+interface SelectItemProps extends Attributes {
+  key?: string | number;
   children: ReactNode;
   value: string;
   label?: string;
@@ -125,8 +126,8 @@ export function SelectItem({ children, value, label }: SelectItemProps) {
       className={cn(
         'block w-full text-left px-3 py-2.5 text-sm transition-colors outline-none',
         isActive
-          ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 font-semibold'
-          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 focus:bg-gray-50 dark:focus:bg-slate-800'
+          ? 'bg-primary-soft text-primary dark:bg-primary-soft font-semibold'
+          : 'text-ink-2 dark:text-gray-300 hover:bg-surface-2 dark:hover:bg-slate-800 focus:bg-surface-2 dark:focus:bg-slate-800'
       )}
     >
       {children}
@@ -141,7 +142,7 @@ export function SelectContent({ children, className }: { children: ReactNode; cl
 
   return (
     <div className={cn(
-      'absolute z-[100] mt-1.5 min-w-full w-max max-w-[18rem] rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top left-0',
+      'absolute z-[100] mt-1.5 min-w-full w-max max-w-[18rem] rounded-xl border border-line dark:border-slate-700 bg-surface dark:bg-slate-900 shadow-xl py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top left-0',
       className
     )}>
       <div className="max-h-[280px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 dark:scrollbar-thumb-slate-700">

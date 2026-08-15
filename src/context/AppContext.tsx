@@ -1,16 +1,21 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  Role, ThemeMode, CurrencyCode, LanguageCode, OrderStatus,
+  Role, ThemeMode, ThemeModePreference, CurrencyCode, LanguageCode, OrderStatus,
   Vendor, Product, DispatchRider, CartItem, Order, CustomerProfile,
   Coupon, NotificationItem, WalletTransaction, Address, PaymentStatus,
-  Review, RiderStatus, RiderLocationUpdate
+  Review, RiderStatus, RiderLocationUpdate, AccentKey, ThemeKey
 } from '../types';
+import {
+  readThemePreference, applyTheme, cycleTheme, themeToMode
+} from '@/src/lib/theme';
 import { useAuth } from '@/src/lib/auth/auth-store';
 import {
   VendorService, ProductService, OrderService, RiderService,
   CustomerService, WalletService, InteractionService, DiscoveryService,
-  RealTimeService, MessagingService
+  RealTimeService, MessagingService, AdminService
 } from '../services/api';
+import { requestGeoFix, watchGeo, describeGeoResult, queryGeoPermissionState } from '@/src/lib/location/geolocation';
+import { translate } from '@/src/lib/i18n';
 
 const CART_STORAGE_KEY = 'om_cart';
 const PENDING_CART_KEY = 'om_pending_cart';
@@ -18,13 +23,25 @@ const PENDING_CART_KEY = 'om_pending_cart';
 interface AppContextType {
   // UI State
   isLoading: boolean;
+  /** Effective theme currently applied (always 'light' | 'dark'). */
   theme: ThemeMode;
+  /** Unified role-scoped theme key (Light | Dark | OmniMarket | Ocean | Emerald | Amber). */
+  themeKey: ThemeKey;
+  setThemeKey: (t: ThemeKey) => void;
+  /** Advance the unified theme to the next state in the cycle. */
+  cycleNextTheme: () => void;
+  /** User's mode preference ('light' | 'dark' | 'system'). */
+  themeMode: ThemeModePreference;
+  setThemeMode: (mode: ThemeModePreference) => void;
   toggleTheme: () => void;
+  accent: AccentKey;
+  setAccent: (a: AccentKey) => void;
   currency: CurrencyCode;
   setCurrency: (c: CurrencyCode) => void;
   formatPrice: (amount: number) => string;
   language: LanguageCode;
   setLanguage: (l: LanguageCode) => void;
+  t: (key: string, values?: Record<string, string | number>) => string;
 
   // Data
   products: Product[];
@@ -34,11 +51,14 @@ interface AppContextType {
   customers: CustomerLite[];
   categories: any[];
   notifications: NotificationItem[];
+  unreadNotifications: number;
   withdrawals: any[];
   transactions: WalletTransaction[];
   coupons: Coupon[];
   reviews: Review[];
   conversations: any[];
+  availableDeliveries: any[];
+  refreshAvailableDeliveries: () => Promise<void>;
   vendorDashboard: any | null;
 
   // Selection
@@ -77,7 +97,7 @@ interface AppContextType {
   isFavoriteVendor: (vendorId: string) => boolean;
 
   appliedCoupon: Coupon | null;
-  applyCoupon: (code: string) => void;
+  applyCoupon: (code: string) => Promise<void>;
   removeCoupon: () => void;
 
   // Search
@@ -103,6 +123,10 @@ interface AppContextType {
   placeOrder: (checkoutData: any) => Promise<Order>;
   updateOrderStatus: (orderId: string, newStatus: OrderStatus) => Promise<void>;
   assignRiderToOrder: (orderId: string, riderId: string) => Promise<void>;
+  completeDelivery: (orderId: string) => Promise<{ alreadyCompleted: boolean; order: Order }>;
+  createPackageDelivery: (data: any) => Promise<Order>;
+  receiverConfirmDelivery: (orderId: string, code?: string) => Promise<{ alreadyConfirmed: boolean; order: Order }>;
+  openOrderConversation: (orderId: string, party: 'rider' | 'vendor') => Promise<any>;
 
   // Profile
   customerProfile: CustomerProfile | null;
@@ -123,15 +147,18 @@ interface AppContextType {
   riderStatus: RiderStatus;
   updateRiderStatus: (status: RiderStatus) => Promise<void>;
   currentRiderLocation: RiderLocationUpdate | null;
-
-  isLiveSimulationActive: boolean;
-  toggleLiveSimulation: () => void;
+  riderLocationError: string | null;
+  geoActive: boolean;
+  enableLiveGps: () => Promise<void>;
 
   // Feedback
   toast: { title: string; desc: string; type?: 'success' | 'info' | 'warning' } | null;
   showToast: (title: string, desc: string, type?: 'success' | 'info' | 'warning') => void;
   markNotificationRead: (id: string) => Promise<void>;
-  clearNotifications: () => void;
+  markAllNotificationsRead: () => Promise<void>;
+  clearNotifications: () => Promise<void>;
+  deleteNotification: (id: string) => Promise<void>;
+  refreshNotifications: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -164,9 +191,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // App State
   const [isLoading, setIsLoading] = useState(true);
-  const [theme, setTheme] = useState<ThemeMode>('light');
-  const [currency, setCurrency] = useState<CurrencyCode>('GHS');
-  const [language, setLanguage] = useState<LanguageCode>('EN');
+  // `themeKey` is the user's stored unified theme (Light | Dark | OmniMarket |
+  // Ocean | Emerald | Amber). `theme` is the effective light/dark mode derived
+  // from it, so all existing `theme === 'dark'` checks keep working unchanged.
+  const [themeKey, setThemeKeyState] = useState<ThemeKey>(readThemePreference);
+  const theme: ThemeMode = themeToMode(themeKey);
+  const themeMode: ThemeModePreference = themeToMode(themeKey);
+  const setThemeKey = useCallback((next: ThemeKey) => {
+    setThemeKeyState(prev => (next === prev ? prev : next));
+    applyTheme(next);
+  }, []);
+  const cycleNextTheme = useCallback(() => {
+    setThemeKeyState(prev => {
+      const next = cycleTheme(prev);
+      applyTheme(next);
+      return next;
+    });
+  }, []);
+  const setAccent = useCallback((next: AccentKey) => {
+    applyTheme(next);
+  }, []);
+  const [currency, setCurrencyState] = useState<CurrencyCode>(() => {
+    if (typeof window === 'undefined') return 'GHS';
+    const saved = window.localStorage.getItem('om_currency');
+    return (saved && saved in CURRENCY_RATES) ? saved as CurrencyCode : 'GHS';
+  });
+  const setCurrency = useCallback((next: CurrencyCode) => {
+    setCurrencyState(next in CURRENCY_RATES ? next : 'GHS');
+    try { window.localStorage.setItem('om_currency', next in CURRENCY_RATES ? next : 'GHS'); } catch { /* ignore */ }
+  }, []);
+  const [language, setLanguageState] = useState<LanguageCode>(() => {
+    if (typeof window === 'undefined') return 'EN';
+    const saved = window.localStorage.getItem('om_language');
+    const valid = ['EN', 'FR', 'ES', 'DE', 'ZH-CN', 'AR'];
+    return (saved && valid.includes(saved)) ? (saved as LanguageCode) : 'EN';
+  });
+  const setLanguage = useCallback((next: LanguageCode) => setLanguageState(next), []);
+  const t = useCallback((key: string, values?: Record<string, string | number>) => translate(language, key, values), [language]);
+
+  // Keep the unified theme applied to <html> (survives refreshes, syncs
+  // everywhere). Applied on mount so a persisted theme is restored before paint.
+  useEffect(() => {
+    applyTheme(themeKey);
+  }, [themeKey]);
+
+  useEffect(() => {
+    document.documentElement.lang = language.toLowerCase();
+    document.documentElement.dir = language === 'AR' ? 'rtl' : 'ltr';
+    try { window.localStorage.setItem('om_language', language); } catch { /* storage unavailable */ }
+  }, [language]);
 
   // Data Collections
   const [products, setProducts] = useState<Product[]>([]);
@@ -180,6 +253,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [conversations, setConversations] = useState<any[]>([]);
+  const [availableDeliveries, setAvailableDeliveries] = useState<any[]>([]);
   const [vendorDashboard, setVendorDashboard] = useState<any | null>(null);
 
   // Derive the customer directory from real order data (unique customers who have ordered).
@@ -211,8 +285,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         lastOrderDate: o.createdAt,
       });
     });
-    return Array.from(map.values()).sort((a, b) => b.totalSpent - a.totalSpent);
+      return Array.from(map.values()).sort((a, b) => b.totalSpent - a.totalSpent);
   }, [orders]);
+  const accent: AccentKey = themeKey === 'light' || themeKey === 'dark' ? 'omnimarket' : themeKey;
   const [customerProfile, setCustomerProfile] = useState<CustomerProfile | null>(null);
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [currentAddressName, setCurrentAddressName] = useState<string>('Current Location');
@@ -220,6 +295,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Rider State
   const [riderStatus, setRiderStatus] = useState<RiderStatus>('OFFLINE');
   const [currentRiderLocation, setCurrentRiderLocation] = useState<RiderLocationUpdate | null>(null);
+  const [riderLocationError, setRiderLocationError] = useState<string | null>(null);
+  const [geoRestartTick, setGeoRestartTick] = useState(0);
+  const [geoActive, setGeoActive] = useState(false);
+
+  const ordersRef = useRef(orders);
+  useEffect(() => { ordersRef.current = orders; }, [orders]);
+
+  // Restore the rider's online state across tabs/reloads so GPS reconnects and
+  // the browser location prompt appears automatically (no need to toggle again).
+  useEffect(() => {
+    if (!user || user.role !== 'rider') return;
+    const saved = typeof window !== 'undefined' ? window.localStorage.getItem(`om_rider_status_${user.id}`) : null;
+    if (saved === 'ONLINE' && riderStatus !== 'ONLINE') {
+      setRiderStatus('ONLINE');
+      RiderService.updateStatus(user.id, 'ONLINE').catch(() => {});
+    }
+  }, [user]);
+
+  // Auto-reconnect live GPS when the rider reloads the page and the browser
+  // permission is already granted — no need to tap "Allow GPS" again.
+  useEffect(() => {
+    if (!user || user.role !== 'rider' || riderStatus !== 'ONLINE' || geoActive) return;
+    let cancelled = false;
+    queryGeoPermissionState()
+      .then((state) => {
+        if (!cancelled && state === 'granted' && user.role === 'rider') {
+          setGeoActive(true);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, riderStatus]);
 
   // Selection
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
@@ -227,7 +337,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [selectedRider, setSelectedRider] = useState<DispatchRider | null>(null);
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
-  const [isLiveSimulationActive, setIsLiveSimulationActive] = useState(true);
 
   // Cart
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -243,11 +352,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const [wishlist, setWishlist] = useState<Product[]>([]);
   const [favoriteVendors, setFavoriteVendors] = useState<Vendor[]>([]);
-
   // Search
   const [searchQuery, setSearchQuery] = useState('');
   const [searchCategory, setSearchCategory] = useState('All');
-
   // UI
   const [toast, setToast] = useState<{ title: string; desc: string; type?: 'success' | 'info' | 'warning' } | null>(null);
 
@@ -265,6 +372,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setToast({ title, desc, type });
     setTimeout(() => setToast(null), 4000);
   }, []);
+
+  const refreshAvailableDeliveries = useCallback(async () => {
+    if (!user || user.role !== 'rider') return;
+    try {
+      const data = await OrderService.getAvailable();
+      setAvailableDeliveries(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to fetch available deliveries:', err);
+    }
+  }, [user]);
 
   // ------------------------------------------------------------
   // DATA FETCHING (Production Patterns)
@@ -390,9 +507,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const unsubscribeNotif = RealTimeService.subscribe('notification', (notif: NotificationItem) => {
       if (user?.id === notif.userId) {
-        setNotifications(prev => [notif, ...prev]);
+        setNotifications(prev => prev.some(n => n.id === notif.id) ? prev : [notif, ...prev]);
         showToast(notif.title, notif.message, 'info');
       }
+    });
+
+    const unsubscribeNotifRead = RealTimeService.subscribe('notification_read', (data: { id: string; userId: string }) => {
+      if (user?.id === data.userId) {
+        setNotifications(prev => prev.map(n => n.id === data.id ? { ...n, read: true, readAt: new Date().toISOString() } : n));
+      }
+    });
+
+    const unsubscribeNotifReadAll = RealTimeService.subscribe('notifications_read_all', (data: { userId: string }) => {
+      if (user?.id === data.userId) {
+        setNotifications(prev => prev.map(n => ({ ...n, read: true, readAt: n.readAt || new Date().toISOString() })));
+      }
+    });
+
+    const unsubscribeNotifCleared = RealTimeService.subscribe('notifications_cleared', (data: { userId: string }) => {
+      if (user?.id === data.userId) setNotifications([]);
+    });
+
+    const unsubscribeNotifDeleted = RealTimeService.subscribe('notification_deleted', (data: { id: string; userId: string }) => {
+      if (user?.id === data.userId) setNotifications(prev => prev.filter(n => n.id !== data.id));
     });
 
     const unsubscribeRiderLoc = RealTimeService.subscribe('rider_location', (data: any) => {
@@ -400,6 +537,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...o,
         currentRiderLocation: { lat: data.latitude, lng: data.longitude }
       } : o));
+    });
+
+    const unsubscribeRiderUpdate = RealTimeService.subscribe('rider_update', (rider: DispatchRider) => {
+      setRiders(prev =>
+        prev.some(r => r.id === rider.id)
+          ? prev.map(r => r.id === rider.id ? { ...r, ...rider } : r)
+          : [...prev, rider]
+      );
     });
 
     const unsubscribeVendor = RealTimeService.subscribe('vendor_update', (updatedVendor: Vendor) => {
@@ -410,17 +555,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p));
     });
 
+    // Delivery pool changes: a job became available or was taken. Rider pages
+    // react immediately instead of waiting for a manual refresh.
+    const unsubscribeJobAvail = RealTimeService.subscribe('delivery_available', () => {
+      refreshAvailableDeliveries();
+    });
+    const unsubscribeJobGone = RealTimeService.subscribe('delivery_unavailable', () => {
+      refreshAvailableDeliveries();
+    });
+
+    // A new chat message arrived for me, or a thread I'm in updated.
+    const unsubscribeMessage = RealTimeService.subscribe('message', (msg: any) => {
+      if (!user) return;
+      MessagingService.getConversations(user.id).then(c => {
+        if (Array.isArray(c)) setConversations(c);
+      }).catch(() => {});
+    });
+    const unsubscribeConvUpd = RealTimeService.subscribe('conversation_updated', () => {
+      if (user) {
+        MessagingService.getConversations(user.id).then(c => {
+          if (Array.isArray(c)) setConversations(c);
+        }).catch(() => {});
+      }
+    });
+
     return () => {
       unsubscribeOrder();
       unsubscribeNotif();
+      unsubscribeNotifRead();
+      unsubscribeNotifReadAll();
+      unsubscribeNotifCleared();
+      unsubscribeNotifDeleted();
       unsubscribeRiderLoc();
+      unsubscribeRiderUpdate();
       unsubscribeVendor();
       unsubscribeProduct();
+      unsubscribeJobAvail();
+      unsubscribeJobGone();
+      unsubscribeMessage();
+      unsubscribeConvUpd();
     };
-  }, [user, showToast, vendorId, riderId]);
+  }, [user, showToast, vendorId, riderId, refreshAvailableDeliveries, refreshData]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || user.role !== 'customer') return;
     if (!navigator.geolocation) return;
 
     navigator.geolocation.getCurrentPosition(
@@ -464,59 +642,77 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn('[Location] Access denied or unavailable:', err.message);
         setCurrentAddressName('Takoradi Central');
       },
-      { enableHighAccuracy: true }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   }, [user]);
 
   useEffect(() => {
-    if (!user || user.role !== 'rider' || riderStatus === 'OFFLINE') {
+    if (!user || user.role !== 'rider' || riderStatus === 'OFFLINE' || !geoActive) {
       setCurrentRiderLocation(null);
       return;
     }
-    if (!navigator.geolocation) {
-      setRiderStatus('LOCATION_UNAVAILABLE');
-      return;
-    }
 
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
+    let lastPushedAt = 0;
+    let disposed = false;
+
+    const seedLocation = (fix: { latitude: number; longitude: number; accuracy: number; heading?: number; speed?: number; timestamp: number }) => {
+      setCurrentRiderLocation({
+        riderId: user.id,
+        latitude: fix.latitude,
+        longitude: fix.longitude,
+        accuracy: fix.accuracy,
+        heading: fix.heading,
+        speed: fix.speed,
+        timestamp: new Date(fix.timestamp).toISOString(),
+      });
+      setRiderLocationError(null);
+    };
+
+    // No silent retries: Chrome auto-denies background geolocation requests and
+    // can flip the site to "Blocked". GPS only ever reactivates from a user click.
+    const clearWatch = watchGeo({
+      onFix: (fix) => {
         const update: RiderLocationUpdate = {
           riderId: user.id,
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-          heading: position.coords.heading ?? undefined,
-          speed: position.coords.speed ?? undefined,
-          timestamp: new Date(position.timestamp).toISOString(),
+          latitude: fix.latitude,
+          longitude: fix.longitude,
+          accuracy: fix.accuracy,
+          heading: fix.heading,
+          speed: fix.speed,
+          timestamp: new Date(fix.timestamp).toISOString(),
         };
 
-        const activeOrder = orders.find(o =>
-          o.riderId === user.id &&
+        seedLocation(fix);
+
+        const activeOrder = ordersRef.current.find(o =>
+          o.riderId === user.riderId &&
           ['picked_up', 'in_transit', 'arriving'].includes(o.status)
         );
         if (activeOrder) {
           update.deliveryId = activeOrder.id;
-        }
-
-        setCurrentRiderLocation(update);
-        RiderService.updateLocation(update).catch(err => {
-          console.error('Failed to sync location to server:', err);
-        });
-      },
-      (error) => {
-        if (error.code === error.PERMISSION_DENIED) {
-          setRiderStatus('LOCATION_PERMISSION_DENIED');
-        } else {
-          setRiderStatus('LOCATION_UNAVAILABLE');
+          const now = Date.now();
+          if (now - lastPushedAt >= 10000) {
+            lastPushedAt = now;
+            RiderService.updateLocation(update).catch(err => {
+              console.error('Failed to sync location to server:', err);
+            });
+          }
         }
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
+      onError: (result) => {
+        // GPS failure never takes the rider offline — it only disables live
+        // tracking. The rider stays visible as online/available everywhere.
+        setRiderLocationError(describeGeoResult(result));
+        setGeoActive(false);
+      }
+    });
 
     return () => {
-      navigator.geolocation.clearWatch(watchId);
+      disposed = true;
+      clearWatch();
+      setCurrentRiderLocation(null);
     };
-  }, [user, riderStatus, orders]);
+  }, [user, riderStatus, geoActive, geoRestartTick]);
 
   // ------------------------------------------------------------
   // OPERATIONS
@@ -524,7 +720,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addToCart = (product: Product, quantity = 1, variants?: any) => {
     if (!user) {
-      showToast('Sign In Required', 'Please log in to add items to your cart.', 'warning');
+      showToast('Sign In Required', 'Please login to continue ordering.', 'warning');
       return;
     }
     setCart(prev => {
@@ -583,7 +779,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const isInWishlist = useCallback((id: string) => wishlist.some(p => p.id === id), [wishlist]);
   const isFavoriteVendor = useCallback((id: string) => favoriteVendors.some(v => v.id === id), [favoriteVendors]);
 
+  // Persist wishlist / favorite restaurants per account (survives refresh).
+  const wishlistKey = user ? `om_wishlist_${user.id}` : null;
+  const favVendorsKey = user ? `om_fav_vendors_${user.id}` : null;
+
+  useEffect(() => {
+    if (!wishlistKey || wishlist.length > 0) return;
+    try {
+      const raw = window.localStorage.getItem(wishlistKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setWishlist(parsed);
+      }
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wishlistKey]);
+
+  useEffect(() => {
+    if (!favVendorsKey || favoriteVendors.length > 0) return;
+    try {
+      const raw = window.localStorage.getItem(favVendorsKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setFavoriteVendors(parsed);
+      }
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [favVendorsKey]);
+
+  useEffect(() => {
+    if (!wishlistKey) return;
+    try { window.localStorage.setItem(wishlistKey, JSON.stringify(wishlist)); } catch { /* ignore */ }
+  }, [wishlist, wishlistKey]);
+
+  useEffect(() => {
+    if (!favVendorsKey) return;
+    try { window.localStorage.setItem(favVendorsKey, JSON.stringify(favoriteVendors)); } catch { /* ignore */ }
+  }, [favoriteVendors, favVendorsKey]);
+
   const toggleWishlist = (product: Product) => {
+    if (!user) {
+      showToast('Sign In Required', 'Please login to save your favorite meals.', 'warning');
+      return;
+    }
     setWishlist(prev => {
       const exists = prev.some(p => p.id === product.id);
       if (exists) return prev.filter(p => p.id !== product.id);
@@ -592,6 +830,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const toggleFavoriteVendor = (vendor: Vendor) => {
+    if (!user) {
+      showToast('Sign In Required', 'Please login to save your favorite restaurants.', 'warning');
+      return;
+    }
     setFavoriteVendors(prev => {
       const exists = prev.some(v => v.id === vendor.id);
       if (exists) return prev.filter(v => v.id !== vendor.id);
@@ -669,9 +911,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const vendor = vendors.find(v => v.id === cart[0].product.vendorId);
     const selected = customerProfile?.addresses || [];
     const address = selected.find(a => a.address === checkoutData.address) || selected.find(a => a.isDefault);
+    const loc = checkoutData.location ?? null;
 
     const newOrder = await OrderService.placeOrder({
       ...checkoutData,
+      vendorId: cart[0].product.vendorId,
       items: cart.map(i => ({
         productId: i.product.id,
         productName: i.product.title,
@@ -683,12 +927,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       customerId: user?.id,
       vendorLat: vendor?.latitude,
       vendorLng: vendor?.longitude,
-      customerLat: address?.latitude ?? customerProfile?.location?.latitude,
-      customerLng: address?.longitude ?? customerProfile?.location?.longitude,
-      customerAddress: checkoutData.address || address?.address || currentAddressName,
+      customerLat: checkoutData.customerLat ?? loc?.latitude ?? address?.latitude ?? customerProfile?.location?.latitude ?? null,
+      customerLng: checkoutData.customerLng ?? loc?.longitude ?? address?.longitude ?? customerProfile?.location?.longitude ?? null,
+      city: checkoutData.city ?? loc?.city ?? address?.city ?? '',
+      country: checkoutData.country ?? loc?.region ?? '',
+      customerAddress: checkoutData.address || checkoutData.customerAddress || address?.address || currentAddressName,
     });
     setOrders(prev => [newOrder, ...prev]);
     clearCart();
+
+    // Refresh wallet + transaction history after any order so balances stay accurate.
+    if (user) {
+      WalletService.getBalance(user.id).then(w => {
+        setCustomerProfile(prev => prev ? { ...prev, walletBalance: Number(w.balance) || 0 } : prev);
+      }).catch(() => {});
+      WalletService.getTransactions(user.id).then(setTransactions).catch(() => {});
+    }
 
     if (vendor && user && vendor.ownerId && vendor.ownerId !== user.id) {
       MessagingService.createConversation({
@@ -704,8 +958,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newOrder;
   };
 
-  const updateOrderStatus = async (id: string, status: OrderStatus) => {
-    const updated = await OrderService.updateStatus(id, status);
+  const updateOrderStatus = async (id: string, status: OrderStatus, reason?: string) => {
+    const updated = await OrderService.updateStatus(id, status, reason);
     setOrders(prev => prev.map(o => o.id === id ? updated : o));
     RealTimeService.emit('order_update', updated);
   };
@@ -713,6 +967,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const assignRiderToOrder = async (orderId: string, riderId: string) => {
     const updated = await OrderService.assignRider(orderId, riderId);
     setOrders(prev => prev.map(o => o.id === orderId ? updated : o));
+  };
+
+  const completeDelivery = async (orderId: string) => {
+    const res = await OrderService.completeDelivery(orderId);
+    setOrders(prev => prev.map(o => o.id === orderId ? res.order : o));
+    RealTimeService.emit('order_update', res.order);
+    return { alreadyCompleted: !!res.alreadyCompleted, order: res.order };
+  };
+
+  const createPackageDelivery = async (data: any): Promise<Order> => {
+    const newDelivery = await OrderService.createPackage({ ...data, customerId: user?.id });
+    setOrders(prev => [newDelivery, ...prev]);
+    showToast('Rider Requested', `${newDelivery.deliveryType === 'PASS' ? 'Pass' : 'Package'} delivery ${newDelivery.orderNumber} is being arranged.`);
+    return newDelivery;
+  };
+
+  const receiverConfirmDelivery = async (orderId: string, code?: string) => {
+    const res = await OrderService.receiverConfirm(orderId, code);
+    setOrders(prev => prev.map(o => o.id === orderId ? res.order : o));
+    RealTimeService.emit('order_update', res.order);
+    if (!res.alreadyConfirmed) {
+      showToast('Receipt Confirmed', 'The recipient confirmed this delivery. Thank you!');
+    }
+    return { alreadyConfirmed: !!res.alreadyConfirmed, order: res.order };
+  };
+
+  const openOrderConversation = async (orderId: string, party: 'rider' | 'vendor') => {
+    const conv = party === 'rider'
+      ? await OrderService.openRiderConversation(orderId)
+      : await OrderService.openVendorConversation(orderId);
+    if (user && conv?.id) {
+      const convs = await MessagingService.getConversations(user.id).catch(() => null);
+      if (Array.isArray(convs)) setConversations(convs);
+    }
+    return conv;
   };
 
   const updateProfile = async (data: Partial<CustomerProfile>) => {
@@ -769,6 +1058,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...prev,
       addresses: (prev.addresses || []).map(a => ({ ...a, isDefault: a.id === addressId }))
     } : prev);
+    setCurrentAddressName(current.address || current.title || 'Current Location');
     showToast('Default set', `${current.title || 'This address'} is now your default.`);
   };
 
@@ -789,19 +1079,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const markNotificationRead = async (id: string) => {
     try {
       await InteractionService.markNotifRead(id);
-      setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true, readAt: n.readAt || new Date().toISOString() } : n));
     } catch (err) {
       console.error('Failed to mark notification as read:', err);
     }
   };
 
-  const applyCoupon = (code: string) => {
-    const coupon = coupons.find(c => c.code.toLowerCase() === code.toLowerCase() && c.isActive);
-    if (coupon) {
-      setAppliedCoupon(coupon);
-      showToast('Coupon Applied', `Code ${code} added to your cart.`);
-    } else {
-      showToast('Invalid Coupon', 'The code you entered is not valid or expired.', 'warning');
+  const markAllNotificationsRead = async () => {
+    try {
+      await InteractionService.markAllNotifRead();
+      setNotifications(prev => prev.map(n => ({ ...n, read: true, readAt: n.readAt || new Date().toISOString() })));
+      showToast('Notifications', 'All notifications marked as read.');
+    } catch (err) {
+      console.error('Failed to mark all notifications as read:', err);
+      showToast('Error', 'Could not mark all notifications as read.', 'warning');
+    }
+  };
+
+  const refreshNotifications = async () => {
+    if (!user) return;
+    try {
+      const res = await InteractionService.getNotificationFeed({ limit: 50 });
+      setNotifications((prev: NotificationItem[]) => {
+        const seen = new Map<string, NotificationItem>(prev.map((n): [string, NotificationItem] => [n.id, n]));
+        res.items.forEach((n: any) => seen.set(n.id, n));
+        return Array.from(seen.values()).sort((a, b) => String((b as any).createdAt || (b as any).time).localeCompare(String((a as any).createdAt || (a as any).time)));
+      });
+    } catch (err) {
+      console.error('Failed to refresh notifications:', err);
+    }
+  };
+
+  const deleteNotification = async (id: string) => {
+    try {
+      await InteractionService.deleteNotif(id);
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    } catch (err) {
+      console.error('Failed to delete notification:', err);
+    }
+  };
+
+  const applyCoupon = async (code: string) => {
+    try {
+      // Validate against the server so the UI never accepts a coupon the order
+      // endpoint would reject (expired, usage-limit reached, below min spend).
+      const res = await AdminService.validateCoupon(code.trim(), cartTotal);
+      if (res && res.valid) {
+        setAppliedCoupon(res.coupon);
+        showToast('Coupon Applied', `Code ${code} added to your cart.`);
+      } else {
+        showToast('Invalid Coupon', 'The code you entered is not valid or expired.', 'warning');
+      }
+    } catch (err: any) {
+      showToast('Invalid Coupon', err?.message || 'The code you entered is not valid or expired.', 'warning');
     }
   };
 
@@ -809,8 +1139,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAppliedCoupon(null);
   };
 
-  const clearNotifications = () => {
-    setNotifications([]);
+  const clearNotifications = async () => {
+    try {
+      const res = await InteractionService.clearNotifs();
+      setNotifications([]);
+      showToast('Notifications', `${res?.deleted ?? 0} notification${(res?.deleted ?? 0) === 1 ? '' : 's'} cleared.`);
+    } catch (err) {
+      console.error('Failed to clear notifications:', err);
+      showToast('Error', 'Could not clear notifications.', 'warning');
+    }
   };
 
   const requestWithdrawal = async (data: any) => {
@@ -824,31 +1161,102 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const toggleLiveSimulation = () => {
-    setIsLiveSimulationActive(prev => !prev);
-  };
+  const setThemeMode = useCallback((next: ThemeModePreference) => {
+    setThemeKey(next === 'dark' ? 'dark' : 'light');
+  }, [setThemeKey]);
 
-  const toggleTheme = () => {
-    const next = theme === 'light' ? 'dark' : 'light';
-    setTheme(next);
-    document.documentElement.classList.toggle('dark', next === 'dark');
-  };
+  const toggleTheme = useCallback(() => {
+    setThemeKey(theme === 'light' ? 'dark' : 'light');
+  }, [theme, setThemeKey]);
 
   const updateRiderStatus = async (status: RiderStatus) => {
     if (!user) return;
+
+    let gpsWarning: string | null = null;
+
+    if (status === 'OFFLINE') {
+      setCurrentRiderLocation(null);
+      setRiderLocationError(null);
+      setGeoActive(false);
+    }
+
+    if (status === 'ONLINE') {
+      // Runs inside the click gesture, so Chrome shows the location prompt.
+      const granted = await requestGeoFix();
+      if (granted.ok && granted.fix) {
+        const fix = granted.fix;
+        setCurrentRiderLocation({
+          riderId: user.id,
+          latitude: fix.latitude,
+          longitude: fix.longitude,
+          accuracy: fix.accuracy,
+          heading: fix.heading,
+          speed: fix.speed,
+          timestamp: new Date(fix.timestamp).toISOString(),
+        });
+        setRiderLocationError(null);
+        setGeoActive(true);
+      } else {
+        // GPS is blocked/unavailable but we still go online — the rider stays
+        // visible to admins, vendors and customers. Live tracking is just off.
+        gpsWarning = describeGeoResult(granted);
+        setRiderLocationError(gpsWarning);
+        setGeoActive(false);
+      }
+    }
+
     try {
       await RiderService.updateStatus(user.id, status);
       setRiderStatus(status);
-      showToast('Status Updated', `You are now ${status.replace('_', ' ')}`);
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(`om_rider_status_${user.id}`, status);
+      }
+      showToast(
+        'GPS Allowed Successfully',
+        status === 'ONLINE' && gpsWarning
+          ? `You are online. Live tracking is off — ${gpsWarning}`
+          : status === 'ONLINE'
+            ? "You're online and ready to run deliveries. GPS is live."
+            : `You are now ${status.replace('_', ' ')}`
+      );
     } catch (err) {
       console.error('Failed to update rider status:', err);
       showToast('Update Failed', 'Unable to change status. Check connection.', 'warning');
     }
   };
 
+  // Explicitly request live GPS from a user click — Chrome only shows the
+  // location prompt for requests made inside a user gesture.
+  const enableLiveGps = async () => {
+    if (!user) return;
+    const granted = await requestGeoFix();
+    if (granted.ok && granted.fix) {
+      const fix = granted.fix;
+      setCurrentRiderLocation({
+        riderId: user.id,
+        latitude: fix.latitude,
+        longitude: fix.longitude,
+        accuracy: fix.accuracy,
+        heading: fix.heading,
+        speed: fix.speed,
+        timestamp: new Date(fix.timestamp).toISOString(),
+      });
+      setRiderLocationError(null);
+      setGeoActive(true);
+      showToast('GPS Allowed Successfully', "You're ready to go — live location is now sharing.");
+    } else {
+      const msg = describeGeoResult(granted);
+      setRiderLocationError(msg);
+      setGeoActive(false);
+      showToast('GPS Unavailable', msg, 'warning');
+    }
+  };
+
+  const unreadNotifications = useMemo(() => Array.isArray(notifications) ? notifications.filter(n => !n.read).length : 0, [notifications]);
+
   const value: AppContextType = useMemo(() => ({
-    isLoading, theme, toggleTheme, currency, setCurrency, formatPrice, language, setLanguage,
-    products, vendors, riders, orders, customers, categories, notifications, withdrawals, transactions, coupons, reviews, vendorDashboard,
+    isLoading, theme, themeKey, setThemeKey, cycleNextTheme, themeMode, setThemeMode, toggleTheme, accent, setAccent, currency, setCurrency, formatPrice, language, setLanguage, t,
+    products, vendors, riders, orders, customers, categories, notifications, unreadNotifications, withdrawals, transactions, coupons, reviews, vendorDashboard,
     selectedVendor, setSelectedVendor, selectedProduct, setSelectedProduct,
     selectedOrder, setSelectedOrder, selectedRider, setSelectedRider,
     quickViewProduct, setQuickViewProduct,
@@ -860,19 +1268,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addProduct, updateProduct, deleteProduct,
     addCategory, updateCategory, deleteCategory,
     toggleKitchenStatus,
-    placeOrder, updateOrderStatus, assignRiderToOrder,
+    placeOrder, updateOrderStatus, assignRiderToOrder, completeDelivery,
+    createPackageDelivery, receiverConfirmDelivery, openOrderConversation,
     customerProfile, updateProfile, addAddress, updateAddress, deleteAddress, setDefaultAddress, requestWithdrawal,
     currentAddressName, setCurrentAddressName,
     startConversation, sendMessage,
-    riderStatus, updateRiderStatus, currentRiderLocation,
+    riderStatus, updateRiderStatus, currentRiderLocation, riderLocationError, geoActive, enableLiveGps,
     appliedCoupon, applyCoupon, removeCoupon,
-    isLiveSimulationActive, toggleLiveSimulation,
     favoriteVendors, toggleFavoriteVendor, isFavoriteVendor,
-    conversations,
-    toast, showToast, markNotificationRead, clearNotifications
+    conversations, availableDeliveries, refreshAvailableDeliveries,
+    toast, showToast, markNotificationRead, markAllNotificationsRead, clearNotifications, deleteNotification, refreshNotifications
   }), [
-    isLoading, theme, toggleTheme, currency, setCurrency, formatPrice, language, setLanguage,
-    products, vendors, riders, orders, customers, categories, notifications, withdrawals, transactions, coupons, reviews, vendorDashboard, conversations,
+    isLoading, theme, themeKey, setThemeKey, cycleNextTheme, themeMode, setThemeMode, toggleTheme, accent, setAccent, currency, setCurrency, formatPrice, language, setLanguage, t,
+products, vendors, riders, orders, customers, categories, notifications, unreadNotifications, withdrawals, transactions, coupons, reviews, vendorDashboard,
+    conversations, availableDeliveries, refreshAvailableDeliveries,
     selectedVendor, setSelectedVendor, selectedProduct, setSelectedProduct,
     selectedOrder, setSelectedOrder, selectedRider, setSelectedRider,
     quickViewProduct, setQuickViewProduct,
@@ -884,15 +1293,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addProduct, updateProduct, deleteProduct,
     addCategory, updateCategory, deleteCategory,
     toggleKitchenStatus,
-    placeOrder, updateOrderStatus, assignRiderToOrder,
+    placeOrder, updateOrderStatus, assignRiderToOrder, completeDelivery,
+    createPackageDelivery, receiverConfirmDelivery, openOrderConversation,
     customerProfile, updateProfile, addAddress, updateAddress, deleteAddress, setDefaultAddress, requestWithdrawal,
     currentAddressName, setCurrentAddressName,
     startConversation, sendMessage,
-    riderStatus, updateRiderStatus, currentRiderLocation,
+    riderStatus, updateRiderStatus, currentRiderLocation, riderLocationError, geoActive, enableLiveGps,
     appliedCoupon, applyCoupon, removeCoupon,
-    isLiveSimulationActive, toggleLiveSimulation,
     favoriteVendors, toggleFavoriteVendor, isFavoriteVendor,
-    toast, showToast, markNotificationRead, clearNotifications
+    toast, showToast, markNotificationRead, markAllNotificationsRead, clearNotifications, deleteNotification, refreshNotifications
   ]);
 
   return (

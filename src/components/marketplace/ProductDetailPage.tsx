@@ -12,8 +12,12 @@ import {
   Minus,
   CheckCircle2,
   Clock,
-  ArrowLeft
+  ArrowLeft,
+  ArrowRight
 } from 'lucide-react';
+import { cn } from '../../lib/utils';
+import { Button } from '../ui/button';
+import { ProductService } from '@/src/services/api';
 
 export const ProductDetailPage: React.FC = () => {
   const navigate = useNavigate();
@@ -29,15 +33,24 @@ export const ProductDetailPage: React.FC = () => {
     toggleWishlist,
     isInWishlist,
     isLoading,
-    reviews
+    reviews,
+    t
   } = useApp();
-
-  const product = products.find((p) => p.id === id) || selectedProduct;
 
   const [activeImgIndex, setActiveImgIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState<'specs' | 'reviews' | 'qa'>('specs');
+  const [fetched, setFetched] = useState<any>(null);
+
+  const product = fetched || products.find((p) => p.id === id) || selectedProduct;
+
+  // Fallback fetch for deep links / hard refreshes where the catalog may not
+  // be loaded yet (e.g. sharing a meal link directly).
+  React.useEffect(() => {
+    if (!id || fetched) return;
+    ProductService.getById(id).then(setFetched).catch(() => setFetched(null));
+  }, [id, fetched]);
 
   const isSaved = product ? isInWishlist(product.id) : false;
 
@@ -60,21 +73,20 @@ export const ProductDetailPage: React.FC = () => {
 
   if (!product) {
     return <div className="max-w-7xl mx-auto py-16 px-4 text-center">
-      <h3 className="text-xl font-bold">Meal not found</h3>
-      <button onClick={() => navigate('/products')} className="mt-4 text-emerald-600 font-bold underline">Back to Menu</button>
+      <h3 className="text-xl font-bold">{t('common.noResults')}</h3>
+      <button onClick={() => navigate('/products')} className="mt-4 text-emerald-600 font-bold underline">{t('nav.products')}</button>
     </div>;
   }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-8 sm:space-y-12 pb-32">
       
-      {/* Back Button */}
       <button
         onClick={() => navigate(-1)}
         className="flex items-center space-x-2 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-emerald-600 transition-colors"
       >
         <ArrowLeft className="w-3.5 h-3.5" />
-        <span>Go Back</span>
+        <span>{t('common.back')}</span>
       </button>
 
       {/* Main Grid: Gallery & Information */}
@@ -132,7 +144,7 @@ export const ProductDetailPage: React.FC = () => {
                 {product.vendorName}
                 <ShieldCheck className="w-3.5 h-3.5 text-blue-500" />
               </button>
-              {product.isVeg && <span className="bg-emerald-500 text-white text-[9px] font-black uppercase px-3 py-2 rounded-xl">Vegetarian</span>}
+              {product.isVeg && <span className="bg-emerald-500 text-white text-[9px] font-black uppercase px-3 py-2 rounded-xl">{t('common.vegetarian')}</span>}
             </div>
 
             <h1 className="text-3xl sm:text-4xl font-black text-gray-900 dark:text-white leading-tight tracking-tight">
@@ -143,23 +155,23 @@ export const ProductDetailPage: React.FC = () => {
               <div className="flex items-center gap-1.5 text-amber-500 bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 rounded-xl">
                 <Star className="w-4 h-4 fill-current" />
                 <span>{product.rating || '4.8'}</span>
-                <span className="text-gray-400 font-medium">({product.reviewsCount} reviews)</span>
+                <span className="text-gray-400 font-medium">({product.reviewsCount} {t('product.reviews')})</span>
               </div>
               <span className="flex items-center gap-1.5"><Clock className="w-4 h-4 text-emerald-500" /> {product.prepTime || "~15 mins"}</span>
-              <span className="flex items-center gap-1.5 text-emerald-600"><CheckCircle2 className="w-4 h-4" /> In Stock ({product.stock})</span>
+              <span className="flex items-center gap-1.5 text-emerald-600"><CheckCircle2 className="w-4 h-4" /> {t('common.inStock')} ({product.stock})</span>
             </div>
           </div>
 
           <div className="space-y-4">
              <div className="bg-gray-50 dark:bg-slate-900/50 rounded-3xl p-6 border border-gray-100 dark:border-slate-800 flex items-center justify-between shadow-inner">
                 <div className="space-y-1">
-                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Price per portion</p>
+                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{t('product.price')}</p>
                    <p className="text-4xl font-black text-emerald-600">{formatPrice(product.price)}</p>
                 </div>
                 {product.originalPrice && (
                    <div className="text-right">
                       <p className="text-xs text-gray-400 line-through font-black">{formatPrice(product.originalPrice)}</p>
-                      <p className="text-[10px] text-rose-500 font-black uppercase">SAVE {Math.round((1 - product.price/product.originalPrice)*100)}%</p>
+                      <p className="text-[10px] text-rose-500 font-black uppercase">{t('common.saveDeal')} {Math.round((1 - product.price/product.originalPrice)*100)}%</p>
                    </div>
                 )}
              </div>
@@ -170,7 +182,7 @@ export const ProductDetailPage: React.FC = () => {
 
           {/* Riders Section */}
           <div className="space-y-4">
-            <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Preferred Dispatch Rider</h4>
+            <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">{t('common.preferredRider')}</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {riders.filter(r => r.isOnline && r.isAvailable).slice(0, 2).map((r) => (
                 <button key={r.id} onClick={() => setSelectedRider(r)}
@@ -203,10 +215,10 @@ export const ProductDetailPage: React.FC = () => {
 
               <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Button className="h-14 sm:h-16 rounded-[1.5rem] bg-emerald-500 hover:bg-emerald-600 font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-500/20 gap-2" onClick={handleAddToCart}>
-                  <ShoppingCart className="w-4 h-4" /> ADD TO CART
+                  <ShoppingCart className="w-4 h-4" /> {t('common.addToCart').toUpperCase()}
                 </Button>
                 <Button className="hidden sm:flex h-16 rounded-[1.5rem] bg-gray-900 text-white font-black text-xs uppercase tracking-widest shadow-xl gap-2" onClick={handleBuyNow}>
-                   ORDER NOW <ArrowRight className="w-4 h-4" />
+                   {t('checkout.placeOrder').toUpperCase()} <ArrowRight className="w-4 h-4" />
                 </Button>
               </div>
             </div>
@@ -224,7 +236,7 @@ export const ProductDetailPage: React.FC = () => {
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
-            Product Specifications
+            {t('deliver.packageDetails')}
           </button>
           <button
             onClick={() => setActiveTab('reviews')}
@@ -234,7 +246,7 @@ export const ProductDetailPage: React.FC = () => {
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
-            Customer Reviews ({product.reviewsCount})
+            {t('product.reviews')} ({product.reviewsCount})
           </button>
           <button
             onClick={() => setActiveTab('qa')}
@@ -244,7 +256,7 @@ export const ProductDetailPage: React.FC = () => {
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
-            Restaurant Q&A (4)
+            {t('support.faq')}
           </button>
         </div>
 
@@ -263,7 +275,7 @@ export const ProductDetailPage: React.FC = () => {
                   { key: 'Prep Time', val: product.prepTime || '~15 minutes' },
                   { key: 'Calories', val: product.calories || 'N/A' },
                   { key: 'Spice Level', val: product.spiceLevel || 'N/A' },
-                  { key: 'Dietary', val: product.isVeg ? 'Vegetarian friendly' : 'Contains meat' },
+                  { key: 'Dietary', val: product.isVeg ? t('common.vegetarianFriendly') : t('common.containsMeat') },
                   { key: 'Ingredients', val: product.ingredients?.join(', ') || 'N/A' },
                   { key: 'Popular Add-ons', val: product.addons?.join(', ') || 'N/A' },
                 ].map((row) => (
@@ -281,7 +293,7 @@ export const ProductDetailPage: React.FC = () => {
           <div className="space-y-4 text-xs">
             {reviews.filter(r => r.productId === product.id).length === 0 ? (
                <div className="p-8 text-center border-2 border-dashed rounded-2xl bg-gray-50/50 dark:bg-slate-900/50">
-                 <p className="text-gray-400 font-bold uppercase tracking-widest">No reviews for this dish yet</p>
+                 <p className="text-gray-400 font-bold uppercase tracking-widest">{t('common.noReviews')}</p>
                </div>
             ) : (
               reviews.filter(r => r.productId === product.id).map(rev => (
@@ -293,7 +305,7 @@ export const ProductDetailPage: React.FC = () => {
                   <p className="text-gray-600 dark:text-gray-300">{rev.comment}</p>
                   {rev.reply && (
                      <div className="mt-2 p-3 bg-white dark:bg-slate-900 rounded-xl border border-emerald-500/20">
-                        <p className="text-[10px] font-black uppercase text-emerald-600 mb-0.5">Chef's Reply</p>
+                        <p className="text-[10px] font-black uppercase text-emerald-600 mb-0.5">{t('common.chefReply')}</p>
                         <p className="text-gray-600 dark:text-gray-400 italic">"{rev.reply}"</p>
                      </div>
                   )}
@@ -306,8 +318,8 @@ export const ProductDetailPage: React.FC = () => {
         {activeTab === 'qa' && (
           <div className="space-y-3 text-xs">
             <div className="p-4 rounded-2xl bg-gray-50 dark:bg-slate-800 border">
-              <p className="font-bold text-gray-900 dark:text-white">Q: Can I request less spice or extra sauce?</p>
-              <p className="text-emerald-600 dark:text-emerald-400 font-medium mt-1">A: Yes! Just add a note during checkout or pick your spice level here.</p>
+              <p className="font-bold text-gray-900 dark:text-white">{t('common.faqQ1')}</p>
+              <p className="text-emerald-600 dark:text-emerald-400 font-medium mt-1">{t('common.faqA1')}</p>
             </div>
           </div>
         )}

@@ -1,0 +1,47 @@
+﻿2244: 
+2245:     if (role === 'vendor') {
+2246:       const vendorId = `v-${uuidv4().slice(0, 8)}`;
+2247:       newUser.vendorId = vendorId;
+2248:       db.vendors.push({
+2249:         id: vendorId, ownerId: userId, name: payload.businessName || 'New Restaurant',
+2250:         slug: (payload.businessName || 'new-restaurant').toLowerCase().replace(/\s+/g, '-'),
+2251:         logo: sanitizeImageInput(payload.logoUrl || ''), banner: sanitizeImageInput(payload.coverUrl || ''),
+2252:         category: payload.category || 'Local Dishes', address: payload.businessAddress || '',
+2253:         openHours: payload.openingHours || '08:00 AM - 10:00 PM', phone: payload.phone || '',
+2254:         email: normalizedEmail, status: autoApprove ? 'active' : 'pending', joinedDate: new Date().toISOString(),
+2255:         verification: { regNumber: payload.regNumber || '', documents: payload.documents || null }
+2256:       });
+2257:     }
+2258: 
+2259:     if (role === 'rider') {
+2260:       const riderId = `r-${uuidv4().slice(0, 8)}`;
+2261:       newUser.riderId = riderId;
+2262:       db.riders.push({
+2263:         id: riderId, userId: userId, name: newUser.displayName, avatar: newUser.avatarUrl,
+2264:         vehicleType: payload.vehicleType || 'Bike', vehicleNumber: payload.vehicleNumber || '',
+2265:         phone: payload.phone || '', deliveryFee: 12.00, status: 'Offline',
+2266:         isVerified: autoApprove,
+2267:         verificationStatus: autoApprove ? 'verified' : 'pending',
+2268:         verification: { driverLicense: payload.driverLicense || '', nationalId: payload.nationalId || '' }
+2269:       });
+2270:     }
+2271: 
+2272:     db.users.push(newUser);
+2273:     db.wallets.push({ userId, balance: 0, currency: 'GHS' });
+2274: 
+2275:     // Referral: if the registrant submitted a valid referral code, record it
+2276:     // against the referrer and notify them.
+2277:     const submittedCode = String(payload.referralCode || payload.ref || '').trim().toUpperCase();
+2278:     if (submittedCode) {
+2279:       const referrer = db.users.find(u => u.referralCode === submittedCode);
+2280:       if (referrer && referrer.id !== userId) {
+2281:         db.referrals.push({
+2282:           id: `ref-${uuidv4().slice(0, 8)}`,
+2283:           referralCode: submittedCode,
+2284:           referrerUserId: referrer.id,
+2285:           referrerName: referrer.displayName || `${referrer.firstName} ${referrer.lastName}`.trim() || referrer.email,
+2286:           referrerEmail: referrer.email,
+2287:           referredUserId: userId,
+2288:           referredEmail: normalizedEmail,
+2289:           referredName: newUser.displayName || `User`,
+2290:           referredRole: role,

@@ -9,7 +9,7 @@ import {
   CheckCircle2, AlertCircle, Phone, MapPin, Zap, ChevronRight,
   MoreHorizontal, Play, Pause, DollarSign, Printer, ArrowRight,
   Plus, Trash2, Edit3, Settings, ShieldCheck, Smartphone, Send, ChevronLeft,
-  Crown, Gem, Sparkles, CalendarDays, BadgeCheck, Check
+  Crown, Gem, CalendarDays, BadgeCheck, Check, FolderTree, UtensilsCrossed
 } from 'lucide-react';
 import {
   LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid,
@@ -25,7 +25,8 @@ import { ImageCropModal } from '@/src/components/common/ImageCropModal';
 import { ReceiptModal, ReceiptOrder } from '@/src/components/common/ReceiptModal';
 import { OrderStatus } from '@/src/types';
 import { LiveMap } from '@/src/components/common/LiveMap';
-import { AdminService, MessagingService } from '@/src/services/api';
+import { NotificationCenter } from '@/src/components/common/NotificationCenter';
+import { AdminService, MessagingService, WalletService } from '@/src/services/api';
 import { AuthApiService } from '@/src/services/auth-api';
 
 // ============================================================
@@ -34,6 +35,7 @@ import { AuthApiService } from '@/src/services/auth-api';
 export function VendorOrdersPage() {
   const { vendorId } = useAuth();
   const { orders, formatPrice, updateOrderStatus, showToast, vendors } = useApp();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<OrderStatus | 'All'>('All');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [receiptOrder, setReceiptOrder] = useState<ReceiptOrder | null>(null);
@@ -87,39 +89,50 @@ export function VendorOrdersPage() {
   };
 
   return (
-    <div className="space-y-6 pb-20">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 dark:text-white">Order Management</h1>
-          <p className="text-sm text-gray-500">Live order fulfillment and rider coordination</p>
-        </div>
-        <div className="flex gap-2">
-           <Button variant="outline" className="rounded-xl font-bold h-11 border-gray-200" onClick={() => window.print()}>
-             <Printer className="w-4 h-4 mr-2" /> Print All Today
-           </Button>
-        </div>
-      </div>
-
-      {/* Quick Status Bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: 'New Orders', value: orderStats.pending, color: 'text-amber-500', bg: 'bg-amber-50', icon: Bell },
-          { label: 'In Kitchen', value: orderStats.preparing, color: 'text-blue-500', bg: 'bg-blue-50', icon: ChefHat },
-          { label: 'Ready for Pickup', value: orderStats.ready, color: 'text-emerald-500', bg: 'bg-emerald-50', icon: Package },
-          { label: 'Total Today', value: orderStats.delivered, color: 'text-purple-500', bg: 'bg-purple-50', icon: CheckCircle2 },
-        ].map(s => (
-          <div key={s.label} className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 flex items-center gap-4 shadow-sm">
-            <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", s.bg, s.color)}><s.icon className="w-5 h-5" /></div>
+    <div className="space-y-4 pb-20">
+      {/* ============ HERO HEADER ============ */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-purple-950 p-6 sm:p-8 text-white shadow-xl shadow-purple-900/20">
+        <div className="absolute inset-0 bg-grid opacity-5" />
+        <div className="absolute -top-24 -right-20 w-80 h-80 rounded-full bg-purple-600/30 blur-3xl" />
+        <div className="relative z-10">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1.5">{s.label}</p>
-              <p className="text-xl font-black text-gray-900 dark:text-white leading-none">{s.value}</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                  <ShoppingBag className="w-3 h-3 text-amber-300" /> Order Manager
+                </span>
+                <span className="px-3 py-1 rounded-full bg-emerald-600/20 text-emerald-300 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight mt-3">Order Management</h1>
+              <p className="text-sm text-slate-300 font-medium mt-1">Live order fulfillment and rider coordination</p>
             </div>
+            <Button variant="ghost" className="rounded-2xl border border-white/20 font-black text-xs bg-white/10 hover:bg-white/20 backdrop-blur h-12 px-6" onClick={() => window.print()}>
+              <Printer className="w-4 h-4 mr-2" /> Print All Today
+            </Button>
           </div>
-        ))}
-      </div>
 
-      {/* Tabs */}
-      <div className="flex bg-gray-100 dark:bg-slate-800 p-1 rounded-2xl overflow-x-auto scrollbar-none shadow-inner border border-gray-200/50 dark:border-slate-700/50">
+          <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 divide-x divide-white/10 rounded-2xl bg-white/5 border border-white/10 overflow-hidden backdrop-blur">
+            {[
+              { label: 'New Orders', value: orderStats.pending, icon: Bell, cls: 'text-amber-300' },
+              { label: 'In Kitchen', value: orderStats.preparing, icon: ChefHat, cls: 'text-blue-300' },
+              { label: 'Ready for Pickup', value: orderStats.ready, icon: Package, cls: 'text-emerald-300' },
+              { label: 'Delivered Today', value: orderStats.delivered, icon: CheckCircle2, cls: 'text-violet-300' },
+            ].map(s => (
+              <div key={s.label} className="px-4 py-4 flex flex-col items-center gap-1.5">
+                <s.icon className={`w-4 h-4 ${s.cls}`} />
+                <p className="text-xl font-black leading-none">{s.value}</p>
+                <p className="text-[8px] font-black uppercase tracking-widest text-slate-300/80 text-center">{s.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </motion.div>
+
+      {/* ============ TABS ============ */}
+      <div className="flex bg-white dark:bg-slate-900 p-1 rounded-2xl overflow-x-auto scrollbar-none shadow-sm border border-gray-100 dark:border-slate-800">
         {tabs.map((tab) => (
           <button
             key={tab.status}
@@ -127,21 +140,22 @@ export function VendorOrdersPage() {
             className={cn(
               "px-5 py-2.5 text-[10px] font-black rounded-xl transition-all whitespace-nowrap uppercase tracking-widest flex items-center gap-2",
               activeTab === tab.status
-                ? "bg-white dark:bg-slate-700 text-purple-600 dark:text-purple-400 shadow-sm"
+                ? "bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-lg shadow-violet-600/20"
                 : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
             )}
           >
             {tab.label}
             {vendorOrders.filter(o => o.status === tab.status).length > 0 && (
-              <span className="w-4 h-4 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center text-[8px]">{vendorOrders.filter(o => o.status === tab.status).length}</span>
+              <span className="w-4 h-4 rounded-full bg-white/20 text-white flex items-center justify-center text-[8px]">{vendorOrders.filter(o => o.status === tab.status).length}</span>
             )}
           </button>
         ))}
       </div>
 
-      <div className="grid gap-4">
+      {/* ============ ORDER CARDS ============ */}
+      <div className="grid gap-3">
         {filteredOrders.length === 0 ? (
-          <Card className="rounded-[2.5rem] border-dashed border-2 py-20 text-center bg-gray-50/30 dark:bg-slate-900/30">
+          <Card className="rounded-[2rem] border-dashed border-2 py-20 text-center bg-gray-50/30 dark:bg-slate-900/30">
             <ShoppingBag className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-xl font-bold text-gray-900 dark:text-white">No orders in this category</h3>
             <p className="text-sm text-gray-500">Wait for incoming orders or try a different status filter.</p>
@@ -149,26 +163,28 @@ export function VendorOrdersPage() {
         ) : (
           filteredOrders.map(order => (
             <motion.div key={order.id} layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-              <Card className="rounded-[2.5rem] overflow-hidden border-gray-100 dark:border-slate-800 hover:shadow-xl transition-all group">
-                <div className="p-6 sm:p-8 space-y-6">
-                  <div className="flex flex-col md:flex-row justify-between gap-6">
+              <Card className="rounded-[2rem] overflow-hidden border-gray-100 dark:border-slate-800 hover:shadow-xl transition-all group">
+                <div className="p-6 space-y-5">
+                  <div className="flex flex-col lg:flex-row justify-between gap-6">
                     <div className="flex items-start gap-4">
                       <div className={cn(
-                        "w-16 h-16 rounded-2xl flex items-center justify-center font-black text-2xl shadow-inner group-hover:scale-110 transition-transform",
-                        order.status === 'Order Received' ? "bg-amber-50 text-amber-600" : "bg-purple-50 text-purple-600"
+                        "w-14 h-14 rounded-2xl flex items-center justify-center font-black text-xl shadow-inner group-hover:scale-110 transition-transform",
+                        order.status === 'pending' ? "bg-amber-50 text-amber-600" :
+                        order.status === 'preparing' ? "bg-blue-50 text-blue-600" :
+                        "bg-violet-50 text-violet-600"
                       )}>
                         {(order.customerName || 'C').charAt(0)}
                       </div>
                       <div className="space-y-1">
                         <div className="flex items-center gap-3">
-                          <h3 className="text-xl font-black text-gray-900 dark:text-white">{order.customerName}</h3>
-                          <Badge variant={order.status === 'Cancelled' ? 'danger' : 'default'} className="text-[10px] font-black py-0.5 px-2.5 uppercase tracking-widest">{order.status}</Badge>
+                          <h3 className="text-lg font-black text-gray-900 dark:text-white">{order.customerName}</h3>
+                          <Badge variant={order.status === 'cancelled' ? 'danger' : 'default'} className="text-[10px] font-black py-0.5 px-2.5 uppercase tracking-widest">{order.status.replace('_', ' ')}</Badge>
                         </div>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 font-bold">
-                           {order.items.map(i => `${i.quantity}x ${i.productName || 'Meal'}`).join(', ')}
+                        <p className="text-sm text-gray-600 dark:text-gray-400 font-bold line-clamp-1">
+                          {order.items.map(i => `${i.quantity}x ${i.productName || 'Meal'}`).join(', ')}
                         </p>
                         <div className="flex flex-wrap items-center gap-4 text-[10px] text-gray-400 pt-2 font-bold uppercase tracking-widest">
-                          <span className="flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-purple-500" /> {order.id}</span>
+                          <span className="flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-violet-500" /> {order.id.slice(-6).toUpperCase()}</span>
                           <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {new Date(order.createdAt).toLocaleTimeString()}</span>
                           <span className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" /> {order.customerAddress}</span>
                         </div>
@@ -176,20 +192,20 @@ export function VendorOrdersPage() {
                     </div>
 
                     {/* Assigned Rider Map for Vendor */}
-                    {order.riderId && ['Rider Assigned', 'Picked Up', 'On the Way', 'Ready for Pickup', 'rider_assigned', 'picked_up', 'in_transit', 'arriving'].includes(order.status) && (
-                       <div className="hidden lg:block w-72 h-40 rounded-2xl overflow-hidden border border-gray-100 dark:border-slate-800 shadow-inner">
-                          <LiveMap
-                            riderLocation={order.currentRiderLocation}
-                            restaurantLocation={currentVendor ? { lat: currentVendor.latitude, lng: currentVendor.longitude } : undefined}
-                            customerLocation={order.customerLat && order.customerLng ? { lat: order.customerLat, lng: order.customerLng } : undefined}
-                            zoom={13}
-                          />
-                       </div>
+                    {order.riderId && ['rider_assigned', 'picked_up', 'in_transit', 'arriving'].includes(order.status) && (
+                      <div className="hidden xl:block w-64 h-36 rounded-2xl overflow-hidden border border-gray-100 dark:border-slate-800 shadow-inner">
+                        <LiveMap
+                          riderLocation={order.currentRiderLocation}
+                          restaurantLocation={currentVendor ? { lat: currentVendor.latitude, lng: currentVendor.longitude } : undefined}
+                          customerLocation={order.customerLat && order.customerLng ? { lat: order.customerLat, lng: order.customerLng } : undefined}
+                          zoom={13}
+                        />
+                      </div>
                     )}
 
                     <div className="flex flex-col md:items-end justify-center">
                       <p className="text-[10px] text-gray-400 uppercase font-black tracking-[0.2em] mb-1">Order Value</p>
-                      <p className="text-3xl font-black text-purple-600">{formatPrice(order.totalAmount)}</p>
+                      <p className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-violet-600 to-purple-600">{formatPrice(order.totalAmount)}</p>
                       <p className="text-[10px] font-bold text-gray-500 flex items-center gap-1 mt-1">
                         <CreditCard className="w-3.5 h-3.5" /> Paid via {order.paymentMethod}
                       </p>
@@ -197,19 +213,19 @@ export function VendorOrdersPage() {
                   </div>
 
                   {/* Actions Bar */}
-                  <div className="flex flex-wrap items-center justify-between gap-4 pt-6 border-t border-gray-100 dark:border-slate-800">
+                  <div className="flex flex-wrap items-center justify-between gap-4 pt-5 border-t border-gray-100 dark:border-slate-800">
                     <div className="flex gap-2">
-                       <Button variant="outline" className="rounded-xl h-11 px-6 font-bold text-xs border-gray-100" onClick={() => setSelectedOrderId(order.id)}>View Details</Button>
-                       <Button className="rounded-xl h-11 px-4 font-black text-[10px] uppercase tracking-widest text-emerald-600 border border-emerald-100 hover:bg-emerald-50" onClick={() => openReceipt(order)}><Printer className="w-4 h-4 mr-1.5" /> Receipt</Button>
-                       <Button variant="ghost" className="rounded-xl h-11 px-4 text-gray-400 hover:text-purple-600"><MessageSquare className="w-5 h-5" /></Button>
-                       <Button variant="ghost" className="rounded-xl h-11 px-4 text-gray-400 hover:text-emerald-600"><Phone className="w-5 h-5" /></Button>
+                      <Button variant="outline" className="rounded-xl h-11 px-5 font-bold text-xs border-gray-200 dark:border-slate-700" onClick={() => setSelectedOrderId(order.id)}>View Details</Button>
+                      <Button className="rounded-xl h-11 px-4 font-black text-[10px] uppercase tracking-widest text-emerald-600 border border-emerald-100 dark:border-emerald-900/40 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" onClick={() => openReceipt(order)}><Printer className="w-4 h-4 mr-1.5" /> Receipt</Button>
+                      <Button variant="ghost" className="rounded-xl h-11 px-3 text-gray-400 hover:text-violet-600" onClick={() => navigate('/restaurant/messages')}><MessageSquare className="w-5 h-5" /></Button>
+                      <Button variant="ghost" className="rounded-xl h-11 px-3 text-gray-400 hover:text-emerald-600" onClick={() => window.open(`tel:${order.customerPhone}`)}><Phone className="w-5 h-5" /></Button>
                     </div>
 
                     <div className="flex gap-3">
                       {order.status === 'pending' && (
                         <>
-                          <Button variant="outline" className="rounded-xl h-12 px-6 font-black text-xs text-rose-500 border-rose-100 hover:bg-rose-50" onClick={() => handleStatusUpdate(order.id, 'cancelled')}>REJECT</Button>
-                          <Button className="rounded-xl h-12 px-10 font-black text-xs bg-purple-600 hover:bg-purple-700 shadow-lg shadow-purple-600/20" onClick={() => handleStatusUpdate(order.id, 'confirmed')}>ACCEPT ORDER</Button>
+                          <Button variant="outline" className="rounded-xl h-12 px-6 font-black text-xs text-rose-500 border-rose-100 dark:border-rose-900/40 hover:bg-rose-50" onClick={() => handleStatusUpdate(order.id, 'cancelled')}>REJECT</Button>
+                          <Button className="rounded-xl h-12 px-10 font-black text-xs bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 shadow-lg shadow-violet-600/20" onClick={() => handleStatusUpdate(order.id, 'confirmed')}>ACCEPT ORDER</Button>
                         </>
                       )}
                       {order.status === 'confirmed' && (
@@ -332,103 +348,135 @@ export function VendorKitchenStatusPage() {
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 dark:text-white">Kitchen Monitor</h1>
-          <p className="text-sm text-gray-500">Live view of kitchen load and preparation workflow</p>
-        </div>
-        <div className="flex items-center gap-4 bg-white dark:bg-slate-900 p-2 pl-6 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm">
-           <span className={cn("text-xs font-black uppercase tracking-widest", currentVendor.isKitchenOpen ? "text-emerald-500" : "text-rose-500")}>
-             Kitchen: {currentVendor.isKitchenOpen ? 'ONLINE' : 'PAUSED'}
-           </span>
-           <button
-             onClick={toggleKitchen}
-             className={cn(
-               "w-14 h-7 rounded-full relative p-1 transition-all",
-               currentVendor.isKitchenOpen ? "bg-emerald-500" : "bg-gray-200 dark:bg-slate-700"
-             )}>
-             <div className={cn("w-5 h-5 bg-white rounded-full shadow-md transition-all", currentVendor.isKitchenOpen ? "ml-auto" : "ml-0")} />
-           </button>
-        </div>
-      </div>
+    <div className="space-y-4 pb-20">
+      {/* ============ HERO HEADER ============ */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-purple-950 p-6 sm:p-8 text-white shadow-xl shadow-purple-900/20">
+        <div className="absolute inset-0 bg-grid opacity-5" />
+        <div className="absolute -top-24 -right-20 w-80 h-80 rounded-full bg-purple-600/30 blur-3xl" />
+        <div className="relative z-10">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                  <Flame className="w-3 h-3 text-amber-300" /> Kitchen Monitor
+                </span>
+                <span className={cn("px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5", currentVendor.isKitchenOpen ? "bg-emerald-600/20 text-emerald-300" : "bg-rose-600/20 text-rose-300")}>
+                  <span className={cn("w-1.5 h-1.5 rounded-full animate-pulse", currentVendor.isKitchenOpen ? "bg-emerald-400" : "bg-rose-400")} />
+                  {currentVendor.isKitchenOpen ? 'Kitchen Online' : 'Kitchen Paused'}
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight mt-3">Kitchen Monitor</h1>
+              <p className="text-sm text-slate-300 font-medium mt-1">Live view of kitchen load and preparation workflow</p>
+            </div>
+            <button
+              onClick={toggleKitchen}
+              className={cn(
+                "flex items-center gap-3 px-5 py-3 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all shadow-md active:scale-95",
+                currentVendor.isKitchenOpen
+                  ? "bg-rose-500 text-white shadow-rose-500/25"
+                  : "bg-emerald-500 text-white shadow-emerald-500/25"
+              )}
+            >
+              <div className={cn("w-8 h-4 rounded-full relative p-0.5 transition-all", currentVendor.isKitchenOpen ? "bg-white/20" : "bg-white/20")}>
+                <div className={cn("w-3.5 h-3.5 bg-white rounded-full shadow-md transition-all", currentVendor.isKitchenOpen ? "ml-auto" : "ml-0")} />
+              </div>
+              {currentVendor.isKitchenOpen ? 'Pause Kitchen' : 'Open Kitchen'}
+            </button>
+          </div>
 
-      <div className="grid lg:grid-cols-3 gap-8">
+          <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 divide-x divide-white/10 rounded-2xl bg-white/5 border border-white/10 overflow-hidden backdrop-blur">
+            {[
+              { label: 'In Kitchen', value: inKitchen.length, icon: ChefHat, cls: 'text-blue-300' },
+              { label: 'Incoming Queue', value: queue.length, icon: Clock, cls: 'text-amber-300' },
+              { label: 'Avg Prep Time', value: '18', suffix: 'min', icon: Timer, cls: 'text-emerald-300' },
+            ].map(s => (
+              <div key={s.label} className="px-4 py-4 flex flex-col items-center gap-1.5">
+                <s.icon className={`w-4 h-4 ${s.cls}`} />
+                <p className="text-xl font-black leading-none">{s.value}<span className="text-xs text-slate-300/80 ml-0.5">{s.suffix || ''}</span></p>
+                <p className="text-[8px] font-black uppercase tracking-widest text-slate-300/80 text-center">{s.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </motion.div>
+
+      <div className="grid lg:grid-cols-3 gap-4">
         {/* Active Prep */}
-        <div className="lg:col-span-2 space-y-6">
-           <div className="flex items-center justify-between px-2">
-              <h3 className="text-lg font-black text-gray-900 dark:text-white flex items-center gap-2"><ChefHat className="w-5 h-5 text-purple-600" /> Currently Preparing</h3>
-              <Badge variant="info" className="px-3 rounded-full">{inKitchen.length} ACTIVE</Badge>
-           </div>
+        <div className="lg:col-span-2 space-y-4">
+          <div className="flex items-center justify-between px-1">
+            <h3 className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2"><ChefHat className="w-5 h-5 text-violet-600" /> Currently Preparing</h3>
+            <Badge variant="info" className="px-3 rounded-full">{inKitchen.length} ACTIVE</Badge>
+          </div>
 
-           <div className="grid sm:grid-cols-2 gap-4">
-              {inKitchen.length === 0 ? (
-                <div className="col-span-full py-20 text-center border-2 border-dashed rounded-[2.5rem] bg-gray-50/50">
-                   <Flame className="w-12 h-12 text-gray-200 mx-auto mb-3" />
-                   <p className="text-sm text-gray-400 font-bold uppercase tracking-widest">The stoves are quiet...</p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            {inKitchen.length === 0 ? (
+              <div className="col-span-full py-20 text-center border-2 border-dashed rounded-[2rem] bg-gray-50/50 dark:bg-slate-900/30">
+                <Flame className="w-12 h-12 text-gray-200 dark:text-slate-700 mx-auto mb-3" />
+                <p className="text-sm text-gray-400 font-bold uppercase tracking-widest">The stoves are quiet...</p>
+              </div>
+            ) : inKitchen.map(o => (
+              <Card key={o.id} className="p-6 rounded-[2rem] border-violet-100 dark:border-violet-900/40 shadow-sm space-y-4">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-[10px] font-black text-violet-600 uppercase tracking-widest">#{o.id.slice(-6).toUpperCase()}</p>
+                    <h4 className="font-bold text-gray-900 dark:text-white mt-1">{o.customerName}</h4>
+                  </div>
+                  <Timer className="w-5 h-5 text-violet-400 animate-pulse" />
                 </div>
-              ) : inKitchen.map(o => (
-                <Card key={o.id} className="p-6 rounded-[2rem] border-purple-100 dark:border-purple-900 shadow-sm space-y-4">
-                  <div className="flex justify-between items-start">
-                     <div>
-                       <p className="text-[10px] font-black text-purple-600 uppercase tracking-widest">#{o.id}</p>
-                       <h4 className="font-bold text-gray-900 dark:text-white">{o.customerName}</h4>
-                     </div>
-                     <Timer className="w-5 h-5 text-purple-400 animate-pulse" />
-                  </div>
-                  <div className="space-y-2">
-                     {o.items.map((it, i) => (
-                       <div key={i} className="flex justify-between text-xs font-medium">
-                          <span className="text-gray-600 dark:text-gray-400">{it.quantity}x {it.productName || 'Meal'}</span>
-                          <span className="text-gray-400">25m</span>
-                       </div>
-                     ))}
-                  </div>
-                  <div className="pt-4 border-t border-gray-50 flex items-center justify-between">
-                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Prep Load: High</p>
-                     <Button size="sm" className="rounded-xl bg-emerald-600 hover:bg-emerald-700 font-black text-[9px] uppercase h-9 px-4" onClick={() => updateOrderStatus(o.id, 'ready_for_pickup')}>MARK READY</Button>
-                  </div>
-                </Card>
-              ))}
-           </div>
+                <div className="space-y-2">
+                  {o.items.map((it, i) => (
+                    <div key={i} className="flex justify-between text-xs font-medium">
+                      <span className="text-gray-600 dark:text-gray-400">{it.quantity}x {it.productName || 'Meal'}</span>
+                      <span className="text-gray-400">{o.estimatedDeliveryTime || '25m'}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="pt-4 border-t border-gray-50 dark:border-slate-800 flex items-center justify-between">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Prep Load: High</p>
+                  <Button size="sm" className="rounded-xl bg-emerald-600 hover:bg-emerald-700 font-black text-[9px] uppercase h-9 px-4" onClick={() => updateOrderStatus(o.id, 'ready_for_pickup')}>MARK READY</Button>
+                </div>
+              </Card>
+            ))}
+          </div>
         </div>
 
         {/* Incoming Queue */}
-        <div className="space-y-6">
-           <div className="flex items-center justify-between px-2">
-              <h3 className="text-lg font-black text-gray-900 dark:text-white flex items-center gap-2"><Clock className="w-5 h-5 text-amber-500" /> Incoming Queue</h3>
-              <Badge variant="warning" className="px-3 rounded-full">{queue.length} NEW</Badge>
-           </div>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between px-1">
+            <h3 className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2"><Clock className="w-5 h-5 text-amber-500" /> Incoming Queue</h3>
+            <Badge variant="warning" className="px-3 rounded-full">{queue.length} NEW</Badge>
+          </div>
 
-           <div className="space-y-3">
-              {queue.map(o => (
-                <div key={o.id} className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 shadow-sm flex items-center justify-between group hover:border-amber-500/30 transition-all">
-                  <div className="flex items-center gap-4">
-                     <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center font-black text-amber-600">{(o.customerName || 'C').charAt(0)}</div>
-                     <div>
-                        <p className="text-xs font-bold text-gray-900 dark:text-white leading-none mb-1">{o.customerName}</p>
-                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-tighter">{o.items.length} items • 15:42</p>
-                     </div>
+          <div className="space-y-2">
+            {queue.map(o => (
+              <div key={o.id} className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 shadow-sm flex items-center justify-between group hover:border-amber-500/30 transition-all">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center font-black text-amber-600">{(o.customerName || 'C').charAt(0)}</div>
+                  <div>
+                    <p className="text-xs font-bold text-gray-900 dark:text-white leading-none mb-1">{o.customerName}</p>
+                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-tighter">{o.items.length} items</p>
                   </div>
-                  <Button variant="ghost" size="sm" className="h-9 px-4 rounded-xl text-[9px] font-black uppercase tracking-widest text-purple-600 bg-purple-50 group-hover:bg-purple-600 group-hover:text-white transition-all" onClick={() => updateOrderStatus(o.id, 'confirmed')}>ACCEPT</Button>
                 </div>
-              ))}
-              {queue.length === 0 && <p className="text-xs text-center py-10 text-gray-400 font-bold">No orders in queue</p>}
-           </div>
+                <Button variant="ghost" size="sm" className="h-9 px-4 rounded-xl text-[9px] font-black uppercase tracking-widest text-violet-600 bg-violet-50 dark:bg-violet-900/20 group-hover:bg-violet-600 group-hover:text-white transition-all" onClick={() => updateOrderStatus(o.id, 'confirmed')}>ACCEPT</Button>
+              </div>
+            ))}
+            {queue.length === 0 && <p className="text-xs text-center py-10 text-gray-400 font-bold">No orders in queue</p>}
+          </div>
 
-           <Card className="rounded-[2.5rem] bg-gradient-to-br from-purple-600 to-indigo-700 p-8 text-white space-y-6 shadow-2xl relative overflow-hidden">
-             <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
-             <div className="relative z-10">
-                <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-2">Average Prep Time Today</p>
-                <div className="flex items-end gap-2">
-                   <span className="text-5xl font-black">18</span>
-                   <span className="text-xl font-bold mb-1.5 opacity-80 uppercase">mins</span>
-                </div>
-                <div className="mt-6 p-4 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20">
-                   <p className="text-[10px] font-medium leading-relaxed italic">"Performance is 12% faster than yesterday. Keep it up!"</p>
-                </div>
-             </div>
-           </Card>
+          <Card className="rounded-[2rem] bg-gradient-to-br from-violet-600 to-indigo-700 p-7 text-white space-y-5 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
+            <div className="relative z-10">
+              <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-2">Average Prep Time Today</p>
+              <div className="flex items-end gap-2">
+                <span className="text-5xl font-black">18</span>
+                <span className="text-xl font-bold mb-1.5 opacity-80 uppercase">mins</span>
+              </div>
+              <div className="mt-5 p-4 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20">
+                <p className="text-[10px] font-medium leading-relaxed italic">"Performance is 12% faster than yesterday. Keep it up!"</p>
+              </div>
+            </div>
+          </Card>
         </div>
       </div>
     </div>
@@ -459,89 +507,102 @@ export function VendorAnalyticsPage() {
   ];
 
   return (
-    <div className="space-y-8 pb-20">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 dark:text-white">Business Analytics</h1>
-          <p className="text-sm text-gray-500">Track your sales performance and customer trends</p>
-        </div>
-        <div className="flex bg-gray-100 dark:bg-slate-800 p-1 rounded-xl">
-           {['Day', 'Week', 'Month', 'Year'].map(t => (
-             <button key={t} className={cn("px-6 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all", t === 'Week' ? "bg-white text-purple-600 shadow-sm" : "text-gray-500 hover:text-gray-700")}>{t}</button>
-           ))}
-        </div>
-      </div>
-
-      <div className="grid lg:grid-cols-3 gap-8">
-        <Card className="lg:col-span-2 rounded-[2.5rem] p-8 space-y-8 border-gray-100 dark:border-slate-800 shadow-sm">
-           <div className="flex items-center justify-between">
-              <h3 className="font-black text-lg text-gray-900 dark:text-white uppercase tracking-widest">Revenue Trends (GH₵)</h3>
-              <Button variant="outline" className="rounded-xl h-10 px-4 text-[10px] font-black border-gray-100"><Download className="w-4 h-4 mr-2" /> EXPORT PDF</Button>
-           </div>
-           <div className="h-[350px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={salesData}>
-                  <defs>
-                    <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.1}/>
-                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} dy={10} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} />
-                  <Tooltip
-                    contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }}
-                    cursor={{ stroke: '#8b5cf6', strokeWidth: 2, strokeDasharray: '4 4' }}
-                  />
-                  <Area type="monotone" dataKey="sales" stroke="#8b5cf6" strokeWidth={4} fillOpacity={1} fill="url(#colorSales)" />
-                </AreaChart>
-              </ResponsiveContainer>
-           </div>
-        </Card>
-
-        <Card className="rounded-[2.5rem] p-8 space-y-8 border-gray-100 dark:border-slate-800 shadow-sm">
-           <h3 className="font-black text-lg text-gray-900 dark:text-white uppercase tracking-widest">Menu Performance</h3>
-           <div className="h-[300px] flex items-center justify-center">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={popularMeals}
-                    cx="50%" cy="50%"
-                    innerRadius={60} outerRadius={100}
-                    paddingAngle={8}
-                    dataKey="value"
-                  >
-                    {popularMeals.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-           </div>
-           <div className="space-y-4 pt-4">
-              {popularMeals.map(m => (
-                <div key={m.name} className="flex items-center justify-between">
-                   <div className="flex items-center gap-3">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: m.color }} />
-                      <span className="text-xs font-bold text-gray-600 dark:text-gray-400">{m.name}</span>
-                   </div>
-                   <span className="text-xs font-black text-gray-900 dark:text-white">{m.value}%</span>
-                </div>
+    <div className="space-y-4 pb-20">
+      {/* ============ HERO HEADER ============ */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-purple-950 p-6 sm:p-8 text-white shadow-xl shadow-purple-900/20">
+        <div className="absolute inset-0 bg-grid opacity-5" />
+        <div className="absolute -top-24 -right-20 w-80 h-80 rounded-full bg-purple-600/30 blur-3xl" />
+        <div className="relative z-10">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                  <BarChart3 className="w-3 h-3 text-amber-300" /> Analytics
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight mt-3">Business Analytics</h1>
+              <p className="text-sm text-slate-300 font-medium mt-1">Track your sales performance and customer trends</p>
+            </div>
+            <div className="flex bg-white/10 backdrop-blur p-1 rounded-xl border border-white/10">
+              {['Day', 'Week', 'Month', 'Year'].map(t => (
+                <button key={t} className={cn("px-6 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all", t === 'Week' ? "bg-white text-purple-600 shadow-sm" : "text-slate-300 hover:text-white")}>{t}</button>
               ))}
-           </div>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+
+      <div className="grid lg:grid-cols-3 gap-4">
+        <Card className="lg:col-span-2 rounded-[2rem] p-6 sm:p-8 space-y-6 border-gray-100 dark:border-slate-800 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h3 className="font-black text-base text-gray-900 dark:text-white uppercase tracking-widest">Revenue Trends (GH₵)</h3>
+            <Button variant="outline" className="rounded-xl h-10 px-4 text-[10px] font-black border-gray-200 dark:border-slate-700"><Download className="w-4 h-4 mr-2" /> EXPORT PDF</Button>
+          </div>
+          <div className="h-[320px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={salesData}>
+                <defs>
+                  <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} dy={10} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} />
+                <Tooltip
+                  contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }}
+                  cursor={{ stroke: '#8b5cf6', strokeWidth: 2, strokeDasharray: '4 4' }}
+                />
+                <Area type="monotone" dataKey="sales" stroke="#8b5cf6" strokeWidth={4} fillOpacity={1} fill="url(#colorSales)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        <Card className="rounded-[2rem] p-6 sm:p-8 space-y-6 border-gray-100 dark:border-slate-800 shadow-sm">
+          <h3 className="font-black text-base text-gray-900 dark:text-white uppercase tracking-widest">Menu Performance</h3>
+          <div className="h-[280px] flex items-center justify-center">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={popularMeals}
+                  cx="50%" cy="50%"
+                  innerRadius={60} outerRadius={100}
+                  paddingAngle={8}
+                  dataKey="value"
+                >
+                  {popularMeals.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="space-y-3 pt-2">
+            {popularMeals.map(m => (
+              <div key={m.name} className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: m.color }} />
+                  <span className="text-xs font-bold text-gray-600 dark:text-gray-400">{m.name}</span>
+                </div>
+                <span className="text-xs font-black text-gray-900 dark:text-white">{m.value}%</span>
+              </div>
+            ))}
+          </div>
         </Card>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-8">
+      <div className="grid md:grid-cols-3 gap-4">
         {[
-          { label: 'Avg Order Value', value: 'GHS 45.20', icon: CreditCard, color: 'text-emerald-500' },
-          { label: 'Repeat Customer Rate', value: '38%', icon: Users, color: 'text-blue-500' },
-          { label: 'Cancellation Rate', value: '0.8%', icon: AlertCircle, color: 'text-rose-500' },
+          { label: 'Avg Order Value', value: 'GHS 45.20', icon: CreditCard, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-950/40' },
+          { label: 'Repeat Customer Rate', value: '38%', icon: Users, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-950/40' },
+          { label: 'Cancellation Rate', value: '0.8%', icon: AlertCircle, color: 'text-rose-500', bg: 'bg-rose-50 dark:bg-rose-950/40' },
         ].map(kpi => (
-          <Card key={kpi.label} className="p-8 rounded-[2.5rem] border-gray-100 dark:border-slate-800 shadow-sm flex items-center gap-6">
-            <div className={cn("w-16 h-16 rounded-[1.5rem] bg-gray-50 dark:bg-slate-800 flex items-center justify-center", kpi.color)}><kpi.icon className="w-8 h-8" /></div>
+          <Card key={kpi.label} className="rounded-[2rem] p-6 border-gray-100 dark:border-slate-800 shadow-sm flex items-center gap-5">
+            <div className={cn("w-14 h-14 rounded-2xl flex items-center justify-center", kpi.bg, kpi.color)}><kpi.icon className="w-7 h-7" /></div>
             <div>
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{kpi.label}</p>
               <p className="text-2xl font-black text-gray-900 dark:text-white leading-none">{kpi.value}</p>
@@ -557,102 +618,136 @@ export function VendorAnalyticsPage() {
 // WALLET & WITHDRAWALS
 // ============================================================
 export function VendorWalletPage() {
-  const { formatPrice, withdrawals, requestWithdrawal, transactions, customerProfile, vendors } = useApp();
+  const { formatPrice, withdrawals, requestWithdrawal, transactions, customerProfile, vendors, showToast } = useApp();
   const { user } = useAuth();
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('MTN MoMo');
+  const [balance, setBalance] = useState<number>(0);
 
   const currentVendor = vendors.find(v => v.id === user?.vendorId);
-  const balance = currentVendor?.totalRevenue || 0;
+
+  // Real wallet balance from the server (credited on completed orders).
+  useEffect(() => {
+    if (!user) return;
+    WalletService.getBalance(user.id).then(w => setBalance(Number(w.balance) || 0)).catch(() => setBalance(0));
+  }, [user]);
+
+  const handleRequestPayout = () => {
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) return showToast('Enter Amount', 'Please enter a valid amount to withdraw.', 'warning');
+    if (amt > balance) return showToast('Insufficient Balance', 'Your wallet balance is too low for this withdrawal.', 'warning');
+    requestWithdrawal({ amount: amt, method, accountInfo: 'Default' });
+    setAmount('');
+  };
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 dark:text-white">Revenue Wallet</h1>
-          <p className="text-sm text-gray-500">Manage your earnings, payouts and platform commissions</p>
+    <div className="space-y-4 pb-20">
+      {/* ============ HERO HEADER ============ */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-700 p-6 sm:p-8 text-white shadow-xl shadow-purple-500/20">
+        <div className="absolute inset-0 bg-grid opacity-5" />
+        <div className="absolute -top-24 -right-20 w-80 h-80 rounded-full bg-white/15 blur-3xl" />
+        <div className="relative z-10">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-3 py-1 rounded-full bg-white/15 border border-white/15 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                  <Wallet className="w-3 h-3 text-amber-300" /> OmniPay
+                </span>
+                <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-200 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                  <ShieldCheck className="w-3 h-3" /> Secured
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight mt-3">Revenue Wallet</h1>
+              <p className="text-sm text-purple-100/80 font-medium mt-1">Manage your earnings, payouts and platform commissions</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-purple-100/80">Available Earnings</p>
+              <p className="text-4xl sm:text-5xl font-black tracking-tight mt-1">{formatPrice(balance)}</p>
+            </div>
+          </div>
         </div>
-        <Badge variant="success" className="h-9 px-6 rounded-xl font-black text-[10px] uppercase tracking-widest">Secured by OmniPay</Badge>
-      </div>
+      </motion.div>
 
-      <div className="grid lg:grid-cols-3 gap-8">
-        <Card className="lg:col-span-1 bg-gradient-to-br from-purple-600 to-indigo-700 text-white rounded-[3rem] border-none shadow-2xl relative overflow-hidden p-10 flex flex-col justify-between h-80 lg:h-[450px] group">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl group-hover:scale-125 transition-transform duration-1000" />
+      <div className="grid lg:grid-cols-3 gap-4">
+        <Card className="lg:col-span-1 bg-gradient-to-br from-slate-900 to-purple-950 text-white rounded-[2rem] border-none shadow-2xl relative overflow-hidden p-6 sm:p-8 flex flex-col justify-between group">
+          <div className="absolute top-0 right-0 w-56 h-56 bg-white/10 rounded-full -mr-28 -mt-28 blur-3xl group-hover:scale-125 transition-transform duration-1000" />
           <div className="space-y-2 relative z-10">
-            <p className="text-purple-100 text-xs font-black uppercase tracking-[0.2em] opacity-80">Available Earnings</p>
-            <p className="text-6xl font-black tracking-tighter">{formatPrice(balance)}</p>
+            <p className="text-purple-100 text-xs font-black uppercase tracking-[0.2em] opacity-80">Withdrawal Balance</p>
+            <p className="text-5xl font-black tracking-tighter">{formatPrice(balance)}</p>
+            <p className="text-[10px] text-purple-200/70 font-bold uppercase tracking-widest">After 10% platform commission</p>
           </div>
 
-          <div className="space-y-8 relative z-10">
-             <div className="space-y-4">
-                <label className="text-[10px] font-black text-purple-200 uppercase tracking-widest">WITHDRAWAL AMOUNT (GH₵)</label>
-                <input
-                  type="number"
-                  value={amount}
-                  onChange={e => setAmount(e.target.value)}
-                  placeholder="0.00"
-                  className="w-full bg-white/10 border-2 border-white/20 p-5 rounded-2xl text-2xl font-black placeholder:text-white/40 focus:bg-white/20 outline-none transition-all"
-                />
-             </div>
-             <Button className="w-full bg-white text-purple-600 hover:bg-purple-50 rounded-2xl h-16 font-black text-sm shadow-xl shadow-black/20" onClick={() => requestWithdrawal({ amount: parseFloat(amount), method, accountInfo: 'Default' })}>
-               REQUEST PAYOUT
-             </Button>
+          <div className="space-y-5 relative z-10 mt-8">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-purple-200 uppercase tracking-widest">WITHDRAWAL AMOUNT (GH₵)</label>
+              <input
+                type="number"
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                placeholder="0.00"
+                className="w-full bg-white/10 border-2 border-white/20 p-4 rounded-2xl text-2xl font-black placeholder:text-white/40 focus:bg-white/20 outline-none transition-all"
+              />
+            </div>
+            <Button className="w-full bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600 rounded-2xl h-14 font-black text-sm shadow-xl shadow-black/20" onClick={handleRequestPayout}>
+              REQUEST PAYOUT
+            </Button>
           </div>
         </Card>
 
-        <div className="lg:col-span-2 space-y-6">
-           <Card className="rounded-[2.5rem] p-8 border-gray-100 dark:border-slate-800 shadow-sm space-y-8">
-              <div className="flex items-center justify-between">
-                 <h3 className="font-black text-lg text-gray-900 dark:text-white uppercase tracking-widest">Payout Methods</h3>
-                 <Button variant="ghost" className="text-purple-600 font-black text-[10px] tracking-widest">+ ADD NEW</Button>
+        <div className="lg:col-span-2 space-y-4">
+          <Card className="rounded-[2rem] p-6 border-gray-100 dark:border-slate-800 shadow-sm space-y-6">
+            <div className="flex items-center justify-between">
+              <h3 className="font-black text-base text-gray-900 dark:text-white uppercase tracking-widest">Payout Methods</h3>
+              <Button variant="ghost" className="text-violet-600 font-black text-[10px] tracking-widest">+ ADD NEW</Button>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div className="p-5 rounded-[1.75rem] border-2 border-violet-500 bg-violet-50/10 dark:bg-violet-950/10 flex items-center justify-between group relative overflow-hidden">
+                <div className="flex items-center gap-3 relative z-10">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-400 flex items-center justify-center font-black text-xs text-white shadow-lg shadow-amber-400/20">MoMo</div>
+                  <div>
+                    <p className="font-black text-gray-900 dark:text-white text-sm">MTN Mobile Money</p>
+                    <p className="text-[10px] font-mono text-gray-500 font-bold">024 **** 0001</p>
+                  </div>
+                </div>
+                <Badge variant="success" className="text-[9px] font-black uppercase absolute top-4 right-4">DEFAULT</Badge>
               </div>
-              <div className="grid sm:grid-cols-2 gap-4">
-                 <div className="p-6 rounded-[2rem] border-2 border-purple-500 bg-purple-50/10 dark:bg-purple-950/10 flex items-center justify-between group relative overflow-hidden">
-                    <div className="flex items-center gap-4 relative z-10">
-                       <div className="w-14 h-14 rounded-2xl bg-amber-400 flex items-center justify-center font-black text-xs text-white shadow-lg shadow-amber-400/20">MoMo</div>
-                       <div>
-                          <p className="font-black text-gray-900 dark:text-white">MTN Mobile Money</p>
-                          <p className="text-[10px] font-mono text-gray-500 font-bold">024 **** 0001</p>
-                       </div>
-                    </div>
-                    <Badge variant="success" className="text-[9px] font-black uppercase absolute top-4 right-4">DEFAULT</Badge>
-                 </div>
-                 <div className="p-6 rounded-[2rem] border border-gray-100 dark:border-slate-800 flex items-center justify-between group hover:border-purple-500 transition-all cursor-pointer">
-                    <div className="flex items-center gap-4">
-                       <div className="w-14 h-14 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-600/20"><Store className="w-7 h-7" /></div>
-                       <div>
-                          <p className="font-black text-gray-900 dark:text-white">GCB Bank</p>
-                          <p className="text-[10px] font-mono text-gray-500 font-bold">**** **** 4492</p>
-                       </div>
-                    </div>
-                 </div>
+              <div className="p-5 rounded-[1.75rem] border border-gray-100 dark:border-slate-800 flex items-center justify-between group hover:border-violet-500 transition-all cursor-pointer">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-600/20"><Store className="w-6 h-6" /></div>
+                  <div>
+                    <p className="font-black text-gray-900 dark:text-white text-sm">GCB Bank</p>
+                    <p className="text-[10px] font-mono text-gray-500 font-bold">**** **** 4492</p>
+                  </div>
+                </div>
               </div>
-           </Card>
+            </div>
+          </Card>
 
-           <Card className="rounded-[2.5rem] border-gray-100 dark:border-slate-800 shadow-sm overflow-hidden flex-1 flex flex-col">
-              <CardHeader className="p-8 border-b bg-gray-50/50 dark:bg-slate-800/50">
-                 <CardTitle className="text-lg font-black uppercase tracking-widest">Recent Transactions</CardTitle>
-              </CardHeader>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                   <tbody className="divide-y divide-gray-50 dark:divide-slate-800">
-                      {transactions.length === 0 ? (
-                        <tr><td className="p-8 text-center text-gray-500 font-bold">No transactions found</td></tr>
-                      ) : transactions.map(tx => (
-                        <tr key={tx.id} className="hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors group">
-                           <td className="px-8 py-5">
-                              <p className="font-black text-gray-900 dark:text-white leading-tight capitalize">{tx.category.replace('_', ' ')}</p>
-                              <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">{tx.description} | {new Date(tx.date).toLocaleDateString()}</p>
-                           </td>
-                           <td className={cn("px-8 py-5 text-right font-black text-lg", tx.type === 'credit' ? "text-emerald-500" : "text-gray-900 dark:text-white")}>
-                              {tx.type === 'credit' ? '+' : ''}{formatPrice(tx.amount)}
-                           </td>
-                        </tr>
-                      ))}
-                   </tbody>
-                </table>
-              </div>
-           </Card>
+          <Card className="rounded-[2rem] border-gray-100 dark:border-slate-800 shadow-sm overflow-hidden">
+            <CardHeader className="p-6 border-b bg-gray-50/50 dark:bg-slate-800/50">
+              <CardTitle className="text-base font-black uppercase tracking-widest">Recent Transactions</CardTitle>
+            </CardHeader>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <tbody className="divide-y divide-gray-50 dark:divide-slate-800">
+                  {transactions.length === 0 ? (
+                    <tr><td className="p-8 text-center text-gray-500 font-bold">No transactions found</td></tr>
+                  ) : transactions.map(tx => (
+                    <tr key={tx.id} className="hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors group">
+                      <td className="px-6 py-5">
+                        <p className="font-black text-gray-900 dark:text-white leading-tight capitalize">{tx.category.replace('_', ' ')}</p>
+                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">{tx.description} | {new Date(tx.date).toLocaleDateString()}</p>
+                      </td>
+                      <td className={cn("px-6 py-5 text-right font-black text-lg", tx.type === 'credit' ? "text-emerald-500" : "text-gray-900 dark:text-white")}>
+                        {tx.type === 'credit' ? '+' : ''}{formatPrice(tx.amount)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
         </div>
       </div>
     </div>
@@ -858,21 +953,34 @@ export function VendorStoreSettingsPage() {
   };
 
   return (
-    <div className="space-y-8 pb-20">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 dark:text-white">Restaurant Configuration</h1>
-          <p className="text-sm text-gray-500">Manage your digital storefront and operations in Takoradi</p>
+    <div className="space-y-4 pb-20">
+      {/* ============ HERO HEADER ============ */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-purple-950 p-6 sm:p-8 text-white shadow-xl shadow-purple-900/20">
+        <div className="absolute inset-0 bg-grid opacity-5" />
+        <div className="absolute -top-24 -right-20 w-80 h-80 rounded-full bg-purple-600/30 blur-3xl" />
+        <div className="relative z-10">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                  <Store className="w-3 h-3 text-amber-300" /> Storefront
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight mt-3">Restaurant Configuration</h1>
+              <p className="text-sm text-slate-300 font-medium mt-1">Manage your digital storefront and operations in Takoradi</p>
+            </div>
+            <Button
+              className="rounded-2xl h-12 px-8 font-black text-xs bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 shadow-xl shadow-violet-600/20 uppercase tracking-widest"
+              onClick={activeTab === 'Operating Hours' ? saveHours : handleSaveProfile}
+            >
+              <CheckCircle2 className="w-4 h-4 mr-2" /> SAVE CONFIGURATION
+            </Button>
+          </div>
         </div>
-        <Button
-          className="rounded-2xl h-14 px-10 font-black text-sm bg-purple-600 hover:bg-purple-700 shadow-xl shadow-purple-600/20"
-          onClick={activeTab === 'Operating Hours' ? saveHours : handleSaveProfile}
-        >
-           SAVE CONFIGURATION
-        </Button>
-      </div>
+      </motion.div>
 
-      <div className="flex bg-white dark:bg-slate-900 p-2 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm overflow-x-auto scrollbar-none gap-2">
+      <div className="flex bg-white dark:bg-slate-900 p-1.5 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm overflow-x-auto scrollbar-none gap-1">
          {['Profile', 'Operating Hours', 'Delivery Rules', 'Payment Settings', 'Staff', 'Security'].map(t => (
            <button
              key={t}
@@ -881,8 +989,8 @@ export function VendorStoreSettingsPage() {
                window.scrollTo({ top: 0, behavior: 'smooth' });
              }}
              className={cn(
-               "px-8 py-4 text-[10px] font-black uppercase tracking-widest rounded-2xl transition-all whitespace-nowrap",
-               activeTab === t ? "bg-purple-600 text-white shadow-lg" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-slate-800"
+               "px-6 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all whitespace-nowrap",
+               activeTab === t ? "bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-lg shadow-violet-600/20" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-slate-800"
              )}>
              {t}
            </button>
@@ -1185,29 +1293,42 @@ export function VendorCategoriesPage() {
   ]);
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
-         <div>
-            <h1 className="text-2xl font-black">Food Categories</h1>
-            <p className="text-sm text-gray-500">Organize your menu for easier customer browsing</p>
-         </div>
-         <Button className="rounded-2xl h-12 px-8 bg-purple-600 font-bold"><Plus className="w-4 h-4 mr-2" /> NEW CATEGORY</Button>
-      </div>
+    <div className="space-y-4 pb-20">
+      {/* ============ HERO HEADER ============ */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-purple-950 p-6 sm:p-8 text-white shadow-xl shadow-purple-900/20">
+        <div className="absolute inset-0 bg-grid opacity-5" />
+        <div className="absolute -top-24 -right-20 w-80 h-80 rounded-full bg-purple-600/30 blur-3xl" />
+        <div className="relative z-10">
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                  <FolderTree className="w-3 h-3 text-amber-300" /> Categories
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight mt-3">Food Categories</h1>
+              <p className="text-sm text-slate-300 font-medium mt-1">Organize your menu for easier customer browsing</p>
+            </div>
+            <Button className="rounded-2xl h-12 px-6 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 font-black text-xs uppercase tracking-widest shadow-lg shadow-violet-600/20"><Plus className="w-4 h-4 mr-2" /> NEW CATEGORY</Button>
+          </div>
+        </div>
+      </motion.div>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
          {cats.map(c => (
-           <Card key={c.id} className="p-6 rounded-[2rem] border-gray-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-all group">
+           <Card key={c.id} className="p-6 rounded-[2rem] border-gray-100 dark:border-slate-800 shadow-sm hover:shadow-lg transition-all group">
               <div className="flex justify-between items-start mb-6">
-                 <div className="w-12 h-12 rounded-2xl bg-purple-50 flex items-center justify-center text-purple-600 font-bold shadow-inner">
+                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-100 to-purple-100 dark:from-violet-900/40 dark:to-purple-900/40 flex items-center justify-center text-violet-600 dark:text-violet-300 font-bold shadow-inner">
                     <Tags className="w-6 h-6" />
                  </div>
                  <Badge variant={c.status === 'Active' ? 'success' : 'default'} className="text-[8px] font-black uppercase px-2">{c.status}</Badge>
               </div>
               <h3 className="text-lg font-black text-gray-900 dark:text-white mb-1">{c.name}</h3>
               <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">{c.items} menu items linked</p>
-              <div className="mt-6 pt-6 border-t border-gray-50 flex gap-2">
-                 <Button variant="ghost" size="sm" className="flex-1 rounded-xl text-[10px] font-black uppercase border border-gray-100 hover:bg-purple-50 hover:text-purple-600 transition-all">EDIT</Button>
-                 <Button variant="ghost" size="sm" className="flex-1 rounded-xl text-[10px] font-black uppercase border border-gray-100 hover:bg-rose-50 hover:text-rose-600 transition-all text-rose-400">HIDE</Button>
+              <div className="mt-6 pt-6 border-t border-gray-50 dark:border-slate-800 flex gap-2">
+                 <Button variant="ghost" size="sm" className="flex-1 rounded-xl text-[10px] font-black uppercase border border-gray-100 dark:border-slate-700 hover:bg-violet-50 hover:text-violet-600 transition-all">EDIT</Button>
+                 <Button variant="ghost" size="sm" className="flex-1 rounded-xl text-[10px] font-black uppercase border border-gray-100 dark:border-slate-700 hover:bg-rose-50 hover:text-rose-600 transition-all text-rose-400">HIDE</Button>
               </div>
            </Card>
          ))}
@@ -1274,14 +1395,27 @@ export function VendorMessagesPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 min-h-[calc(100vh-12rem)]">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 dark:text-white">Merchant Inbox</h1>
-          <p className="text-sm text-gray-500">Chat directly with your customers about their orders</p>
+    <div className="flex flex-col gap-6 min-h-[calc(100vh-12rem)] pb-20">
+      {/* ============ HERO HEADER ============ */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-purple-950 p-6 sm:p-8 text-white shadow-xl shadow-purple-900/20">
+        <div className="absolute inset-0 bg-grid opacity-5" />
+        <div className="absolute -top-24 -right-20 w-80 h-80 rounded-full bg-purple-600/30 blur-3xl" />
+        <div className="relative z-10">
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                  <MessageSquare className="w-3 h-3 text-amber-300" /> Inbox
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight mt-3">Merchant Inbox</h1>
+              <p className="text-sm text-slate-300 font-medium mt-1">Chat directly with your customers about their orders</p>
+            </div>
+            <Badge variant="brand" className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">{filtered.length} CONVERSATIONS</Badge>
+          </div>
         </div>
-        <Badge variant="brand" className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest">{filtered.length} CONVERSATIONS</Badge>
-      </div>
+      </motion.div>
 
       <div className="flex-1 bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-xl border border-gray-100 dark:border-slate-800 flex overflow-hidden">
         <div className={cn("w-full md:w-80 border-r border-gray-50 dark:border-slate-800 flex flex-col", selectedConvId && "hidden md:flex")}>
@@ -1371,37 +1505,7 @@ export function VendorMessagesPage() {
 }
 
 export function VendorNotificationsPage() {
-  const { notifications } = useApp();
-
-  return (
-    <div className="max-w-3xl space-y-8">
-      <h1 className="text-2xl font-black">Activity Center</h1>
-      <div className="space-y-4">
-         {notifications.map(n => (
-           <Card key={n.id} className="p-6 rounded-[2rem] border-gray-100 dark:border-slate-800 shadow-sm flex gap-5 items-start group hover:border-purple-500 transition-all">
-              <div className={cn(
-                "w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-sm group-hover:scale-110 transition-transform",
-                n.type === 'order' ? "bg-amber-100 text-amber-600" :
-                n.type === 'delivery' ? "bg-blue-100 text-blue-600" :
-                "bg-emerald-100 text-emerald-600"
-              )}>
-                 {n.type === 'order' ? <ShoppingBag className="w-6 h-6" /> :
-                  n.type === 'delivery' ? <Truck className="w-6 h-6" /> :
-                  <Wallet className="w-6 h-6" />}
-              </div>
-              <div className="flex-1 space-y-1">
-                 <div className="flex justify-between items-center">
-                    <h4 className="font-bold text-gray-900 dark:text-white">{n.title}</h4>
-                    <span className="text-[10px] font-bold text-gray-400 uppercase">{n.time}</span>
-                 </div>
-                 <p className="text-sm text-gray-600 dark:text-gray-400 font-medium leading-relaxed">{n.message}</p>
-              </div>
-           </Card>
-         ))}
-         {notifications.length === 0 && <p className="text-sm text-gray-500 text-center py-10">No notifications yet.</p>}
-      </div>
-    </div>
-  );
+  return <NotificationCenter role="vendor" />;
 }
 
 export function VendorPromotionsPage() {
@@ -1411,26 +1515,40 @@ export function VendorPromotionsPage() {
   const vendorCoupons = coupons.filter(c => c.vendorId === vendorId);
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
-         <div>
-            <h1 className="text-2xl font-black">Marketing & Promotions</h1>
-            <p className="text-sm text-gray-500">Boost your sales with restaurant-specific deals</p>
-         </div>
-         <Button className="rounded-2xl h-12 px-8 bg-purple-600 font-bold"><Plus className="w-4 h-4 mr-2" /> CREATE DEAL</Button>
-      </div>
+    <div className="space-y-4 pb-20">
+      {/* ============ HERO HEADER ============ */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-purple-950 p-6 sm:p-8 text-white shadow-xl shadow-purple-900/20">
+        <div className="absolute inset-0 bg-grid opacity-5" />
+        <div className="absolute -top-24 -right-20 w-80 h-80 rounded-full bg-purple-600/30 blur-3xl" />
+        <div className="relative z-10">
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                  <Megaphone className="w-3 h-3 text-amber-300" /> Marketing
+                </span>
+                <Badge variant="success" className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest">{vendorCoupons.filter(c => c.isActive).length} ACTIVE</Badge>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight mt-3">Marketing & Promotions</h1>
+              <p className="text-sm text-slate-300 font-medium mt-1">Boost your sales with restaurant-specific deals</p>
+            </div>
+            <Button className="rounded-2xl h-12 px-6 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 font-black text-xs uppercase tracking-widest shadow-lg shadow-violet-600/20"><Plus className="w-4 h-4 mr-2" /> CREATE DEAL</Button>
+          </div>
+        </div>
+      </motion.div>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
          {vendorCoupons.length === 0 ? (
-           <Card className="col-span-full py-20 text-center border-dashed border-2 bg-gray-50/50">
-              <Megaphone className="w-12 h-12 text-gray-200 mx-auto mb-3" />
+           <Card className="col-span-full py-20 text-center border-dashed border-2 bg-gray-50/50 dark:bg-slate-900/30">
+              <Megaphone className="w-12 h-12 text-gray-200 dark:text-slate-700 mx-auto mb-3" />
               <p className="text-sm text-gray-400 font-bold uppercase tracking-widest">No active promotions</p>
               <Button variant="outline" className="mt-4 rounded-xl">Launch Your First Campaign</Button>
            </Card>
          ) : vendorCoupons.map(c => (
            <Card key={c.id} className="p-6 rounded-[2rem] border-gray-100 dark:border-slate-800 shadow-sm overflow-hidden relative group">
               <div className="flex justify-between items-start mb-6">
-                 <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-600 font-bold shadow-inner">
+                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/40 dark:to-orange-900/40 flex items-center justify-center text-amber-600 dark:text-amber-300 font-bold shadow-inner">
                     <TicketPercent className="w-6 h-6" />
                  </div>
                  <Badge variant={c.isActive ? 'success' : 'default'} className="text-[8px] font-black uppercase px-2">{c.isActive ? 'ACTIVE' : 'EXPIRED'}</Badge>
@@ -1443,14 +1561,14 @@ export function VendorPromotionsPage() {
                     <span className="text-gray-400 uppercase">Usage</span>
                     <span className="text-gray-900 dark:text-white">{c.totalUsed} / {c.usageLimit || '∞'}</span>
                  </div>
-                 <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                 <div className="w-full h-1.5 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
                     <div className="h-full bg-amber-500" style={{ width: `${(c.totalUsed / (c.usageLimit || 100)) * 100}%` }} />
                  </div>
               </div>
 
               <div className="mt-6 pt-6 flex gap-2">
-                 <Button variant="ghost" size="sm" className="flex-1 rounded-xl text-[10px] font-black uppercase border border-gray-100">EDIT</Button>
-                 <Button variant="ghost" size="sm" className="flex-1 rounded-xl text-[10px] font-black uppercase border border-gray-100 text-rose-400">STOP</Button>
+                 <Button variant="ghost" size="sm" className="flex-1 rounded-xl text-[10px] font-black uppercase border border-gray-100 dark:border-slate-700">EDIT</Button>
+                 <Button variant="ghost" size="sm" className="flex-1 rounded-xl text-[10px] font-black uppercase border border-gray-100 dark:border-slate-700 text-rose-400">STOP</Button>
               </div>
            </Card>
          ))}
@@ -1466,16 +1584,29 @@ export function VendorStaffPage() {
   const staff: any[] = []; // No staff API yet, starting with empty state as required
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
-         <div>
-            <h1 className="text-2xl font-black">Restaurant Staff</h1>
-            <p className="text-sm text-gray-500">Manage access and roles for your team members</p>
-         </div>
-         <Button className="rounded-2xl h-12 px-8 bg-purple-600 font-bold"><Plus className="w-4 h-4 mr-2" /> INVITE STAFF</Button>
-      </div>
+    <div className="space-y-4 pb-20">
+      {/* ============ HERO HEADER ============ */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-purple-950 p-6 sm:p-8 text-white shadow-xl shadow-purple-900/20">
+        <div className="absolute inset-0 bg-grid opacity-5" />
+        <div className="absolute -top-24 -right-20 w-80 h-80 rounded-full bg-purple-600/30 blur-3xl" />
+        <div className="relative z-10">
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                  <Users className="w-3 h-3 text-amber-300" /> Team
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight mt-3">Restaurant Staff</h1>
+              <p className="text-sm text-slate-300 font-medium mt-1">Manage access and roles for your team members</p>
+            </div>
+            <Button className="rounded-2xl h-12 px-6 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 font-black text-xs uppercase tracking-widest shadow-lg shadow-violet-600/20"><Plus className="w-4 h-4 mr-2" /> INVITE STAFF</Button>
+          </div>
+        </div>
+      </motion.div>
 
-      <Card className="rounded-[2.5rem] border-gray-100 dark:border-slate-800 shadow-sm overflow-hidden">
+      <Card className="rounded-[2rem] border-gray-100 dark:border-slate-800 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
@@ -1498,7 +1629,7 @@ export function VendorStaffPage() {
                 <tr key={s.id} className="hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors group">
                   <td className="px-8 py-5">
                     <div className="flex items-center gap-3">
-                       <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center font-black text-purple-600">{(s.name).charAt(0)}</div>
+                       <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-100 to-purple-100 dark:from-violet-900/40 dark:to-purple-900/40 flex items-center justify-center font-black text-violet-600 dark:text-violet-300">{(s.name).charAt(0)}</div>
                        <p className="text-sm font-bold text-gray-900 dark:text-white">{s.name}</p>
                     </div>
                   </td>
@@ -1536,48 +1667,52 @@ export function VendorInventoryPage() {
   const totalUnits = myProducts.reduce((s, p) => s + p.stock, 0);
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 dark:text-white">Inventory</h1>
-          <p className="text-sm text-gray-500">Live stock levels for every menu item</p>
-        </div>
-        <div className="flex gap-3">
-          <Badge variant={lowStock.length > 0 ? 'warning' : 'success'} className="h-11 px-5 rounded-xl text-[10px] font-black uppercase tracking-widest">
-            {lowStock.length > 0 ? `${lowStock.length} Low in Stock` : 'Stock Healthy'}
-          </Badge>
-        </div>
-      </div>
+    <div className="space-y-4 pb-20">
+      {/* ============ HERO HEADER ============ */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-purple-950 p-6 sm:p-8 text-white shadow-xl shadow-purple-900/20">
+        <div className="absolute inset-0 bg-grid opacity-5" />
+        <div className="absolute -top-24 -right-20 w-80 h-80 rounded-full bg-purple-600/30 blur-3xl" />
+        <div className="relative z-10">
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                  <Boxes className="w-3 h-3 text-amber-300" /> Inventory
+                </span>
+                <Badge variant={lowStock.length > 0 ? 'warning' : 'success'} className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
+                  {lowStock.length > 0 ? `${lowStock.length} Low in Stock` : 'Stock Healthy'}
+                </Badge>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight mt-3">Inventory</h1>
+              <p className="text-sm text-slate-300 font-medium mt-1">Live stock levels for every menu item</p>
+            </div>
+          </div>
 
-      <div className="grid sm:grid-cols-3 gap-6">
-        <Card className="rounded-2xl">
-          <CardContent className="pt-6">
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Menu Items</p>
-            <p className="text-3xl font-black mt-1">{myProducts.length}</p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-2xl">
-          <CardContent className="pt-6">
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Total Units</p>
-            <p className="text-3xl font-black mt-1">{totalUnits}</p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-2xl">
-          <CardContent className="pt-6">
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Out of Stock</p>
-            <p className="text-3xl font-black mt-1 text-rose-500">{myProducts.filter(p => p.stock <= 0).length}</p>
-          </CardContent>
-        </Card>
-      </div>
+          <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 divide-x divide-white/10 rounded-2xl bg-white/5 border border-white/10 overflow-hidden backdrop-blur">
+            {[
+              { label: 'Menu Items', value: myProducts.length, icon: UtensilsCrossed, cls: 'text-violet-300' },
+              { label: 'Total Units', value: totalUnits, icon: Boxes, cls: 'text-emerald-300' },
+              { label: 'Out of Stock', value: myProducts.filter(p => p.stock <= 0).length, icon: X, cls: 'text-rose-300' },
+            ].map(s => (
+              <div key={s.label} className="px-4 py-4 flex flex-col items-center gap-1.5">
+                <s.icon className={`w-4 h-4 ${s.cls}`} />
+                <p className="text-xl font-black leading-none">{s.value}</p>
+                <p className="text-[8px] font-black uppercase tracking-widest text-slate-300/80 text-center">{s.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </motion.div>
 
       {myProducts.length === 0 ? (
-        <Card className="rounded-2xl p-12 text-center">
+        <Card className="rounded-[2rem] p-12 text-center">
           <Boxes className="w-12 h-12 text-gray-300 mx-auto mb-4" />
           <h3 className="text-lg font-bold text-gray-900 dark:text-white">No menu items yet</h3>
           <p className="text-sm text-gray-500 mt-1">Add dishes to the menu to see live stock here.</p>
         </Card>
       ) : (
-        <Card className="rounded-2xl overflow-hidden">
+        <Card className="rounded-[2rem] overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
@@ -1602,7 +1737,7 @@ export function VendorInventoryPage() {
                     <td className="px-6 py-4 text-sm font-bold">{formatPrice(p.price)}</td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <div className="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="w-20 h-1.5 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
                           <div className={cn("h-full", p.stock <= (p.lowStockThreshold ?? 5) ? "bg-rose-500" : "bg-emerald-500")} style={{ width: `${Math.min(100, (p.stock / 50) * 100)}%` }} />
                         </div>
                         <span className="text-xs font-bold">{p.stock}</span>
@@ -1655,23 +1790,36 @@ export function VendorCustomersPage() {
   const customers = Array.from(map.values()).sort((a, b) => b.totalSpent - a.totalSpent);
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 dark:text-white">Customers</h1>
-          <p className="text-sm text-gray-500">Everyone who has ordered from your restaurant</p>
+    <div className="space-y-4 pb-20">
+      {/* ============ HERO HEADER ============ */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-purple-950 p-6 sm:p-8 text-white shadow-xl shadow-purple-900/20">
+        <div className="absolute inset-0 bg-grid opacity-5" />
+        <div className="absolute -top-24 -right-20 w-80 h-80 rounded-full bg-purple-600/30 blur-3xl" />
+        <div className="relative z-10">
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                  <Users className="w-3 h-3 text-amber-300" /> Customers
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight mt-3">Customers</h1>
+              <p className="text-sm text-slate-300 font-medium mt-1">Everyone who has ordered from your restaurant</p>
+            </div>
+            <Badge className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-white/10 border border-white/15">{customers.length} UNIQUE CUSTOMERS</Badge>
+          </div>
         </div>
-        <Badge className="px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">{customers.length} UNIQUE CUSTOMERS</Badge>
-      </div>
+      </motion.div>
 
       {customers.length === 0 ? (
-        <Card className="rounded-2xl p-12 text-center">
+        <Card className="rounded-[2rem] p-12 text-center">
           <Users className="w-12 h-12 text-gray-300 mx-auto mb-4" />
           <h3 className="text-lg font-bold text-gray-900 dark:text-white">No customers yet</h3>
           <p className="text-sm text-gray-500 mt-1">When customers place orders, their details will appear here.</p>
         </Card>
       ) : (
-        <Card className="rounded-2xl overflow-hidden">
+        <Card className="rounded-[2rem] overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
@@ -1688,7 +1836,7 @@ export function VendorCustomersPage() {
                   <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center font-black text-purple-600">{c.name.charAt(0)}</div>
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-100 to-purple-100 dark:from-violet-900/40 dark:to-purple-900/40 flex items-center justify-center font-black text-violet-600 dark:text-violet-300">{c.name.charAt(0)}</div>
                         <p className="text-sm font-bold text-gray-900 dark:text-white">{c.name}</p>
                       </div>
                     </td>
@@ -1744,21 +1892,34 @@ export function VendorSupportPage() {
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 dark:text-white">Help & Support</h1>
-          <p className="text-sm text-gray-500">Your support tickets and replies</p>
+    <div className="space-y-4 pb-20">
+      {/* ============ HERO HEADER ============ */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-purple-950 p-6 sm:p-8 text-white shadow-xl shadow-purple-900/20">
+        <div className="absolute inset-0 bg-grid opacity-5" />
+        <div className="absolute -top-24 -right-20 w-80 h-80 rounded-full bg-purple-600/30 blur-3xl" />
+        <div className="relative z-10">
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                  <LifeBuoy className="w-3 h-3 text-amber-300" /> Support
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight mt-3">Help & Support</h1>
+              <p className="text-sm text-slate-300 font-medium mt-1">Your support tickets and replies</p>
+            </div>
+            <Badge variant="outline" className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">{ticketState === 'ready' ? `${tickets.length} TICKETS` : '…'}</Badge>
+          </div>
         </div>
-        <Badge variant="outline" className="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">{ticketState === 'ready' ? `${tickets.length} TICKETS` : '…'}</Badge>
-      </div>
+      </motion.div>
 
-      <Card className="rounded-2xl p-6">
-        <CardTitle className="text-base flex items-center gap-2 mb-4"><LifeBuoy className="w-5 h-5 text-purple-500" /> Open a New Ticket</CardTitle>
+      <Card className="rounded-[2rem] p-6 border border-gray-100 dark:border-slate-800 shadow-sm">
+        <CardTitle className="text-base flex items-center gap-2 mb-4"><div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-100 to-purple-100 dark:from-violet-900/40 dark:to-purple-900/40 flex items-center justify-center text-violet-600 dark:text-violet-300"><LifeBuoy className="w-4 h-4" /></div> Open a New Ticket</CardTitle>
         <div className="space-y-3">
           <input value={newSubject} onChange={e => setNewSubject(e.target.value)} placeholder="Subject" className="w-full bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl px-4 py-3 text-sm outline-none focus:border-purple-500" />
           <textarea value={newMessage} onChange={e => setNewMessage(e.target.value)} rows={3} placeholder="Describe your issue…" className="w-full bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl px-4 py-3 text-sm outline-none focus:border-purple-500 resize-none" />
-          <Button className="rounded-xl bg-purple-600 hover:bg-purple-700 px-6" onClick={create} disabled={sending}>{sending ? 'Sending…' : 'Submit Ticket'}</Button>
+          <Button className="rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 px-6" onClick={create} disabled={sending}>{sending ? 'Sending…' : 'Submit Ticket'}</Button>
         </div>
       </Card>
 
@@ -1770,16 +1931,16 @@ export function VendorSupportPage() {
         </div>
       )}
       {ticketState === 'ready' && tickets.length === 0 && (
-        <Card className="rounded-2xl p-12 text-center">
+        <Card className="rounded-[2rem] p-12 text-center">
           <LifeBuoy className="w-12 h-12 text-gray-300 mx-auto mb-4" />
           <h3 className="text-lg font-bold text-gray-900 dark:text-white">No support tickets</h3>
           <p className="text-sm text-gray-500 mt-1">Create a ticket above and it will appear here.</p>
         </Card>
       )}
       {ticketState === 'ready' && tickets.length > 0 && (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {tickets.map(t => (
-            <Card key={t.id} className="rounded-2xl p-6 flex items-start justify-between gap-4">
+            <Card key={t.id} className="rounded-[1.75rem] p-6 flex items-start justify-between gap-4 hover:shadow-md transition-shadow">
               <div className="space-y-1 flex-1">
                 <div className="flex items-center gap-3">
                   <h4 className="font-bold text-gray-900 dark:text-white">{t.subject}</h4>
@@ -1788,7 +1949,7 @@ export function VendorSupportPage() {
                 <p className="text-sm text-gray-500">{t.message}</p>
                 <p className="text-[11px] text-gray-400">{new Date(t.createdAt).toLocaleString()}</p>
                 {(t.replies?.length || 0) > 0 && (
-                  <div className="mt-3 space-y-2 border-l-2 border-gray-100 pl-3">
+                  <div className="mt-3 space-y-2 border-l-2 border-gray-100 dark:border-slate-700 pl-3">
                     {t.replies.map((r: any, i: number) => (
                       <p key={i} className="text-xs text-gray-600 dark:text-gray-300"><span className="font-bold">{r.senderName}:</span> {r.message}</p>
                     ))}
@@ -1808,7 +1969,7 @@ export function VendorSupportPage() {
 // ============================================================
 export function VendorDeliveryRequestsPage() {
   const { vendorId } = useAuth();
-  const { orders, formatPrice, riders, showToast, updateOrderStatus } = useApp();
+  const { orders, formatPrice, riders, showToast, updateOrderStatus, assignRiderToOrder } = useApp();
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const deliveryOrders = orders.filter(o => o.vendorId === vendorId).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
@@ -1816,36 +1977,55 @@ export function VendorDeliveryRequestsPage() {
   const handleDispatch = async (order: any, riderId: string) => {
     const rider = riders.find(r => r.id === riderId);
     if (!rider) return;
-    await updateOrderStatus(order.id, 'rider_assigned');
-    showToast('Rider Dispatched', `${rider.name} has been assigned to ${order.orderNumber}.`);
+    try {
+      // Real server-side assignment: marks rider_assigned, opens the
+      // customer <-> rider thread and notifies customer/rider.
+      await assignRiderToOrder(order.id, riderId);
+      showToast('Rider Dispatched', `${rider.name} has been assigned to ${order.orderNumber || order.id}.`);
+    } catch (err: any) {
+      showToast('Dispatch Failed', err?.message || 'The rider could not be assigned.', 'warning');
+    }
     setExpanded(null);
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 dark:text-white">Delivery Requests</h1>
-          <p className="text-sm text-gray-500">Orders awaiting dispatch and rider pairing</p>
+    <div className="space-y-4 pb-20">
+      {/* ============ HERO HEADER ============ */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-purple-950 p-6 sm:p-8 text-white shadow-xl shadow-purple-900/20">
+        <div className="absolute inset-0 bg-grid opacity-5" />
+        <div className="absolute -top-24 -right-20 w-80 h-80 rounded-full bg-purple-600/30 blur-3xl" />
+        <div className="relative z-10">
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                  <Truck className="w-3 h-3 text-amber-300" /> Dispatch
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight mt-3">Delivery Requests</h1>
+              <p className="text-sm text-slate-300 font-medium mt-1">Orders awaiting dispatch and rider pairing</p>
+            </div>
+            <Badge className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-white/10 border border-white/15">{deliveryOrders.length || 0} DELIVERIES</Badge>
+          </div>
         </div>
-        <Badge className="px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">{deliveryOrders.length || 0} DELIVERIES</Badge>
-      </div>
+      </motion.div>
 
       {deliveryOrders.length === 0 ? (
-        <Card className="rounded-2xl p-12 text-center">
+        <Card className="rounded-[2rem] p-12 text-center">
           <Truck className="w-12 h-12 text-gray-300 mx-auto mb-4" />
           <h3 className="text-lg font-bold text-gray-900 dark:text-white">No delivery requests</h3>
           <p className="text-sm text-gray-500 mt-1">Delivery orders placed by customers will appear here.</p>
         </Card>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {deliveryOrders.map(o => (
-            <Card key={o.id} className="rounded-2xl p-6">
+            <Card key={o.id} className="rounded-[1.75rem] p-6">
               <div className="flex items-center justify-between gap-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <h4 className="font-bold text-gray-900 dark:text-white">{o.orderNumber || o.id}</h4>
-                    <Badge variant={o.status === 'delivered' ? 'success' : o.status === 'cancelled' ? 'danger' : 'warning'} className="text-[9px] font-black uppercase">{o.status}</Badge>
+                    <Badge variant={o.status === 'delivered' ? 'success' : o.status === 'cancelled' ? 'danger' : 'warning'} className="text-[9px] font-black uppercase">{o.status.replace('_', ' ')}</Badge>
                   </div>
                   <p className="text-xs text-gray-500 mt-1">{o.customerName} · {new Date(o.createdAt).toLocaleString()}</p>
                   <p className="text-sm font-bold text-emerald-600 mt-1">{formatPrice(o.totalAmount)} · {o.paymentMethod}</p>
@@ -1896,24 +2076,37 @@ export function VendorRidersPage() {
   const { riders, formatPrice } = useApp();
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 dark:text-white">Platform Riders</h1>
-          <p className="text-sm text-gray-500">Verified dispatch riders partnered with OmniMarket</p>
+    <div className="space-y-4 pb-20">
+      {/* ============ HERO HEADER ============ */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-purple-950 p-6 sm:p-8 text-white shadow-xl shadow-purple-900/20">
+        <div className="absolute inset-0 bg-grid opacity-5" />
+        <div className="absolute -top-24 -right-20 w-80 h-80 rounded-full bg-purple-600/30 blur-3xl" />
+        <div className="relative z-10">
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                  <Bike className="w-3 h-3 text-amber-300" /> Dispatch Fleet
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight mt-3">Platform Riders</h1>
+              <p className="text-sm text-slate-300 font-medium mt-1">Verified dispatch riders partnered with OmniMarket</p>
+            </div>
+            <Badge className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-white/10 border border-white/15">{riders.length} RIDERS</Badge>
+          </div>
         </div>
-        <Badge className="px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">{riders.length} RIDERS</Badge>
-      </div>
+      </motion.div>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {riders.length === 0 ? (
-          <Card className="rounded-2xl p-12 text-center sm:col-span-2 lg:col-span-3">
+          <Card className="rounded-[2rem] p-12 text-center sm:col-span-2 lg:col-span-3">
             <Truck className="w-12 h-12 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-bold text-gray-900 dark:text-white">No registered riders</h3>
             <p className="text-sm text-gray-500 mt-1">Riders join the platform after admin approval.</p>
           </Card>
         ) : riders.map(r => (
-          <Card key={r.id} className="rounded-2xl p-6">
+          <Card key={r.id} className="rounded-[2rem] p-6">
             <div className="flex items-center gap-4">
               <img src={r.avatar} alt={r.name} className="w-14 h-14 rounded-2xl object-cover border-2 border-emerald-500" onError={e => (e.currentTarget.style.display = 'none')} />
               <div className="flex-1">
@@ -1960,28 +2153,51 @@ export function VendorReviewsPage() {
   }));
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 dark:text-white">Customer Reviews</h1>
-          <p className="text-sm text-gray-500">Ratings and feedback left for your restaurant</p>
+    <div className="space-y-4 pb-20">
+      {/* ============ HERO HEADER ============ */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-purple-950 p-6 sm:p-8 text-white shadow-xl shadow-purple-900/20">
+        <div className="absolute inset-0 bg-grid opacity-5" />
+        <div className="absolute -top-24 -right-20 w-80 h-80 rounded-full bg-purple-600/30 blur-3xl" />
+        <div className="relative z-10">
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                  <Star className="w-3 h-3 text-amber-300" /> Reviews
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight mt-3">Customer Reviews</h1>
+              <p className="text-sm text-slate-300 font-medium mt-1">Ratings and feedback left for your restaurant</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                <p className="text-3xl font-black leading-none text-amber-300">{avgRating ? avgRating.toFixed(1) : '—'}</p>
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-300/80 mt-1">{myReviews.length} REVIEWS</p>
+              </div>
+              <div className="flex gap-0.5">
+                {[1, 2, 3, 4, 5].map(s => (
+                  <Star key={s} className={cn("w-4 h-4", s <= Math.round(avgRating) ? "fill-amber-400 text-amber-400" : "text-white/20")} />
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
-        <Badge className="px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">{myReviews.length} REVIEWS</Badge>
-      </div>
+      </motion.div>
 
       {myReviews.length === 0 ? (
-        <Card className="rounded-2xl p-12 text-center">
+        <Card className="rounded-[2rem] p-12 text-center">
           <Star className="w-12 h-12 text-gray-300 mx-auto mb-4" />
           <h3 className="text-lg font-bold text-gray-900 dark:text-white">No reviews yet</h3>
           <p className="text-sm text-gray-500 mt-1">Customer ratings will appear here after orders are completed.</p>
         </Card>
       ) : (
-        <div className="grid lg:grid-cols-3 gap-6">
-          <Card className="rounded-2xl p-8 text-center lg:col-span-1">
+        <div className="grid lg:grid-cols-3 gap-4">
+          <Card className="rounded-[2rem] p-8 text-center lg:col-span-1">
             <p className="text-6xl font-black text-amber-500">{avgRating.toFixed(1)}</p>
             <div className="flex justify-center gap-1 mt-2">
               {[1, 2, 3, 4, 5].map(s => (
-                <Star key={s} className={cn("w-5 h-5", s <= Math.round(avgRating) ? "fill-amber-400 text-amber-400" : "text-gray-200")} />
+                <Star key={s} className={cn("w-5 h-5", s <= Math.round(avgRating) ? "fill-amber-400 text-amber-400" : "text-gray-200 dark:text-slate-700")} />
               ))}
             </div>
             <p className="text-xs text-gray-500 mt-2 font-bold">{myReviews.length} total reviews</p>
@@ -1989,7 +2205,7 @@ export function VendorReviewsPage() {
               {distribution.map(d => (
                 <div key={d.star} className="flex items-center gap-2">
                   <span className="text-xs font-bold text-gray-500 w-3">{d.star}</span>
-                  <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="flex-1 h-2 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
                     <div className="h-full bg-amber-400" style={{ width: `${d.pct}%` }} />
                   </div>
                   <span className="text-[10px] text-gray-400 w-6 text-right">{d.count}</span>
@@ -1997,9 +2213,9 @@ export function VendorReviewsPage() {
               ))}
             </div>
           </Card>
-          <div className="lg:col-span-2 space-y-4">
+          <div className="lg:col-span-2 space-y-3">
             {myReviews.map(r => (
-              <Card key={r.id} className="rounded-2xl p-6">
+              <Card key={r.id} className="rounded-[1.75rem] p-6">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <img src={r.userAvatar} alt={r.userName} className="w-10 h-10 rounded-full object-cover" onError={e => (e.currentTarget.style.display = 'none')} />
@@ -2010,13 +2226,13 @@ export function VendorReviewsPage() {
                   </div>
                   <div className="flex gap-0.5">
                     {[1, 2, 3, 4, 5].map(s => (
-                      <Star key={s} className={cn("w-4 h-4", s <= r.rating ? "fill-amber-400 text-amber-400" : "text-gray-200")} />
+                      <Star key={s} className={cn("w-4 h-4", s <= r.rating ? "fill-amber-400 text-amber-400" : "text-gray-200 dark:text-slate-700")} />
                     ))}
                   </div>
                 </div>
                 <p className="text-sm text-gray-600 dark:text-gray-300 mt-3">{r.comment}</p>
                 {r.reply && (
-                  <div className="mt-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl p-3 text-xs text-purple-700 dark:text-purple-200">
+                  <div className="mt-3 bg-violet-50 dark:bg-violet-900/20 rounded-xl p-3 text-xs text-violet-700 dark:text-violet-200">
                     <p className="font-black mb-1 underline">Your Reply</p>{r.reply}
                   </div>
                 )}
@@ -2042,7 +2258,6 @@ const VENDOR_PLANS = [
     id: 'Starter',
     price: 0,
     period: '/month',
-    icon: Sparkles,
     tagline: 'Free forever. Perfect for new restaurants finding their feet.',
     perks: ['Unlimited menu items', '2% per-order commission', 'Standard support', 'Basic analytics'],
     cta: 'Current Plan',
@@ -2089,33 +2304,35 @@ export function VendorSubscriptionPage() {
   };
 
   return (
-    <div className="space-y-8">
-      <div className="bg-gradient-to-br from-violet-600 to-purple-700 rounded-[2rem] p-8 text-white shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-48 h-48 bg-white/10 rounded-full -mr-20 -mt-20 blur-2xl" />
+    <div className="space-y-4 pb-20">
+      {/* ============ HERO HEADER ============ */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-purple-950 p-6 sm:p-8 text-white shadow-xl shadow-purple-900/20">
+        <div className="absolute inset-0 bg-grid opacity-5" />
+        <div className="absolute -top-24 -right-20 w-80 h-80 rounded-full bg-purple-600/30 blur-3xl" />
         <div className="relative z-10 flex flex-col sm:flex-row sm:items-center gap-6">
           <div className="flex-1 space-y-3">
-            <div className="inline-flex items-center gap-2 bg-white/15 backdrop-blur px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest">
+            <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/10">
               <Crown className="w-4 h-4 text-amber-300" /> Your Plan
             </div>
             <h1 className="text-3xl font-black">{current.id}</h1>
-            <p className="text-sm text-purple-100 font-medium max-w-lg">{current.tagline}</p>
+            <p className="text-sm text-slate-300 font-medium max-w-lg">{current.tagline}</p>
           </div>
-          <div className="bg-white/15 backdrop-blur rounded-2xl p-5 text-center min-w-[190px]">
-            <p className="text-[10px] font-black uppercase tracking-widest text-purple-200">Next Billing</p>
+          <div className="bg-white/10 backdrop-blur rounded-2xl p-5 text-center min-w-[190px] border border-white/10">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-300">Next Billing</p>
             <p className="text-2xl font-black mt-1 flex items-center justify-center gap-2">
               <CalendarDays className="w-5 h-5 text-amber-300" /> {current.price === 0 ? 'Never' : nextBilling}
             </p>
             {current.price > 0 && (
-              <p className="text-[10px] text-purple-100 mt-1">GHS {current.price}{current.period} · auto-renew</p>
+              <p className="text-[10px] text-slate-300 mt-1">GHS {current.price}{current.period} · auto-renew</p>
             )}
           </div>
         </div>
-      </div>
+      </motion.div>
 
       <div className="grid md:grid-cols-3 gap-6">
         {VENDOR_PLANS.map(plan => {
           const isCurrent = plan.id === currentPlan;
-          const Icon = plan.icon;
           return (
             <div
               key={plan.id}
@@ -2136,9 +2353,11 @@ export function VendorSubscriptionPage() {
                 </span>
               )}
 
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-100 to-purple-100 dark:from-violet-900/40 dark:to-purple-900/40 flex items-center justify-center text-violet-600 dark:text-violet-300 mb-5">
-                <Icon className="w-7 h-7" />
-              </div>
+              {plan.icon && (
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-100 to-purple-100 dark:from-violet-900/40 dark:to-purple-900/40 flex items-center justify-center text-violet-600 dark:text-violet-300 mb-5">
+                  <plan.icon className="w-7 h-7" />
+                </div>
+              )}
 
               <h3 className="text-lg font-black text-gray-900 dark:text-white">{plan.id}</h3>
               <div className="mt-2 flex items-end gap-1">

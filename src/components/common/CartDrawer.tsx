@@ -23,6 +23,7 @@ export const CartDrawer: React.FC = () => {
     applyCoupon,
     removeCoupon,
     selectedRider,
+    t
   } = useApp();
 
   const [couponInput, setCouponInput] = useState('');
@@ -57,18 +58,18 @@ export const CartDrawer: React.FC = () => {
         className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"
       />
 
-      <div className="absolute inset-x-0 bottom-0 md:inset-y-0 md:right-0 md:left-auto md:bottom-auto md:max-w-full md:flex md:pl-10">
-        <div className="w-full md:w-screen md:max-w-md max-h-[92dvh] md:max-h-none md:h-full bg-white dark:bg-slate-900 shadow-2xl flex flex-col border-t md:border-l border-gray-200 dark:border-slate-800 rounded-t-[2.5rem] md:rounded-none overflow-hidden">
+      <div className="absolute inset-x-0 bottom-0 md:inset-y-0 md:end-0 md:start-auto md:bottom-auto md:max-w-full md:flex md:ps-10">
+        <div className="w-full md:w-screen md:max-w-md max-h-[92dvh] md:max-h-none md:h-full bg-white dark:bg-slate-900 shadow-2xl flex flex-col border-t md:border-s border-gray-200 dark:border-slate-800 rounded-t-[2.5rem] md:rounded-none overflow-hidden">
           
           {/* Header */}
           <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between shrink-0">
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 flex items-center justify-center text-emerald-600">
                 <ShoppingBag className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="font-black text-lg text-gray-900 dark:text-white leading-tight">Your Cart</h3>
-                <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">{cartCount} items selected</p>
+                <h3 className="font-black text-lg text-gray-900 dark:text-white leading-tight">{t('cart.title')}</h3>
+                <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">{cartCount} {t('cartDrawer.itemsSelected')}</p>
               </div>
             </div>
             <button
@@ -87,8 +88,8 @@ export const CartDrawer: React.FC = () => {
                   <ShoppingBag className="w-10 h-10" />
                 </div>
                 <div>
-                  <h4 className="font-black text-xl text-gray-900 dark:text-white">Your cart is empty</h4>
-                  <p className="text-xs text-gray-500 mt-2 max-w-[200px] mx-auto leading-relaxed">Delicious meals from Takoradi's best kitchens are just a few taps away.</p>
+                  <h4 className="font-black text-xl text-gray-900 dark:text-white">{t('cartDrawer.emptyTitle')}</h4>
+                  <p className="text-xs text-gray-500 mt-2 max-w-[200px] mx-auto leading-relaxed">{t('cartDrawer.emptyDesc')}</p>
                 </div>
                 <button
                   onClick={() => {
@@ -97,14 +98,14 @@ export const CartDrawer: React.FC = () => {
                   }}
                   className="bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs px-8 py-4 rounded-2xl transition shadow-lg shadow-emerald-500/20 uppercase tracking-widest"
                 >
-                  Start Ordering
+                  {t('cartDrawer.startOrdering')}
                 </button>
               </div>
             ) : (
               cart.map((item) => (
                 <div
                   key={item.product.id}
-                  className="flex space-x-4 p-4 rounded-[2rem] border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-800/50 shadow-sm group hover:shadow-md transition-all"
+                  className="flex gap-4 p-4 rounded-[2rem] border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-800/50 shadow-sm group hover:shadow-md transition-all"
                 >
                   <div className="w-20 h-20 rounded-2xl overflow-hidden flex-shrink-0 shadow-sm group-hover:scale-105 transition-transform duration-500">
                     <img
@@ -137,7 +138,7 @@ export const CartDrawer: React.FC = () => {
                       </span>
 
                       {/* Stepper */}
-                      <div className="flex items-center space-x-1 bg-gray-100 dark:bg-slate-700 p-1 rounded-xl shadow-inner">
+                      <div className="flex items-center gap-1 bg-gray-100 dark:bg-slate-700 p-1 rounded-xl shadow-inner">
                         <button
                           onClick={() => updateCartQuantity(item.product.id, -1)}
                           className="w-7 h-7 flex items-center justify-center text-gray-500 hover:text-gray-900 dark:hover:text-white font-black"
@@ -170,27 +171,27 @@ export const CartDrawer: React.FC = () => {
                 {appliedCoupon ? (
                   <div className="flex items-center justify-between bg-emerald-500 text-white p-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20">
                     <span className="flex items-center gap-2">
-                      <Tag className="w-4 h-4" /> Code {appliedCoupon.code} Applied
+                      <Tag className="w-4 h-4" /> {t('cart.promo')} {appliedCoupon.code} {t('common.success')}
                     </span>
-                    <button onClick={removeCoupon} className="hover:underline">Remove</button>
+                    <button onClick={removeCoupon} className="hover:underline">{t('cart.remove')}</button>
                   </div>
                 ) : (
                   <form onSubmit={handleApplyCoupon} className="flex gap-2">
                     <div className="relative flex-1 group">
-                      <Tag className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-emerald-500 transition-colors" />
+                      <Tag className="absolute start-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-emerald-500 transition-colors" />
                       <input
                         type="text"
-                        placeholder="PROMO CODE"
+                        placeholder={t('cart.voucher')}
                         value={couponInput}
                         onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
-                        className="w-full bg-white dark:bg-slate-800 border-2 border-transparent p-3 pl-10 rounded-2xl text-[10px] font-black tracking-widest text-gray-900 dark:text-white focus:border-emerald-500 shadow-sm outline-none transition-all"
+                        className="w-full bg-white dark:bg-slate-800 border-2 border-transparent p-3 ps-10 rounded-2xl text-[10px] font-black tracking-widest text-gray-900 dark:text-white focus:border-emerald-500 shadow-sm outline-none transition-all"
                       />
                     </div>
                     <button
                       type="submit"
                       className="bg-gray-900 dark:bg-slate-700 text-white text-[10px] font-black px-5 py-3 rounded-2xl hover:bg-black transition-all shadow-md uppercase tracking-widest"
                     >
-                      Apply
+                      {t('cart.apply')}
                     </button>
                   </form>
                 )}
@@ -199,31 +200,31 @@ export const CartDrawer: React.FC = () => {
               {/* Price Breakdown */}
               <div className="space-y-2 text-[11px] font-bold text-gray-500 dark:text-gray-400">
                 <div className="flex justify-between">
-                  <span className="uppercase tracking-widest">Subtotal</span>
+                  <span className="uppercase tracking-widest">{t('cart.subtotal')}</span>
                   <span className="text-gray-900 dark:text-white">{formatPrice(cartTotal)}</span>
                 </div>
                 {discountAmount > 0 && (
                   <div className="flex justify-between text-emerald-600">
-                    <span className="uppercase tracking-widest">Discount</span>
+                    <span className="uppercase tracking-widest">{t('cart.promo')}</span>
                     <span>-{formatPrice(discountAmount)}</span>
                   </div>
                 )}
                 <div className="flex justify-between">
-                  <span className="uppercase tracking-widest">Estimated Tax & Fee</span>
+                  <span className="uppercase tracking-widest">{t('cartDrawer.taxAndFee')}</span>
                   <span className="text-gray-900 dark:text-white">{formatPrice(deliveryFee + estimatedTax)}</span>
                 </div>
                 <div className="flex justify-between text-lg font-black text-gray-900 dark:text-white pt-3 border-t border-gray-200 dark:border-slate-800">
-                  <span className="uppercase tracking-tighter">Grand Total</span>
+                  <span className="uppercase tracking-tighter">{t('cart.total')}</span>
                   <span className="text-emerald-600">{formatPrice(grandTotal)}</span>
                 </div>
               </div>
 
               <button
                 onClick={handleProceedToCheckout}
-                className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs py-5 rounded-[1.5rem] transition-all shadow-xl shadow-emerald-500/20 flex items-center justify-center space-x-3 cursor-pointer uppercase tracking-[0.2em] active:scale-[0.98]"
+                className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs py-5 rounded-[1.5rem] transition-all shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-3 cursor-pointer uppercase tracking-[0.2em] active:scale-[0.98]"
               >
-                <span>Checkout Now</span>
-                <ArrowRight className="w-5 h-5" />
+                <span>{t('cartDrawer.checkoutNow')}</span>
+                <ArrowRight className="w-5 h-5 rtl:rotate-180" />
               </button>
             </div>
           )}

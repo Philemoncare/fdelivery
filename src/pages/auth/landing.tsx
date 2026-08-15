@@ -2,9 +2,11 @@ import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, Store, Bike, Star, Shield, TrendingUp } from 'lucide-react';
 import { Button } from '@/src/components/ui/button';
+import { useApp } from '@/src/context/AppContext';
 
 export function LandingPage() {
   const navigate = useNavigate();
+  const { t } = useApp();
 
   return (
     <div className="min-h-screen">
@@ -18,10 +20,10 @@ export function LandingPage() {
           </Link>
           <div className="flex items-center gap-3">
             <Link to="/login">
-              <Button variant="ghost">Sign In</Button>
+              <Button variant="ghost">{t('nav.login')}</Button>
             </Link>
             <Link to="/register">
-              <Button>Get Started</Button>
+              <Button>{t('auth.createAccount')}</Button>
             </Link>
           </div>
         </div>
@@ -34,23 +36,20 @@ export function LandingPage() {
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>
               <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/30 rounded-full text-sm text-emerald-700 dark:text-emerald-400 font-medium mb-6">
-                <Shield className="w-4 h-4" /> Trusted by 10,000+ businesses
+                <Shield className="w-4 h-4" /> {t('landing.trustedBy')}
               </div>
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 dark:text-white leading-tight">
-                The{' '}
-                <span className="text-gradient-brand">Marketplace</span>{' '}
-                &amp; Delivery{' '}
-                <span className="text-gradient-brand">Ecosystem</span>
+                {t('landing.heroTitle')}
               </h1>
               <p className="text-lg text-gray-600 dark:text-slate-400 mt-4 max-w-lg leading-relaxed">
-                One platform for vendors, shoppers, and riders. Sell smarter, shop faster, deliver further.
+                {t('landing.heroDesc')}
               </p>
               <div className="flex flex-wrap gap-3 mt-8">
                 <Button size="xl" onClick={() => navigate('/register')}>
-                  Start Selling <ArrowRight className="w-5 h-5" />
+                  {t('landing.startSelling')} <ArrowRight className="w-5 h-5" />
                 </Button>
                 <Button variant="outline" size="xl" onClick={() => navigate('/register')}>
-                  Start Shopping
+                  {t('landing.startShopping')}
                 </Button>
               </div>
               <div className="flex items-center gap-6 mt-8 text-sm text-gray-500 dark:text-slate-400">
@@ -63,16 +62,16 @@ export function LandingPage() {
               <div className="relative z-10 bg-white dark:bg-slate-800/90 rounded-3xl border border-gray-100 dark:border-slate-700/50 shadow-2xl p-6">
                 <div className="grid grid-cols-2 gap-3">
                   {[
-                    { role: 'Customer', icon: '🛍️', desc: 'Shop 10K+ products', color: 'from-emerald-500' },
-                    { role: 'Vendor', icon: '🏪', desc: 'Sell to millions', color: 'from-violet-500' },
-                    { role: 'Rider', icon: '🛵', desc: 'Earn flexibly', color: 'from-amber-500' },
-                    { role: 'Admin', icon: '📊', desc: 'Manage everything', color: 'from-blue-500' },
+                    { role: 'Customer', icon: '🛍️', desc: 'Shop 10K+ products', color: 'from-emerald-500', to: '/register' },
+                    { role: 'Vendor', icon: '🏪', desc: 'Sell to millions', color: 'from-violet-500', to: '/register' },
+                    { role: 'Rider', icon: '🛵', desc: 'Earn flexibly', color: 'from-amber-500', to: '/register' },
+                    { role: 'Admin', icon: '📊', desc: 'Manage everything', color: 'from-blue-500', to: '/admin/login' },
                   ].map(item => (
-                    <div key={item.role} className="p-4 rounded-xl bg-gray-50 dark:bg-slate-700/50 border border-gray-100 dark:border-slate-700/50">
+                    <Link key={item.role} to={item.to} className="p-4 rounded-xl bg-gray-50 dark:bg-slate-700/50 border border-gray-100 dark:border-slate-700/50 hover:border-blue-500/50 hover:shadow-lg transition-all">
                       <span className="text-2xl">{item.icon}</span>
                       <p className="font-semibold text-gray-900 dark:text-white mt-2">{item.role}</p>
                       <p className="text-xs text-gray-500 dark:text-slate-400">{item.desc}</p>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               </div>
@@ -86,14 +85,14 @@ export function LandingPage() {
       <section className="py-20 bg-white dark:bg-slate-900">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Everything you need to grow</h2>
-            <p className="text-gray-500 dark:text-slate-400 mt-2 max-w-lg mx-auto">A complete ecosystem for modern commerce</p>
+            <h2 className="text-3xl font-bold text-gray-900 dark:text-white">{t('landing.growTitle')}</h2>
+            <p className="text-gray-500 dark:text-slate-400 mt-2 max-w-lg mx-auto">{t('landing.growSubtitle')}</p>
           </motion.div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {[
-              { title: 'Multi-Vendor Marketplace', desc: 'List products alongside top brands. Reach customers actively searching for what you sell.', icon: Store, color: 'emerald' },
-              { title: 'Smart Delivery Network', desc: 'Real-time dispatch routing. Customers track every mile with live GPS updates.', icon: Bike, color: 'amber' },
-              { title: 'Enterprise Analytics', desc: 'Real-time revenue analytics, sales reports, and performance dashboards for every role.', icon: TrendingUp, color: 'violet' },
+              { title: t('landing.feature1Title'), desc: t('landing.feature1Desc'), icon: Store, color: 'emerald' },
+              { title: t('landing.feature2Title'), desc: t('landing.feature2Desc'), icon: Bike, color: 'amber' },
+              { title: t('landing.feature3Title'), desc: t('landing.feature3Desc'), icon: TrendingUp, color: 'violet' },
             ].map(f => (
               <motion.div key={f.title} whileHover={{ y: -4 }} className="p-6 rounded-2xl bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-700/50">
                 <div className={`w-12 h-12 bg-${f.color}-50 dark:bg-${f.color}-900/30 rounded-xl flex items-center justify-center mb-4`}>
@@ -109,8 +108,15 @@ export function LandingPage() {
 
       <footer className="bg-gray-50 dark:bg-slate-900 border-t border-gray-100 dark:border-slate-800 py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm text-gray-500 dark:text-slate-400">
-          <p className="font-semibold text-gray-700 dark:text-gray-300 mb-2">© 2026 OmniMarket. All rights reserved.</p>
-          <p>The multi-vendor marketplace & delivery ecosystem.</p>
+          <div className="flex items-center justify-center gap-4 flex-wrap mb-3">
+            <Link to="/login" className="hover:text-gray-900 dark:hover:text-white transition-colors font-medium">{t('common.portalLogin')}</Link>
+            <span className="text-gray-300 dark:text-slate-600">·</span>
+            <Link to="/admin/login" className="hover:text-gray-900 dark:hover:text-white transition-colors font-medium">{t('common.adminConsole')}</Link>
+            <span className="text-gray-300 dark:text-slate-600">·</span>
+            <Link to="/super-admin/login" className="hover:text-gray-900 dark:hover:text-white transition-colors font-medium">{t('common.superAdminConsole')}</Link>
+          </div>
+          <p className="font-semibold text-gray-700 dark:text-gray-300 mb-2">© 2026 {t('footer.copyright')}</p>
+          <p>{t('common.ecosystemDesc')}</p>
         </div>
       </footer>
     </div>

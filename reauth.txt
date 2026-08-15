@@ -1,0 +1,21 @@
+﻿405:     const userId = getAuthUserId(req);
+406:     const user = db.users.find((u: any) => u.id === userId);
+407:     if (!user) return res.status(401).json({ success: false, message: 'Authentication required' });
+408:     if (!permissions.some(p => userHasPermission(user, p))) {
+409:       return res.status(403).json({ success: false, message: 'You do not have permission to perform this action' });
+410:     }
+411:     (req as any).currentUser = user;
+412:     next();
+413:   };
+414: }
+415: 
+416: /**
+417:  * Verify a one-time current-password re-authentication for high-risk changes.
+418:  * Mirrors the settings / gateway re-auth flows. Returns an error object when
+419:  * re-auth is missing or fails, otherwise null.
+420:  */
+421: function requireReAuth(user: any, body: any): { status: number; body: any } | null {
+422:   const password = body && body.password;
+423:   if (!password || typeof password !== 'string') {
+424:     logAudit(user, 'RBAC change denied', 'permission', user.id, 'denied', { reason: 're-authentication required' });
+425:     return { status: 401, body: { success: false, requiresPassword: true, message: 'Re-authentication with your current password is required.' } };

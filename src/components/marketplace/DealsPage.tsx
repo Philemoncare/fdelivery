@@ -13,7 +13,8 @@ export const DealsPage: React.FC = () => {
     setSelectedProduct,
     toggleWishlist,
     isInWishlist,
-    isLoading
+    isLoading,
+    t
   } = useApp();
 
   const [timeLeft, setTimeLeft] = useState({ hours: 4, minutes: 28, seconds: 45 });
@@ -46,13 +47,13 @@ export const DealsPage: React.FC = () => {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
               <div>
                 <h1 className="text-2xl sm:text-3xl font-heading font-black text-gray-900 dark:text-white">
-                  Today's Deals & Flash Sales
+                  {t('home.deals')}
                 </h1>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Exclusive restaurant meal deals with fast rider delivery.</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{t('vendorListing.subtitle')}</p>
               </div>
 
             <div className="flex items-center space-x-2">
-              <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mr-1">Ends in:</span>
+              <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mr-1">{t('common.eta')}</span>
               <div className="bg-slate-900 text-white font-mono font-bold text-sm px-3 py-1.5 rounded-xl border border-slate-700">
                 {String(timeLeft.hours).padStart(2, '0')}h
               </div>
@@ -69,12 +70,12 @@ export const DealsPage: React.FC = () => {
 
           {deals.length === 0 ? (
             <div className="text-center py-16 space-y-3">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white">No active flash sales right now</h3>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">{t('common.noResults')}</h3>
               <button
                 onClick={() => navigate('/products')}
                 className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs px-6 py-3 rounded-xl shadow transition"
               >
-                Browse All Meals <ArrowRight className="w-4 h-4" />
+                {t('home.viewAll')} <ArrowRight className="w-4 h-4" />
               </button>
             </div>
           ) : (
@@ -88,7 +89,7 @@ export const DealsPage: React.FC = () => {
                     <div className="relative aspect-square rounded-2xl overflow-hidden mb-3 bg-white dark:bg-slate-900">
                       <img src={product.images?.[0] || ''} alt={product.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                       <span className="absolute top-2 left-2 bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow">
-                        -{product.discountPercent}% OFF
+                        -{product.discountPercent}% {t('common.saveDeal')}
                       </span>
                       <button
                         onClick={() => toggleWishlist(product)}
@@ -132,14 +133,14 @@ export const DealsPage: React.FC = () => {
                       <button
                         onClick={() => setQuickViewProduct(product)}
                         className="p-2 bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-gray-200 rounded-xl hover:bg-gray-300 transition"
-                        title="Quick View"
+                        title={t('common.view')}
                       >
                         <Eye className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => addToCart(product)}
                         className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-xl transition shadow"
-                        title="Add to Cart"
+                        title={t('common.addToCart')}
                       >
                         <ShoppingBag className="w-4 h-4" />
                       </button>

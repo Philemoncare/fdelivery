@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, User, DollarSign, ShieldCheck, AlertCircle, CheckCircle2, XCircle, X, Edit3, Trash2,
-  Search, Eye, MapPin, Phone, Mail, UserCheck, RotateCcw, Ban
+  Search, Eye, MapPin, Phone, Mail, UserCheck, RotateCcw, Ban, KeyRound, Lock, Copy, ShieldAlert
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/src/components/ui/card';
 import { Badge } from '@/src/components/ui/badge';
@@ -14,6 +14,7 @@ import { Label } from '@/src/components/ui/label';
 import { useApp } from '@/src/context/AppContext';
 import { AdminService } from '@/src/services/api';
 import { useAuth } from '@/src/lib/auth/auth-store';
+import { ConfirmDialog } from '@/src/components/common/ConfirmDialog';
 import { cn } from '@/src/lib/utils';
 
 export function AdminCustomersPage() {
@@ -29,6 +30,9 @@ export function AdminCustomersPage() {
   const [showCustomerDetail, setShowCustomerDetail] = useState(false);
   const [detail, setDetail] = useState<any>(null);
   const [working, setWorking] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: string; customer: any } | null>(null);
+  const [tempResult, setTempResult] = useState<{ customer: any; password: string } | null>(null);
 
   const loadCustomers = async () => {
     setLoading(true);
@@ -58,36 +62,92 @@ export function AdminCustomersPage() {
     }
   };
 
-  const handleSuspend = async (cust: any) => {
+  // Runs a real, audited account action against the backend. Super Admins get
+  // the full account-control endpoint (session + notification + audit + token
+  // revocation); regular Admins use the allowed generic update route.
+  const runAccountAction = async (customer: any, kind: string) => {
+    setBusyId(customer.id);
     setWorking(true);
     try {
-      await AdminService.updateUser(cust.id, { isSuspended: true });
-      showToast('Customer Suspended', `${cust.name}'s account has been suspended.`);
+      if (kind === 'suspend') {
+        if (isSuper) {
+          await AdminService.accountAction(customer.id, 'suspend');
+        } else {
+          await AdminService.updateUser(customer.id, { isSuspended: true, isActive: false });
+        }
+        showToast('Account Suspended', `${customer.name} is signed out everywhere and cannot sign in.`);
+      } else if (kind === 'reactivate') {
+        if (isSuper) {
+          await AdminService.accountAction(customer.id, 'reactivate');
+        } else {
+          await AdminService.updateUser(customer.id, { isSuspended: false, isActive: true });
+        }
+        showToast('Account Reactivated', `${customer.name} can sign in again.`);
+      } else if (kind === 'force-reset') {
+        await AdminService.adminForceReset(customer.id);
+        showToast('Password Reset', `${customer.name} must set a new password at next sign-in.`);
+      } else if (kind === 'revoke-sessions') {
+        const res = await AdminService.adminRevokeSessions(customer.id);
+        const n = res?.revokedSessions ?? '';
+        showToast('Sessions Revoked', `${customer.name}'s active sessions${n ? ` (${n})` : ''} were terminated.`);
+      }
+      setConfirm(null);
+      if (showCustomerDetail) {
+        setSelectedCustomer(prev => prev ? { ...prev, status: kind === 'suspend' ? 'suspended' : kind === 'reactivate' ? 'active' : prev.status } : prev);
+      }
       await loadCustomers();
     } catch (e: any) {
-      showToast('Action Failed', e?.message || 'Could not suspend account.', 'warning');
+      showToast('Action Failed', e?.message || 'Could not complete that action.', 'warning');
     } finally {
+      setBusyId(null);
       setWorking(false);
     }
   };
 
-  const handleToggleSuspend = async (cust: any) => {
+  const handleSuspend = async (cust: any) => {
+    setConfirm({ kind: 'suspend', customer: cust });
+  };
+
+  const handleToggleSuspend = (cust: any) => {
     if (cust.status === 'suspended') return handleReactivate(cust);
     return handleSuspend(cust);
   };
 
   const handleReactivate = async (cust: any) => {
+    setConfirm({ kind: 'reactivate', customer: cust });
+  };
+
+  const handleTempPassword = async (cust: any) => {
+    setBusyId(cust.id);
     setWorking(true);
     try {
-      await AdminService.updateUser(cust.id, { isSuspended: false, isActive: true });
-      showToast('Customer Reactivated', `${cust.name}'s account is now active.`);
-      await loadCustomers();
+      const res = await AdminService.adminGenerateTempPassword(cust.id);
+      if (res?.success && res.tempPassword) {
+        setTempResult({ customer: cust, password: res.tempPassword });
+      } else {
+        showToast('Action Failed', 'Could not generate a temporary password.', 'warning');
+      }
     } catch (e: any) {
-      showToast('Action Failed', e?.message || 'Could not reactivate account.', 'warning');
+      showToast('Action Failed', e?.message || 'Could not generate a temporary password.', 'warning');
     } finally {
+      setBusyId(null);
       setWorking(false);
     }
   };
+
+  const copyTempPassword = async () => {
+    if (!tempResult) return;
+    try {
+      await navigator.clipboard.writeText(tempResult.password);
+      showToast('Copied', 'Temporary password copied to clipboard.');
+    } catch {
+      showToast('Copy', 'Press Ctrl+C to copy.', 'info');
+    }
+  };
+
+  const handleResetPassword = (cust: any) => setConfirm({ kind: 'force-reset', customer: cust });
+
+  const handleRevokeSessions = (cust: any) => setConfirm({ kind: 'revoke-sessions', customer: cust });
 
   const handleDelete = async (cust: any) => {
     if (isSuper) {
@@ -106,6 +166,37 @@ export function AdminCustomersPage() {
       showToast('Permission Denied', 'Only the Super Admin can delete customer accounts.', 'warning');
     }
   };
+
+  const confirmProps = (() => {
+    if (!confirm) return null;
+    const { kind, customer } = confirm;
+    if (kind === 'reactivate') {
+      return {
+        tone: 'primary' as const, icon: 'shield' as const, title: 'Reactivate account?',
+        description: <><strong>{customer.name}</strong> will be allowed to sign in again. Their data, roles and settings are preserved.</>,
+        confirmLabel: 'Reactivate Account',
+      };
+    }
+    if (kind === 'suspend') {
+      return {
+        tone: 'danger' as const, icon: 'user' as const, title: 'Suspend account?',
+        description: <>You are about to <strong>suspend</strong> <strong>{customer.name}</strong>. They will be signed out of every device and blocked from signing in until reactivated. No data is deleted.</>,
+        confirmLabel: 'Suspend Account',
+      };
+    }
+    if (kind === 'force-reset') {
+      return {
+        tone: 'warning' as const, icon: 'refresh' as const, title: 'Force password reset?',
+        description: <><strong>{customer.name}</strong> will be signed out and forced to create a new password on their next sign-in.</>,
+        confirmLabel: 'Force Reset',
+      };
+    }
+    return {
+      tone: 'warning' as const, icon: 'logout' as const, title: 'Revoke all sessions?',
+      description: <>Every active session for <strong>{customer.name}</strong> will be terminated immediately. They will need to sign in again on each device.</>,
+      confirmLabel: 'Revoke Sessions',
+    };
+  })();
 
   const totalSpent = customers.reduce((s: number, c: any) => s + (Number(c.totalSpent) || 0), 0);
   const avgSpend = customers.length ? totalSpent / customers.length : 0;
@@ -416,22 +507,56 @@ export function AdminCustomersPage() {
                 </TabsContent>
               </Tabs>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6 pt-6 border-t border-gray-100 dark:border-slate-800">
-<Button
-                  className="rounded-xl bg-blue-500 hover:bg-blue-600 text-white"
-                  onClick={() => handleToggleSuspend(selectedCustomer)}
-                  disabled={working}
-                >
-                  {selectedCustomer.status === 'suspended' ? (
-                    <><UserCheck className="w-4 h-4 mr-2" /> Reactivate Account</>
+              <div className="space-y-3 mt-6 pt-6 border-t border-gray-100 dark:border-slate-800">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Button
+                    className="rounded-xl"
+                    onClick={() => handleToggleSuspend(selectedCustomer)}
+                    disabled={working}
+                  >
+                    {selectedCustomer.status === 'suspended' ? (
+                      <><UserCheck className="w-4 h-4 mr-2" /> Reactivate Account</>
+                    ) : (
+                      <><Ban className="w-4 h-4 mr-2" /> Suspend Account</>
+                    )}
+                  </Button>
+                  {isSuper ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        className="rounded-xl text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10"
+                        onClick={() => handleResetPassword(selectedCustomer)}
+                        disabled={working}
+                      >
+                        <KeyRound className="w-4 h-4 mr-2" /> Force Reset
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="rounded-xl text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10"
+                        onClick={() => handleTempPassword(selectedCustomer)}
+                        disabled={working}
+                      >
+                        <Lock className="w-4 h-4 mr-2" /> Temp Password
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="rounded-xl text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10"
+                        onClick={() => handleRevokeSessions(selectedCustomer)}
+                        disabled={working}
+                      >
+                        <ShieldAlert className="w-4 h-4 mr-2" /> Revoke Sessions
+                      </Button>
+                    </>
                   ) : (
-                    <><Ban className="w-4 h-4 mr-2" /> Suspend Account</>
+                    <div className="flex items-center text-xs text-gray-400 gap-1 px-2">
+                      <ShieldCheck className="w-4 h-4" /> Force reset, temp password and session revocation are Super Admin actions.
+                    </div>
                   )}
-                </Button>
+                </div>
                 {isSuper && (
                   <Button
                     variant="outline"
-                    className="rounded-xl text-rose-600 hover:bg-rose-50"
+                    className="w-full rounded-xl text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 border-rose-200 dark:border-rose-900/50"
                     onClick={() => {
                       if (window.confirm(`Delete ${selectedCustomer.name}'s account permanently?`)) handleDelete(selectedCustomer);
                     }}
@@ -440,16 +565,55 @@ export function AdminCustomersPage() {
                     <Trash2 className="w-4 h-4 mr-2" /> Delete Account
                   </Button>
                 )}
-                {!isSuper && (
-                  <div className="flex items-center text-xs text-gray-400 gap-1 px-2">
-                    <ShieldCheck className="w-4 h-4" /> Account deletion is a Super Admin action.
-                  </div>
-                )}
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Account action confirmation */}
+      {confirmProps && confirm && (
+        <ConfirmDialog
+          open
+          tone={confirmProps.tone}
+          icon={confirmProps.icon as any}
+          title={confirmProps.title}
+          description={confirmProps.description}
+          confirmLabel={confirmProps.confirmLabel}
+          busy={busyId === confirm.customer.id}
+          busyLabel="Working…"
+          onConfirm={() => runAccountAction(confirm.customer, confirm.kind)}
+          onCancel={() => setConfirm(null)}
+        />
+      )}
+
+      {/* Temporary password result */}
+      {tempResult && (
+        <ConfirmDialog
+          open
+          tone="primary"
+          icon="key"
+          title="Temporary Password Generated"
+          description={
+            <>
+              A one-time password was created for <strong>{tempResult.customer.name}</strong>. Share it with them privately — it will only be shown once and they will be forced to change it at sign-in.
+            </>
+          }
+          confirmLabel="Done"
+          onConfirm={() => setTempResult(null)}
+          onCancel={() => setTempResult(null)}
+        >
+          <div className="rounded-xl bg-surface-2 dark:bg-slate-800 border border-line p-3">
+            <div className="flex items-center justify-between gap-2">
+              <code className="font-mono text-sm text-primary break-all select-all">{tempResult.password}</code>
+              <Button size="sm" variant="outline" className="h-8 w-8 rounded-lg px-0 shrink-0" onClick={copyTempPassword} aria-label="Copy password">
+                <Copy className="w-4 h-4" />
+              </Button>
+            </div>
+            <p className="text-[11px] text-ink-3 mt-1.5">Revealed once — copy it now before closing.</p>
+          </div>
+        </ConfirmDialog>
+      )}
     </div>
   );
 }

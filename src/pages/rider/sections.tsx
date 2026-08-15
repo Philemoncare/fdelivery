@@ -1,12 +1,15 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Bike, Navigation, Wallet, UserRound, Settings, Star, MapPin,
   Truck, TrendingUp, Clock, Radio, MessageSquare, Bell, DollarSign,
   ChefHat, PackageCheck, Phone, CheckCircle, Navigation as NavigationIcon,
-  RefreshCw, Search, Camera, Upload, MessageCircle, ChevronRight, Send,
-  X, Image as ImageIcon, Moon, Sun, AlertCircle, CheckCircle2, Circle, ShieldCheck
+  RefreshCw, Search, Camera, MessageCircle, ChevronRight, Send,
+  X, AlertCircle, CheckCircle2, Circle, ShieldCheck,
+  Gift, Copy, Share2, QrCode, ArrowDownToLine, ArrowUpFromLine,
+  Crown, CalendarDays, BadgeCheck, Check, Zap,
+  ChevronDown, Download, LogOut, IdCard
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/src/components/ui/card';
 import { Badge } from '@/src/components/ui/badge';
@@ -17,10 +20,17 @@ import { Label } from '@/src/components/ui/label';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/src/components/ui/select';
 import { useApp } from '@/src/context/AppContext';
 import { useAuth } from '@/src/lib/auth/auth-store';
-import { cn, getInitials } from '@/src/lib/utils';
-import { MessagingService } from '@/src/services/api';
+import { cn, getInitials, copyText, shareLink } from '@/src/lib/utils';
+import { deliveryRef, deliveryKindLabel, deliveryKindBadge, deliveryKindTitle, deliveryKindOf, isPackageLike, pickupLabel, dropoffLabel, dropoffContact, senderLabel, type DeliveryKind } from '@/src/lib/rider-deliveries';
+import { MessagingService, ReferralService, WalletService, type MyReferral } from '@/src/services/api';
 import { AuthApiService } from '@/src/services/auth-api';
 import { ImageCropModal } from '@/src/components/common/ImageCropModal';
+import { GoogleDirectionsMap } from '@/src/components/rider/GoogleDirectionsMap';
+import { DestinationSearch, SuggestedPlace } from '@/src/components/rider/DestinationSearch';
+import { RiderSubscriptionStatus, RIDER_PLANS, getRiderPlan } from '@/src/components/rider/RiderSubscriptionStatus';
+import { ReceiptModal, type ReceiptOrder } from '@/src/components/common/ReceiptModal';
+import { NotificationCenter } from '@/src/components/common/NotificationCenter';
+import { APP_VERSION_LABEL } from '@/src/lib/app-version';
 
 const ACCENT = 'from-amber-400 to-orange-600';
 
@@ -58,84 +68,268 @@ function PageHeader({ title, description, icon: Icon, count }: { title: string; 
  * ------------------------------------------------------------
  */
 export function RiderJobsPage() {
-  const { orders, formatPrice, assignRiderToOrder, showToast } = useApp();
+  const { availableDeliveries, refreshAvailableDeliveries, assignRiderToOrder, showToast, updateRiderStatus, riderStatus, formatPrice } = useApp();
   const { user } = useAuth();
   const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState<'all' | DeliveryKind>('all');
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<any | null>(null);
 
-  const availableJobs = orders.filter(o => o.status === 'ready_for_pickup' && !o.riderId).filter(j =>
-    !search || j.vendorName.toLowerCase().includes(search.toLowerCase()) || j.customerAddress.toLowerCase().includes(search.toLowerCase())
+  // Pull the live pool into AppContext state the moment the page mounts (and
+  // whenever the rider toggles online), so the list reflects the real backend.
+  useEffect(() => {
+    refreshAvailableDeliveries();
+  }, [refreshAvailableDeliveries, riderStatus]);
+
+  const online = riderStatus === 'ONLINE';
+
+  const availableJobs = (availableDeliveries || []).filter(j =>
+    (!search ||
+    (j.vendorName || '').toLowerCase().includes(search.toLowerCase()) ||
+    (j.customerAddress || '').toLowerCase().includes(search.toLowerCase()) ||
+    (deliveryRef(j) || '').toLowerCase().includes(search.toLowerCase())) &&
+    (typeFilter === 'all' || deliveryKindOf(j) === typeFilter)
   );
 
-  const accept = (orderId: string) => {
+  const accept = async (job: any) => {
     if (!user) return;
-    assignRiderToOrder(orderId, user.id);
-    showToast('Job Accepted!', 'The delivery has been assigned to you. Go to Active Deliveries to start.');
+    setAcceptingId(job.id);
+    try {
+      await assignRiderToOrder(job.id, user.id);
+      setViewing(null);
+      showToast('Job Accepted!', `Delivery ${deliveryRef(job)} assigned to you. Go to Active Deliveries to start.`);
+      refreshAvailableDeliveries();
+    } catch (err: any) {
+      const msg = err?.message || 'This delivery may have just been taken by another rider.';
+      showToast('Not Available', msg, 'warning');
+      refreshAvailableDeliveries();
+    } finally {
+      setAcceptingId(null);
+    }
   };
+
+  const pickup = (job: any) => pickupLabel(job);
+  const dropoff = (job: any) => dropoffLabel(job);
 
   return (
     <div className="space-y-6 pb-20">
-      <PageHeader icon={Bike} title="Available Deliveries" description="Food orders ready for pickup in Takoradi. Fast fingers win!" count={`${availableJobs.length} live`} />
+      <PageHeader icon={Bike} title="Available Deliveries" description="Jobs waiting for a rider. Review the details, then accept to start earning." count={online ? `${availableJobs.length} live` : 'Go online to see jobs'} />
 
       <div className="relative">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
         <Input
-          placeholder="Search by restaurant or neighborhood..."
+          placeholder="Search by delivery #, restaurant, pickup or destination..."
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="pl-12 h-14 rounded-2xl bg-white dark:bg-slate-900 border-gray-100 dark:border-slate-800 shadow-xl shadow-gray-200/20 dark:shadow-none text-sm font-bold"
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {availableJobs.length === 0 ? (
-          <div className="md:col-span-2 py-20 text-center bg-white dark:bg-slate-900 rounded-[2.5rem] border-2 border-dashed border-gray-100 dark:border-slate-800">
-             <div className="w-16 h-16 bg-gray-50 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Radio className="w-8 h-8 text-gray-300 animate-pulse" />
-             </div>
-             <p className="text-sm font-black text-gray-400 uppercase tracking-widest">Scanning for nearby jobs...</p>
-          </div>
-        ) : (
-          availableJobs.map((job, i) =>
-            <motion.div key={job.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-              className="group bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-gray-100 dark:border-slate-800 shadow-xl shadow-gray-200/30 dark:shadow-none hover:border-amber-500/50 transition-all">
-              <div className="flex justify-between items-start mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-900/20 text-amber-600 flex items-center justify-center shadow-inner">
-                    <ChefHat className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h3 className="font-black text-gray-900 dark:text-white leading-none">{job.vendorName}</h3>
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1.5 flex items-center gap-1"><MapPin className="w-3 h-3" /> {job.customerAddress.split(',')[0]}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-xl font-black text-emerald-600 leading-none">{formatPrice(job.deliveryFee)}</p>
-                  <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mt-1">Payout</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-4 py-4 border-y border-gray-50 dark:border-slate-800 my-4">
-                <div className="flex-1 space-y-1">
-                   <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Items</p>
-                   <p className="text-xs font-bold text-gray-700 dark:text-gray-300">{job.items.length} dishes</p>
-                </div>
-                <div className="flex-1 space-y-1 text-center border-x border-gray-50 dark:border-slate-800">
-                   <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Est. Time</p>
-                   <p className="text-xs font-bold text-gray-700 dark:text-gray-300">{job.estimatedDeliveryTime}</p>
-                </div>
-                <div className="flex-1 space-y-1 text-right">
-                   <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Distance</p>
-                   <p className="text-xs font-bold text-gray-700 dark:text-gray-300">{(() => { const km = haversineKm(Number(job.vendorLat), Number(job.vendorLng), Number(job.customerLat), Number(job.customerLng)); return km != null ? `${km.toFixed(1)} km` : '—'; })()}</p>
-                </div>
-              </div>
-
-              <Button className="w-full h-12 rounded-xl bg-amber-500 hover:bg-amber-600 shadow-lg shadow-amber-500/20 font-black uppercase tracking-widest" onClick={() => accept(job.id)}>
-                Accept Delivery
-              </Button>
-            </motion.div>
-          )
-        )}
+      <div className="flex flex-wrap gap-2">
+        {([
+          { key: 'all', label: 'All Types' },
+          { key: 'FOOD_ORDER', label: 'FOOD' },
+          { key: 'PASS', label: 'PASS' },
+          { key: 'PACKAGE', label: 'PACKAGE' },
+        ] as { key: 'all' | DeliveryKind; label: string }[]).map(f => (
+          <button key={f.key} onClick={() => setTypeFilter(f.key)}
+            className={cn("px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 transition-all",
+              typeFilter === f.key
+                ? "bg-amber-500 text-white border-amber-500 shadow-lg shadow-amber-500/20"
+                : "bg-white dark:bg-slate-900 text-gray-500 border-gray-100 dark:border-slate-800 hover:border-amber-500/40")}>
+            {f.label}
+          </button>
+        ))}
       </div>
+
+      {!online ? (
+        <div className="md:col-span-2 py-16 text-center bg-white dark:bg-slate-900 rounded-[2.5rem] border-2 border-dashed border-gray-100 dark:border-slate-800">
+          <div className="w-20 h-20 bg-gray-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+            <Radio className="w-10 h-10 text-gray-400" />
+          </div>
+          <p className="text-lg font-black text-gray-900 dark:text-white uppercase tracking-wider">You're offline</p>
+          <p className="text-sm text-gray-500 mt-2">Go online to see available deliveries and accept jobs.</p>
+          <Button
+            className="mt-6 h-12 px-8 rounded-xl bg-emerald-500 hover:bg-emerald-600 shadow-lg shadow-emerald-500/20 font-black uppercase tracking-widest"
+            onClick={() => updateRiderStatus('ONLINE')}
+          >
+            Go Online
+          </Button>
+        </div>
+      ) : availableJobs.length === 0 ? (
+        <div className="md:col-span-2 py-20 text-center bg-white dark:bg-slate-900 rounded-[2.5rem] border-2 border-dashed border-gray-100 dark:border-slate-800 relative overflow-hidden">
+           <div className="absolute inset-0 opacity-10 pointer-events-none">
+              <img src="https://img.freepik.com/premium-photo/3d-delivery-man-scooter-yellow-background_115990-1282.jpg" alt="" className="w-full h-full object-cover" />
+           </div>
+           <div className="w-20 h-20 bg-amber-50 dark:bg-amber-900/20 rounded-full flex items-center justify-center mx-auto mb-6 relative z-10 shadow-inner">
+              <Radio className="w-10 h-10 text-amber-500 animate-pulse" />
+           </div>
+           <p className="text-lg font-black text-gray-900 dark:text-white uppercase tracking-wider relative z-10">Waiting for deliveries...</p>
+           <p className="text-sm text-gray-500 mt-2 relative z-10">No jobs are ready right now. New deliveries will appear here the moment an order is ready for pickup.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {availableJobs.map((job, i) => {
+            const p = pickup(job);
+            const d = dropoff(job);
+            const isPkg = deliveryKindLabel(job.deliveryType) !== 'Food Order';
+            return (
+              <motion.div key={job.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
+                className="group bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-gray-100 dark:border-slate-800 shadow-xl shadow-gray-200/30 dark:shadow-none hover:border-amber-500/50 transition-all">
+                <div className="flex items-center justify-between mb-3">
+                  <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest",
+                    deliveryKindOf(job) === 'PACKAGE' ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400" :
+                    deliveryKindOf(job) === 'PASS' ? "bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400" :
+                    "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400")}>
+                    {deliveryKindBadge(job.deliveryType)}
+                  </span>
+                  <span className="text-[10px] font-mono font-bold text-gray-400">{deliveryRef(job)} · {job.orderNumber}</span>
+                </div>
+                <div className="flex justify-between items-start mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-900/20 text-amber-600 flex items-center justify-center shadow-inner">
+                      {isPkg ? <PackageCheck className="w-6 h-6" /> : <ChefHat className="w-6 h-6" />}
+                    </div>
+                    <div>
+                      <h3 className="font-black text-gray-900 dark:text-white leading-none">{deliveryKindTitle(job.deliveryType)}</h3>
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1.5 flex items-center gap-1">
+                        <MapPin className="w-3 h-3" /> Pickup: {p.address || p.name}
+                      </p>
+                      <p className="text-[10px] font-black text-gray-400 mt-1 flex items-center gap-1">
+                        <ArrowDownToLine className="w-3 h-3" /> Drop-off: {d.address || d.name}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xl font-black text-emerald-600 leading-none">{formatPrice(job.deliveryFee)}</p>
+                    <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mt-1">{deliveryKindLabel(job.deliveryType)} · Payout</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 py-4 border-y border-gray-50 dark:border-slate-800 my-4">
+                  <div className="flex-1 space-y-1">
+                     <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">{isPkg ? 'Deliver To' : 'Items'}</p>
+                     <p className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                       {isPkg ? d.name || d.address : `${job.itemCount || (job.items || []).length} dish${job.itemCount === 1 ? '' : 'es'}`}
+                     </p>
+                  </div>
+                  <div className="flex-1 space-y-1 text-center border-x border-gray-50 dark:border-slate-800">
+                     <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Est. Time</p>
+                     <p className="text-xs font-bold text-gray-700 dark:text-gray-300">{job.estimatedDeliveryTime}</p>
+                  </div>
+                  <div className="flex-1 space-y-1 text-right">
+                     <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Distance</p>
+                     <p className="text-xs font-bold text-gray-700 dark:text-gray-300">{(() => { const km = haversineKm(Number(job.vendorLat), Number(job.vendorLng), Number(job.customerLat), Number(job.customerLng)); return km != null ? `${km.toFixed(1)} km` : '—'; })()}</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1 h-12 rounded-xl font-black uppercase tracking-widest"
+                    disabled={!!acceptingId}
+                    onClick={() => setViewing(job)}
+                  >
+                    View Details
+                  </Button>
+                  <Button
+                    className="flex-1 h-12 rounded-xl bg-amber-500 hover:bg-amber-600 shadow-lg shadow-amber-500/20 font-black uppercase tracking-widest"
+                    disabled={!!acceptingId}
+                    onClick={() => accept(job)}
+                  >
+                    {acceptingId === job.id ? 'Accepting...' : 'Accept Delivery'}
+                  </Button>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Job Details Modal */}
+      <AnimatePresence>
+        {viewing && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setViewing(null)}>
+            <motion.div initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.92 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden border border-gray-100 dark:border-slate-800 max-h-[90vh] overflow-y-auto">
+              <div className="p-6 sm:p-7 space-y-5">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="text-lg font-black text-gray-900 dark:text-white">{deliveryRef(viewing)}</h3>
+                    <p className="text-xs text-gray-500 mt-0.5 font-mono">related Order #{viewing.orderNumber}</p>
+                  </div>
+                  <button onClick={() => setViewing(null)} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"><X className="w-5 h-5" /></button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl bg-amber-50 dark:bg-amber-900/20 p-4">
+                    <p className="text-[9px] font-black text-amber-600 uppercase tracking-widest">Type</p>
+                    <p className="text-sm font-bold text-gray-900 dark:text-white mt-1">{deliveryKindTitle(viewing.deliveryType)}</p>
+                  </div>
+                  <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 p-4">
+                    <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Payout</p>
+                    <p className="text-sm font-bold text-emerald-600 mt-1">{formatPrice(viewing.deliveryFee)}</p>
+                  </div>
+                </div>
+
+                {isPackageLike(viewing.deliveryType) && (
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 flex items-center justify-center shrink-0"><UserRound className="w-4 h-4" /></div>
+                    <div className="min-w-0">
+                      <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Sender</p>
+                      <p className="text-sm font-bold text-gray-900 dark:text-white">{viewing.customerName || senderLabel(viewing).name}</p>
+                      {senderLabel(viewing).address && <p className="text-xs text-gray-500 mt-0.5 break-words">{senderLabel(viewing).address}</p>}
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 flex items-center justify-center shrink-0"><ArrowUpFromLine className="w-4 h-4" /></div>
+                    <div className="min-w-0">
+                      <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Pickup</p>
+                      <p className="text-sm font-bold text-gray-900 dark:text-white">{pickup(viewing).name}</p>
+                      {pickup(viewing).address && <p className="text-xs text-gray-500 mt-0.5 break-words">{pickup(viewing).address}</p>}
+                      {viewing.pickupInstructions && <p className="text-xs text-gray-500 mt-1 italic">“{viewing.pickupInstructions}”</p>}
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-500 flex items-center justify-center shrink-0"><ArrowDownToLine className="w-4 h-4" /></div>
+                    <div className="min-w-0">
+                      <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Drop-off</p>
+                      <p className="text-sm font-bold text-gray-900 dark:text-white">{dropoff(viewing).name}</p>
+                      <p className="text-xs text-gray-500 mt-0.5 break-words">{dropoff(viewing).address}</p>
+                      {viewing.specialInstructions && <p className="text-xs text-gray-500 mt-1 italic">“{viewing.specialInstructions}”</p>}
+                    </div>
+                  </div>
+                  {viewing.package && (
+                    <div className="flex items-start gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-500 flex items-center justify-center shrink-0"><PackageCheck className="w-4 h-4" /></div>
+                      <div className="min-w-0">
+                        <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Package</p>
+                        <p className="text-sm font-bold text-gray-900 dark:text-white">
+                          {viewing.package.size} {viewing.package.type || 'Package'}{viewing.package.weightKg ? ` · ${viewing.package.weightKg} kg` : ''}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Receiver: {viewing.package.receiverName}{viewing.package.receiverPhone ? ` · ${viewing.package.receiverPhone}` : ''}{viewing.package.service ? ` · ${viewing.package.service}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-3">
+                  <Button variant="outline" className="flex-1 h-12 rounded-xl font-bold" onClick={() => setViewing(null)}>BACK</Button>
+                  <Button className="flex-1 h-12 rounded-xl bg-amber-500 hover:bg-amber-600 font-bold" disabled={!!acceptingId} onClick={() => accept(viewing)}>
+                    {acceptingId === viewing.id ? 'ACCEPTING...' : 'ACCEPT DELIVERY'}
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -149,7 +343,7 @@ export function RiderPickupQueuePage() {
   const { orders, formatPrice, updateOrderStatus } = useApp();
   const { user } = useAuth();
 
-  const mine = useMemo(() => orders.filter(o => o.riderId === user?.id), [orders, user]);
+  const mine = useMemo(() => orders.filter(o => o.riderId === user?.riderId), [orders, user]);
   const ready = mine.filter(o => o.status === 'ready_for_pickup' || o.status === 'rider_assigned');
   const preparing = mine.filter(o => o.status === 'picked_up' || o.status === 'in_transit' || o.status === 'arriving');
 
@@ -190,7 +384,7 @@ export function RiderPickupQueuePage() {
                     <p className="text-sm font-semibold text-gray-900 dark:text-white">{o.vendorName} → {o.customerName}</p>
                     <p className="text-xs text-gray-500 mt-1">{o.status.replace('_', ' ')} · {formatPrice(o.deliveryFee)}</p>
                   </div>
-                  {['ready_for_pickup', 'rider_assigned'].includes(o.status) && o.riderId === user?.id && (
+                  {['ready_for_pickup', 'rider_assigned'].includes(o.status) && o.riderId === user?.riderId && (
                     <Button size="sm" variant="primary" className="rounded-lg" onClick={() => updateOrderStatus(o.id, 'picked_up')}>
                       <CheckCircle className="w-4 h-4 mr-1.5" /> Picked Up
                     </Button>
@@ -211,10 +405,12 @@ export function RiderPickupQueuePage() {
  * ------------------------------------------------------------
  */
 export function RiderOrderStatusPage() {
-  const { orders, formatPrice, updateOrderStatus, showToast } = useApp();
+  const navigate = useNavigate();
+  const { orders, formatPrice, updateOrderStatus, completeDelivery, showToast } = useApp();
   const { user } = useAuth();
+  const [completingId, setCompletingId] = useState<string | null>(null);
 
-  const active = useMemo(() => orders.filter(o => o.riderId === user?.id && ['ready_for_pickup', 'rider_assigned', 'picked_up', 'in_transit', 'arriving'].includes(o.status)), [orders, user]);
+  const active = useMemo(() => orders.filter(o => o.riderId === user?.riderId && ['ready_for_pickup', 'rider_assigned', 'picked_up', 'in_transit', 'arriving'].includes(o.status)), [orders, user]);
 
   const progress = (status: string) => {
     const map: Record<string, number> = { rider_assigned: 20, ready_for_pickup: 35, picked_up: 50, in_transit: 75, arriving: 90 };
@@ -222,11 +418,15 @@ export function RiderOrderStatusPage() {
   };
 
   const handleComplete = async (orderId: string, orderNumber: string) => {
+    if (completingId) return;
+    setCompletingId(orderId);
     try {
-      await updateOrderStatus(orderId, 'delivered');
-      showToast('Delivery Completed!', `Order #${orderNumber} marked as delivered. Earnings updated.`);
-    } catch (err) {
-      showToast('Error', 'Failed to complete delivery. Check your connection.', 'warning');
+      const { alreadyCompleted } = await completeDelivery(orderId);
+      showToast('Delivery Completed!', `Order #${orderNumber} ${alreadyCompleted ? 'was already' : 'marked as'} delivered. Earnings updated.`);
+    } catch (err: any) {
+      showToast('Error', err?.message || 'Failed to complete delivery. Please try again.', 'warning');
+    } finally {
+      setCompletingId(null);
     }
   };
 
@@ -234,13 +434,22 @@ export function RiderOrderStatusPage() {
     <div className="space-y-6 pb-20">
       <PageHeader icon={PackageCheck} title="Active Deliveries" description="Live tracking of your current assigned tasks." count={`${active.length} active`} />
       {active.length === 0 ? (
-        <Card className="rounded-[2.5rem] border-dashed border-2 border-gray-100 dark:border-slate-800">
-           <CardContent className="text-center py-20">
-             <div className="w-20 h-20 bg-gray-50 dark:bg-slate-900 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Bike className="w-10 h-10 text-gray-300" />
+        <Card className="rounded-[2.5rem] border-dashed border-2 border-gray-100 dark:border-slate-800 relative overflow-hidden">
+           <div className="absolute inset-0 opacity-5 pointer-events-none grayscale">
+              <img src="https://img.freepik.com/premium-photo/3d-delivery-man-scooter-yellow-background_115990-1282.jpg" alt="" className="w-full h-full object-cover" />
+           </div>
+           <CardContent className="text-center py-24 relative z-10">
+             <div className="w-24 h-24 bg-gray-50 dark:bg-slate-900 rounded-full flex items-center justify-center mx-auto mb-8 shadow-inner">
+                <Bike className="w-12 h-12 text-gray-300" />
              </div>
-             <h3 className="text-lg font-black text-gray-900 dark:text-white uppercase tracking-wider">No Active Jobs</h3>
-             <p className="text-sm text-gray-500 mt-2 max-w-xs mx-auto">Go to Available Deliveries to find new jobs or wait for dispatch assignments.</p>
+             <h3 className="text-2xl font-black text-gray-900 dark:text-white uppercase tracking-tighter">No Active Deliveries</h3>
+             <p className="text-sm text-gray-500 mt-3 max-w-xs mx-auto font-medium leading-relaxed">You don't have any jobs in progress. Head over to the Available Jobs tab to pick up new orders.</p>
+             <Button
+               onClick={() => navigate('/rider/jobs')}
+               className="mt-8 rounded-2xl h-14 px-10 bg-amber-500 hover:bg-amber-600 text-white font-black uppercase tracking-widest shadow-xl shadow-amber-500/20 active:scale-95 transition-all"
+             >
+               Find Jobs
+             </Button>
            </CardContent>
         </Card>
       ) : (
@@ -278,10 +487,11 @@ export function RiderOrderStatusPage() {
                   <Button variant="outline" className="rounded-2xl h-14 font-black uppercase tracking-widest border-2 gap-2" onClick={() => window.open(`tel:${o.customerPhone}`)}>
                     <Phone className="w-5 h-5 text-emerald-500" /> Call Customer
                   </Button>
-                  {['picked_up', 'in_transit', 'arriving'].includes(o.status) ? (
-                    <Button className="rounded-2xl h-14 bg-emerald-600 hover:bg-emerald-700 shadow-xl shadow-emerald-600/20 font-black uppercase tracking-widest gap-2"
+                  {['ready_for_pickup', 'rider_assigned', 'picked_up', 'in_transit', 'arriving'].includes(o.status) ? (
+                    <Button className="rounded-2xl h-14 bg-emerald-600 hover:bg-emerald-700 shadow-xl shadow-emerald-600/20 font-black uppercase tracking-widest gap-2 disabled:opacity-60"
+                      disabled={completingId === o.id}
                       onClick={() => handleComplete(o.id, o.orderNumber || o.id.slice(-6))}>
-                      <CheckCircle className="w-5 h-5" /> Mark Delivered
+                      <CheckCircle className="w-5 h-5" /> {completingId === o.id ? 'Marking…' : 'Mark Delivered'}
                     </Button>
                   ) : (
                     <Button className="rounded-2xl h-14 bg-amber-500 hover:bg-amber-600 shadow-xl shadow-amber-500/20 font-black uppercase tracking-widest gap-2"
@@ -305,21 +515,141 @@ export function RiderOrderStatusPage() {
  * ------------------------------------------------------------
  */
 export function RiderNavigationPage() {
-  const { currentRiderLocation, riderStatus, orders, formatPrice } = useApp();
+  const { currentRiderLocation, riderStatus, riderLocationError, geoActive, enableLiveGps, orders, formatPrice } = useApp();
   const { user } = useAuth();
+  const navigate = useNavigate();
 
-  const activeDelivery = orders.find(o => o.riderId === user?.id && ['picked_up', 'in_transit', 'arriving'].includes(o.status));
-  const online = riderStatus !== 'OFFLINE' && riderStatus !== 'LOCATION_PERMISSION_DENIED' && riderStatus !== 'LOCATION_UNAVAILABLE';
+  const activeDelivery = orders.find(o => o.riderId === user?.riderId && ['ready_for_pickup', 'rider_assigned', 'picked_up', 'in_transit', 'arriving'].includes(o.status));
+  const online = riderStatus !== 'OFFLINE';
+
+  const [destination, setDestination] = useState<SuggestedPlace | null>(null);
+  const [routeInfo, setRouteInfo] = useState<{ km: number; min: number } | null>(null);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const mapRef = useRef<HTMLDivElement>(null);
+
+  const computeRoute = async (lat: number, lng: number) => {
+    if (!currentRiderLocation) {
+      setRouteInfo(null);
+      return;
+    }
+    setRouteLoading(true);
+    try {
+      const origin = `${currentRiderLocation.longitude},${currentRiderLocation.latitude}`;
+      const res = await fetch(
+        `https://router.project-osrm.org/route/v1/driving/${origin};${lng},${lat}?overview=false`
+      );
+      if (!res.ok) throw new Error();
+      const data = (await res.json()) as {
+        code: string;
+        routes?: { distance: number; duration: number }[];
+      };
+      if (data.code === 'Ok' && data.routes?.length) {
+        const r = data.routes[0];
+        setRouteInfo({ km: r.distance / 1000, min: r.duration / 60 });
+      } else {
+        // Fallback: straight-line distance + 25 km/h motorbike estimate.
+        const km = haversineKm(currentRiderLocation.latitude, currentRiderLocation.longitude, lat, lng);
+        if (km != null) setRouteInfo({ km, min: (km / 25) * 60 });
+        else setRouteInfo(null);
+      }
+    } catch {
+      // Fallback: straight-line distance + 25 km/h motorbike estimate.
+      const km = haversineKm(currentRiderLocation.latitude, currentRiderLocation.longitude, lat, lng);
+      if (km != null) setRouteInfo({ km, min: (km / 25) * 60 });
+      else setRouteInfo(null);
+    } finally {
+      setRouteLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!destination) return;
+    void computeRoute(destination.latitude, destination.longitude);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [destination, currentRiderLocation]);
+
+  const selectDestination = (p: SuggestedPlace) => {
+    setDestination(p);
+  };
+
+  const clearDestination = () => {
+    setDestination(null);
+    setRouteInfo(null);
+  };
+
+  const openNavigation = () => {
+    if (!destination) return;
+    mapRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
 
   const statusCards = [
-    { label: 'GPS Status', value: currentRiderLocation ? 'Live' : 'Waiting', note: currentRiderLocation ? `Lat ${currentRiderLocation.latitude.toFixed(4)} · Lng ${currentRiderLocation.longitude.toFixed(4)}` : 'Position acquired on demand', icon: Radio, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+    {
+      label: 'GPS Status',
+      value: currentRiderLocation ? 'Live' : geoActive ? 'Waiting' : riderLocationError ? 'Off' : 'Not active',
+      note: currentRiderLocation ? `Lat ${currentRiderLocation.latitude.toFixed(4)} · Lng ${currentRiderLocation.longitude.toFixed(4)}` : geoActive ? 'Waiting for a position fix' : riderLocationError ? 'Tap "Allow GPS" to retry' : 'Tap "Allow GPS" to enable',
+      icon: Radio, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
     { label: 'Rider Status', value: online ? 'Online' : riderStatus.replace('_', ' '), note: online ? 'Accepting jobs' : 'Click to go online from Settings', icon: Radio, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
-    { label: 'Speed', value: currentRiderLocation?.speed ? `${Math.round(currentRiderLocation.speed * 3.6)} km/h` : '0 km/h', note: 'From live GPS', icon: TrendingUp, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20' },
+    { label: 'Speed', value: currentRiderLocation?.speed ? `${Math.round(currentRiderLocation.speed * 3.6)} km/h` : '—', note: currentRiderLocation?.speed ? 'From live GPS' : 'Not reported by device', icon: TrendingUp, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20' },
   ];
 
   return (
     <div className="space-y-6 pb-10">
       <PageHeader icon={NavigationIcon} title="Live Navigation" description="Your GPS position and current delivery route." />
+
+      <DestinationSearch
+        onSelect={selectDestination}
+        origin={currentRiderLocation}
+      />
+
+      <div ref={mapRef}>
+        <GoogleDirectionsMap
+          origin={currentRiderLocation}
+          destination={destination}
+        />
+      </div>
+
+      {destination && (
+        <Card className="rounded-2xl border-emerald-500/30 bg-emerald-50/10">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Destination</p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{destination.name}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{destination.fullAddress}</p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button size="sm" variant="primary" className="rounded-xl" onClick={openNavigation}>
+                  <Navigation className="w-3.5 h-3.5 mr-1" /> Show Route
+                </Button>
+                <Button size="sm" variant="ghost" onClick={clearDestination} className="text-rose-500">Clear</Button>
+              </div>
+            </div>
+            {routeInfo ? (
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className="rounded-xl bg-white/70 dark:bg-slate-800/50 p-3 text-center">
+                  <p className="text-lg font-bold text-gray-900 dark:text-white">
+                    {routeInfo.km < 10 ? routeInfo.km.toFixed(1) : Math.round(routeInfo.km)} km
+                  </p>
+                  <p className="text-[10px] text-gray-500">Distance</p>
+                </div>
+                <div className="rounded-xl bg-white/70 dark:bg-slate-800/50 p-3 text-center">
+                  <p className="text-lg font-bold text-gray-900 dark:text-white">{Math.max(1, Math.round(routeInfo.min))} min</p>
+                  <p className="text-[10px] text-gray-500">ETA</p>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-2 text-xs text-gray-500">
+                {routeLoading
+                  ? 'Calculating distance…'
+                  : currentRiderLocation
+                    ? 'Could not calculate a route to this destination.'
+                    : 'Enable GPS to show the distance and ETA from your position.'}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {statusCards.map(s => (
           <Card key={s.label} className="rounded-2xl">
@@ -334,24 +664,52 @@ export function RiderNavigationPage() {
           </Card>
         ))}
       </div>
+
+      {online && !geoActive && (
+        <Card className="rounded-2xl border-amber-500/30 bg-amber-50/10">
+          <CardContent className="p-4 flex items-center justify-between gap-3 flex-wrap">
+            <div className="text-sm text-amber-700 dark:text-amber-400">
+              {riderLocationError || 'Allow GPS so customers can see your live position during deliveries.'}
+            </div>
+            <Button size="sm" variant="primary" onClick={enableLiveGps}>Allow GPS</Button>
+          </CardContent>
+        </Card>
+      )}
       <Card className="rounded-2xl">
         <CardHeader><CardTitle className="text-base flex items-center gap-2"><MapPin className="w-4 h-4 text-amber-500" /> Current Delivery Route</CardTitle></CardHeader>
         <CardContent>
-          {activeDelivery ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm">
-                <div className="w-2 h-2 rounded-full bg-amber-500" />
-                <span className="text-gray-600 dark:text-gray-300">Pickup:</span>
-                <span className="font-medium text-gray-900 dark:text-white">{activeDelivery.vendorName}</span>
+          {activeDelivery ? (() => {
+            const p = pickupLabel(activeDelivery);
+            const d = dropoffLabel(activeDelivery);
+            const heading = ['picked_up', 'in_transit', 'arriving'].includes(activeDelivery.status) ? d.name : p.name;
+            return (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Badge variant="warning" className="text-[10px]">{deliveryKindBadge(activeDelivery.deliveryType)} · {deliveryKindTitle(activeDelivery.deliveryType)}</Badge>
+                  <Badge variant="info" className="text-[10px]">{activeDelivery.status.replace('_', ' ')}</Badge>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <div className="w-2 h-2 rounded-full bg-amber-500" />
+                  <span className="text-gray-600 dark:text-gray-300">Pickup:</span>
+                  <span className="font-medium text-gray-900 dark:text-white">{p.name}{p.address ? ` · ${p.address}` : ''}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <div className="w-2 h-2 rounded-full bg-red-500" />
+                  <span className="text-gray-600 dark:text-gray-300">Drop-off:</span>
+                  <span className="font-medium text-gray-900 dark:text-white">{d.name}{d.address ? ` · ${d.address}` : ''}</span>
+                </div>
+                <p className="text-xs text-gray-400">
+                  Heading to <span className="font-bold text-gray-900 dark:text-white">{heading}</span> · Estimated delivery: {activeDelivery.estimatedDeliveryTime}
+                </p>
+                <div className="flex gap-2 pt-1">
+                  <Button size="sm" className="rounded-xl" onClick={() => navigate('/rider/messages')}><MessageSquare className="w-3.5 h-3.5 mr-1" /> Message {heading.split(' ')[0]}</Button>
+                  {dropoffContact(activeDelivery).phone && (
+                    <Button size="sm" variant="outline" className="rounded-xl" onClick={() => window.open(`tel:${dropoffContact(activeDelivery).phone}`)}><Phone className="w-3.5 h-3.5 mr-1" /> Call {d.name}</Button>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-2 text-sm">
-                <div className="w-2 h-2 rounded-full bg-red-500" />
-                <span className="text-gray-600 dark:text-gray-300">Drop-off:</span>
-                <span className="font-medium text-gray-900 dark:text-white">{activeDelivery.customerAddress}</span>
-              </div>
-              <p className="text-xs text-gray-400">Estimated delivery: {activeDelivery.estimatedDeliveryTime} · {formatPrice(activeDelivery.totalAmount)}</p>
-            </div>
-          ) : (
+            );
+          })() : (
             <p className="text-center text-gray-400 py-10 italic">No active delivery route.</p>
           )}
         </CardContent>
@@ -368,9 +726,27 @@ export function RiderNavigationPage() {
 export function RiderHistoryPage() {
   const { orders, riders, formatPrice } = useApp();
   const { user } = useAuth();
+  const [ticket, setTicket] = useState<ReceiptOrder | null>(null);
 
-  const completed = useMemo(() => orders.filter(o => o.riderId === user?.id && ['delivered', 'completed'].includes(o.status)), [orders, user]);
+  const completed = useMemo(() => orders.filter(o => o.riderId === user?.riderId && ['delivered', 'completed'].includes(o.status)), [orders, user]);
   const rating = riders.find(r => r.userId === user?.id)?.rating;
+
+  const openTicket = (o: typeof completed[number]) => {
+    setTicket({
+      id: o.id,
+      orderNumber: o.orderNumber,
+      invoiceNumber: o.invoiceNumber,
+      vendorName: o.vendorName,
+      customerName: o.customerName,
+      customerAddress: o.customerAddress,
+      customerPhone: o.customerPhone,
+      items: o.items,
+      deliveryFee: o.deliveryFee,
+      totalAmount: o.totalAmount,
+      paymentMethod: o.paymentMethod,
+      createdAt: o.createdAt,
+    });
+  };
 
   const stats = [
     { label: 'Deliveries', value: completed.length.toString(), icon: Truck, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
@@ -408,13 +784,20 @@ export function RiderHistoryPage() {
                     <p className="text-sm font-medium text-gray-900 dark:text-white">{o.vendorName} → {o.customerName}</p>
                     <p className="text-xs text-gray-500 mt-0.5">{new Date(o.createdAt).toLocaleDateString()} · {o.status.replace('_', ' ')}</p>
                   </div>
-                  <span className="text-sm font-semibold text-emerald-600">+{formatPrice(o.deliveryFee)}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold text-emerald-600">+{formatPrice(o.deliveryFee)}</span>
+                    <button onClick={() => openTicket(o)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors" aria-label={`Download ticket for order ${o.orderNumber}`}>
+                      <Download className="w-3.5 h-3.5" /> Ticket
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </CardContent>
       </Card>
+
+      <ReceiptModal open={!!ticket} order={ticket} onClose={() => setTicket(null)} heading="Delivery Ticket" />
     </div>
   );
 }
@@ -425,40 +808,377 @@ export function RiderHistoryPage() {
  * ------------------------------------------------------------
  */
 export function RiderWalletPage() {
-  const { orders, formatPrice } = useApp();
+  const { orders, formatPrice, requestWithdrawal, showToast } = useApp();
   const { user } = useAuth();
   const today = new Date().toDateString();
 
-  const myOrders = useMemo(() => orders.filter(o => o.riderId === user?.id && ['delivered', 'completed'].includes(o.status)), [orders, user]);
+  const myOrders = useMemo(() => orders.filter(o => o.riderId === user?.riderId && ['delivered', 'completed'].includes(o.status)), [orders, user]);
   const todayEarned = myOrders.filter(o => new Date(o.createdAt).toDateString() === today).reduce((a, o) => a + o.deliveryFee, 0);
+  const todayTrips = myOrders.filter(o => new Date(o.createdAt).toDateString() === today).length;
   const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - 7);
   const weekEarned = myOrders.filter(o => new Date(o.createdAt) >= weekStart).reduce((a, o) => a + o.deliveryFee, 0);
+  const weekTrips = myOrders.filter(o => new Date(o.createdAt) >= weekStart).length;
+  const monthStart = new Date(); monthStart.setDate(1);
+  const monthEarned = myOrders.filter(o => new Date(o.createdAt) >= monthStart).reduce((a, o) => a + o.deliveryFee, 0);
+  const monthTrips = myOrders.filter(o => new Date(o.createdAt) >= monthStart).length;
   const allEarned = myOrders.reduce((a, o) => a + o.deliveryFee, 0);
 
-  const cards = [
-    { label: 'Wallet Balance', value: formatPrice(user?.walletBalance || 0), note: 'Available from wallet', icon: Wallet, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
-    { label: "Today's Earnings", value: formatPrice(todayEarned), note: `${myOrders.filter(o => new Date(o.createdAt).toDateString() === today).length} trips`, icon: TrendingUp, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
-    { label: 'This Week', value: formatPrice(weekEarned), note: 'Last 7 days', icon: DollarSign, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20' },
-    { label: 'All-Time Earnings', value: formatPrice(allEarned), note: `${myOrders.length} deliveries`, icon: Wallet, color: 'text-violet-500', bg: 'bg-violet-50 dark:bg-violet-900/20' },
+  const [balance, setBalance] = useState<number>(0);
+  const [txs, setTxs] = useState<any[]>([]);
+  const [withdrawAmt, setWithdrawAmt] = useState('');
+  const [withdrawMethod, setWithdrawMethod] = useState('MTN Mobile Money');
+  const [momoNumber, setMomoNumber] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [bankAccount, setBankAccount] = useState('');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
+  const [cardholder, setCardholder] = useState('');
+  const [withdrawing, setWithdrawing] = useState(false);
+  const [depositAmt, setDepositAmt] = useState('');
+  const [showDeposit, setShowDeposit] = useState(false);
+  const [showTx, setShowTx] = useState(false);
+  const [showEarnings, setShowEarnings] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    WalletService.getBalance(user.id).then(w => setBalance(Number(w.balance) || 0)).catch(() => setBalance(0));
+    WalletService.getTransactions(user.id).then(t => setTxs(Array.isArray(t) ? t : [])).catch(() => setTxs([]));
+  }, [user]);
+
+  const methodKind = withdrawMethod.toLowerCase().includes('visa') || withdrawMethod.toLowerCase().includes('mastercard')
+    ? 'card'
+    : withdrawMethod.toLowerCase().includes('bank')
+      ? 'bank'
+      : 'momo';
+
+  const handleWithdraw = async () => {
+    const amt = Number(withdrawAmt);
+    if (!amt || amt <= 0) return showToast('Enter Amount', 'Please enter a valid amount to withdraw.', 'warning');
+    if (amt > balance) return showToast('Insufficient Balance', 'Your wallet balance is too low for this withdrawal.', 'warning');
+
+    if (methodKind === 'card') {
+      if (!cardNumber.trim() || cardNumber.replace(/\s/g, '').length < 12) return showToast('Card Required', 'Enter a valid card number.', 'warning');
+      if (!cardExpiry.trim() || !cardCvv.trim()) return showToast('Card Required', 'Enter the card expiry and CVV.', 'warning');
+    } else if (methodKind === 'bank') {
+      if (!bankName.trim() || !bankAccount.trim()) return showToast('Bank Required', 'Enter the bank name and account number.', 'warning');
+    } else {
+      if (!momoNumber.trim()) return showToast('Number Required', 'Enter the mobile money number to receive funds.', 'warning');
+    }
+
+    setWithdrawing(true);
+    try {
+      const account = methodKind === 'card'
+        ? `${cardholder || 'Card'} •••• ${cardNumber.replace(/\s/g, '').slice(-4)}`
+        : methodKind === 'bank'
+          ? `${bankName} •••• ${bankAccount.slice(-4)}`
+          : momoNumber.trim();
+      await requestWithdrawal({ amount: amt, method: withdrawMethod, account });
+      setBalance(b => b - amt);
+      setWithdrawAmt('');
+      setMomoNumber(''); setBankName(''); setBankAccount('');
+      setCardNumber(''); setCardExpiry(''); setCardCvv(''); setCardholder('');
+    } catch {
+      // toast already shown by context
+    } finally {
+      setWithdrawing(false);
+    }
+  };
+
+  const downloadCsv = () => {
+    const header = 'ID,Type,Category,Amount,Status,Date,Description';
+    const rows = txs.map(t => [
+      t.id, t.type, t.category, Number(t.amount) || 0, t.status || 'pending',
+      new Date(t.createdAt || t.date).toISOString(),
+      (t.description || t.category || '').replace(/"/g, '""'),
+    ].map(v => `"${v}"`).join(','));
+    const csv = [header, ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `omnimarket-statement-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Statement Downloaded', 'Your transaction history has been saved as CSV.');
+  };
+
+  const shareStatement = async () => {
+    const text = txs.slice(0, 20).map(t =>
+      `${new Date(t.createdAt || t.date).toLocaleDateString()} ${t.type === 'credit' ? '+' : '−'}GHS ${Math.abs(Number(t.amount) || 0).toFixed(2)} — ${t.description || t.category}`
+    ).join('\n');
+    const res = await shareLink('OmniMarket Earnings Statement', text);
+    if (res === 'copied') showToast('Statement Copied', 'Your statement was copied — paste it anywhere to share.');
+  };
+
+  const earningsRows = [
+    { label: "Today's Earnings", value: formatPrice(todayEarned), note: `${todayTrips} trips` },
+    { label: 'This Week', value: formatPrice(weekEarned), note: `${weekTrips} trips` },
+    { label: 'This Month', value: formatPrice(monthEarned), note: `${monthTrips} trips` },
+    { label: 'All-Time Earnings', value: formatPrice(allEarned), note: `${myOrders.length} deliveries` },
   ];
 
   return (
-    <div className="space-y-6 pb-10">
-      <PageHeader icon={Wallet} title="Earnings & Wallet" description="Your payouts, trip earnings, and available balance." />
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {cards.map(s => (
-          <Card key={s.label} className="rounded-2xl">
-            <CardContent className="p-5 flex items-start justify-between">
-              <div>
-                <p className="text-sm text-gray-500 dark:text-slate-400">{s.label}</p>
-                <p className="text-xl font-bold text-gray-900 dark:text-white mt-1">{s.value}</p>
-                <p className="text-xs text-gray-400 mt-1">{s.note}</p>
-              </div>
-              <div className={`p-3 rounded-xl ${s.bg} ${s.color}`}><s.icon className="w-5 h-5" /></div>
-            </CardContent>
-          </Card>
-        ))}
+    <div className="mx-auto max-w-3xl space-y-5 pb-10">
+      {/* Hero balance card */}
+      <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-amber-500 via-orange-500 to-orange-600 p-6 sm:p-8 text-white shadow-2xl shadow-orange-500/30">
+        <div className="absolute -top-16 -right-10 w-56 h-56 rounded-full bg-white/10 blur-2xl" />
+        <div className="absolute bottom-0 left-1/3 w-40 h-40 rounded-full bg-black/10 blur-2xl" />
+        <div className="relative z-10">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-100">Earnings &amp; Wallet</p>
+            <div className="flex items-center gap-1.5 rounded-full bg-white/15 backdrop-blur px-3 py-1">
+              <Wallet className="w-3 h-3 text-amber-200" />
+              <span className="text-[9px] font-black uppercase tracking-widest">OmniWallet</span>
+            </div>
+          </div>
+          <p className="mt-6 text-[11px] font-bold text-orange-100 uppercase tracking-widest">Available Balance</p>
+          <p className="text-4xl sm:text-5xl font-black tracking-tight mt-1">{formatPrice(balance)}</p>
+          <p className="mt-2 text-[11px] text-orange-100/90 font-medium">Rider {user?.id?.slice(0, 8).toUpperCase() || '••••••••'}</p>
+
+          <div className="mt-6 grid grid-cols-3 gap-3">
+            <button onClick={() => setShowTx(true)} className="rounded-2xl bg-white/15 backdrop-blur border border-white/20 py-3 text-center hover:bg-white/25 transition">
+              <ArrowUpFromLine className="w-5 h-5 mx-auto" />
+              <span className="mt-1 block text-[10px] font-black uppercase tracking-widest">Withdraw</span>
+            </button>
+            <button onClick={() => setShowTx(true)} className="rounded-2xl bg-white/15 backdrop-blur border border-white/20 py-3 text-center hover:bg-white/25 transition">
+              <Clock className="w-5 h-5 mx-auto" />
+              <span className="mt-1 block text-[10px] font-black uppercase tracking-widest">History</span>
+            </button>
+            <button onClick={() => setShowDeposit(v => !v)} className="rounded-2xl bg-white text-orange-600 py-3 text-center hover:bg-orange-50 transition shadow-lg">
+              <ArrowDownToLine className="w-5 h-5 mx-auto" />
+              <span className="mt-1 block text-[10px] font-black uppercase tracking-widest">Deposit</span>
+            </button>
+          </div>
+        </div>
       </div>
+
+      {/* Deposit panel */}
+      {showDeposit && (
+        <Card className="rounded-[1.75rem] border-gray-100 dark:border-slate-800 shadow-xl overflow-hidden">
+          <CardContent className="p-6 space-y-4">
+            <p className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-widest">Deposit via Mobile Money</p>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Input type="number" placeholder="Amount (GHS)" value={depositAmt} onChange={e => setDepositAmt(e.target.value)} className="rounded-xl" />
+              <Button
+                onClick={() => {
+                  const amt = Number(depositAmt);
+                  if (!amt || amt <= 0) return showToast('Enter Amount', 'Please enter a valid deposit amount.', 'warning');
+                  WalletService.topUp(user!.id, { amount: amt, method: 'Mobile Money' }).then(() => {
+                    setBalance(b => b + amt);
+                    setDepositAmt('');
+                    setShowDeposit(false);
+                    showToast('Deposit Successful', `GHS ${amt.toLocaleString()} added to your wallet.`);
+                  }).catch(() => showToast('Error', 'Deposit failed. Please try again.', 'warning'));
+                }}
+                className="w-full h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 font-black uppercase tracking-widest"
+              >
+                Confirm Deposit
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Earnings — single collapsed row */}
+      <Card className="rounded-[1.75rem] border-gray-100 dark:border-slate-800 shadow-xl overflow-hidden">
+        <button onClick={() => setShowEarnings(v => !v)} className="w-full flex items-center justify-between gap-4 px-6 py-5 text-left hover:bg-gray-50 dark:hover:bg-slate-800/40 transition">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center text-amber-500">
+              <TrendingUp className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-sm font-black text-gray-900 dark:text-white">This Week</p>
+              <p className="text-xs text-gray-400 font-medium">{weekTrips} trips · last 7 days</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <p className="text-xl font-black text-gray-900 dark:text-white">{formatPrice(weekEarned)}</p>
+            <ChevronDown className={cn('w-5 h-5 text-gray-400 transition-transform', showEarnings && 'rotate-180')} />
+          </div>
+        </button>
+        <div className={cn('grid grid-cols-2 sm:grid-cols-4 gap-3 px-6 pb-5 overflow-hidden transition-all', !showEarnings && 'hidden')}>
+          {earningsRows.map(r => (
+            <div key={r.label} className="rounded-2xl bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-800 p-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">{r.label}</p>
+              <p className="text-lg font-black text-gray-900 dark:text-white mt-1">{r.value}</p>
+              <p className="text-[10px] text-gray-400 font-medium mt-0.5">{r.note}</p>
+            </div>
+          ))}
+        </div>
+        <div className={cn('border-t border-gray-50 dark:border-slate-800 px-6 py-4 overflow-hidden transition-all', !showEarnings && 'hidden')}>
+          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Recent Delivery Earnings</p>
+          <div className="space-y-2">
+            {myOrders.slice(0, 6).length === 0 && <p className="text-xs text-gray-400 italic">No completed deliveries yet.</p>}
+            {myOrders.slice(0, 6).map(o => (
+              <div key={o.id} className="flex items-center justify-between gap-3 py-1.5">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${
+                    deliveryKindOf(o) === 'PACKAGE' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' :
+                    deliveryKindOf(o) === 'PASS' ? 'bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400' :
+                    'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400'
+                  }`}>{deliveryKindBadge(o.deliveryType)}</span>
+                  <span className="text-xs font-bold text-gray-700 dark:text-gray-300 truncate">{dropoffLabel(o).name}</span>
+                  <span className="text-[10px] text-gray-400 font-mono truncate hidden sm:inline">{deliveryRef(o)}</span>
+                </div>
+                <span className="text-sm font-bold text-emerald-600 shrink-0">{formatPrice(o.deliveryFee)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Card>
+
+      {/* Withdraw form */}
+      <Card className="rounded-[1.75rem] border-gray-100 dark:border-slate-800 shadow-xl overflow-hidden">
+        <CardHeader className="border-b border-gray-50 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-900/50 px-6 sm:px-8 py-5">
+          <CardTitle className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400 flex items-center gap-2">
+            <ArrowUpFromLine className="w-4 h-4 text-emerald-500" /> Withdraw Money
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-6 sm:p-8 space-y-5">
+          <div className="space-y-2">
+            <Label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Payment Method</Label>
+            <Select value={withdrawMethod} onValueChange={setWithdrawMethod}>
+              <SelectTrigger className="w-full h-12 rounded-xl">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="MTN Mobile Money">MTN Mobile Money</SelectItem>
+                <SelectItem value="Telecel Cash">Telecel Cash</SelectItem>
+                <SelectItem value="AirtelTigo Money">AirtelTigo Money</SelectItem>
+                <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                <SelectItem value="Visa / Mastercard">Visa / Mastercard</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Dynamic fields per method */}
+          {methodKind === 'momo' && (
+            <div className="space-y-2">
+              <Label className="text-[10px] font-black uppercase tracking-widest text-gray-400">{withdrawMethod} Number</Label>
+              <Input type="tel" placeholder="e.g. 0240000000" value={momoNumber} onChange={e => setMomoNumber(e.target.value)} className="rounded-xl h-12" />
+            </div>
+          )}
+
+          {methodKind === 'bank' && (
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Bank Name</Label>
+                <Input placeholder="e.g. GCB Bank" value={bankName} onChange={e => setBankName(e.target.value)} className="rounded-xl h-12" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Account Number</Label>
+                <Input type="tel" placeholder="e.g. 0123456789012" value={bankAccount} onChange={e => setBankAccount(e.target.value)} className="rounded-xl h-12" />
+              </div>
+            </div>
+          )}
+
+          {methodKind === 'card' && (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Cardholder Name</Label>
+                <Input placeholder="Name on card" value={cardholder} onChange={e => setCardholder(e.target.value)} className="rounded-xl h-12" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Card Number</Label>
+                <Input
+                  placeholder="0000 0000 0000 0000"
+                  inputMode="numeric"
+                  value={cardNumber}
+                  onChange={e => setCardNumber(e.target.value.replace(/[^\d ]/g, '').slice(0, 19))}
+                  className="rounded-xl h-12 font-mono tracking-widest"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Expiry</Label>
+                  <Input placeholder="MM/YY" value={cardExpiry} onChange={e => setCardExpiry(e.target.value.slice(0, 5))} className="rounded-xl h-12" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-gray-400">CVV</Label>
+                  <Input type="password" placeholder="•••" value={cardCvv} onChange={e => setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4))} className="rounded-xl h-12" />
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Amount (GHS)</Label>
+            <Input type="number" placeholder="0.00" value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} className="rounded-xl h-12" />
+          </div>
+
+          <Button
+            onClick={handleWithdraw}
+            disabled={withdrawing}
+            className="w-full h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20"
+          >
+            {withdrawing ? 'Processing…' : `Withdraw ${withdrawAmt ? `GHS ${Number(withdrawAmt).toLocaleString()}` : ''}`}
+          </Button>
+          <p className="text-[10px] text-gray-400 font-medium text-center">Withdrawals are reviewed by the finance team and typically pay out within 24 hours.</p>
+        </CardContent>
+      </Card>
+
+      {/* Transactions modal */}
+      <AnimatePresence>
+        {showTx && (
+          <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
+            <motion.div
+              initial={{ opacity: 0, y: 60 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 60 }}
+              transition={{ type: 'spring', damping: 26, stiffness: 300 }}
+              className="bg-white dark:bg-slate-900 rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden border border-gray-100 dark:border-slate-800"
+            >
+              <div className="flex items-center justify-between px-6 py-5 border-b border-gray-50 dark:border-slate-800">
+                <div>
+                  <h3 className="text-base font-black text-gray-900 dark:text-white">Transactions</h3>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">{txs.length} records</p>
+                </div>
+                <button onClick={() => setShowTx(false)} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"><X className="w-5 h-5" /></button>
+              </div>
+
+              <div className="max-h-[46vh] overflow-y-auto">
+                {txs.length === 0 ? (
+                  <p className="text-center text-gray-400 py-12 italic text-sm">No transactions yet. Your earnings will appear here.</p>
+                ) : (
+                  <div className="divide-y divide-gray-100 dark:divide-slate-800">
+                    {txs.slice(0, 50).map(t => (
+                      <div key={t.id} className="flex items-center justify-between gap-4 px-6 py-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center shrink-0', t.type === 'credit' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600' : 'bg-amber-50 dark:bg-amber-900/20 text-amber-500')}>
+                            {t.type === 'credit' ? <ArrowDownToLine className="w-4 h-4" /> : <ArrowUpFromLine className="w-4 h-4" />}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{t.description || t.category}</p>
+                            <p className="text-[10px] text-gray-400 font-bold">{new Date(t.createdAt || t.date).toLocaleString()}</p>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className={cn('text-sm font-black', t.type === 'credit' ? 'text-emerald-600' : 'text-gray-900 dark:text-white')}>
+                            {t.type === 'credit' ? '+' : '−'}{formatPrice(Math.abs(Number(t.amount) || 0))}
+                          </p>
+                          <span className={cn('text-[9px] font-black uppercase tracking-widest', (t.status === 'completed' || t.status === 'Completed') ? 'text-emerald-500' : 'text-amber-500')}>
+                            {t.status || 'pending'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 p-6 border-t border-gray-50 dark:border-slate-800">
+                <Button variant="outline" onClick={downloadCsv} disabled={txs.length === 0} className="h-12 rounded-xl font-black uppercase tracking-widest">
+                  <Download className="w-4 h-4 mr-2" /> Download
+                </Button>
+                <Button onClick={shareStatement} disabled={txs.length === 0} className="h-12 rounded-xl bg-amber-500 hover:bg-amber-600 font-black uppercase tracking-widest text-white">
+                  <Share2 className="w-4 h-4 mr-2" /> Share
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -470,11 +1190,15 @@ export function RiderWalletPage() {
  */
 export function RiderProfilePage() {
   const navigate = useNavigate();
-  const { riders, updateProfile, updateRiderProfile, showToast, orders, customerProfile, startConversation } = useApp();
-  const { user } = useAuth();
+  const { riders, updateProfile, updateRiderProfile, showToast, orders, customerProfile, startConversation, riderStatus, updateRiderStatus } = useApp();
+  const { user, logout } = useAuth();
   const [showEditModal, setShowEditModal] = useState(false);
-  const [showBannerPicker, setShowBannerPicker] = useState(false);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const [pushPref, setPushPref] = useState(() => localStorage.getItem('om_rider_push') !== 'off');
+
+  const online = riderStatus !== 'OFFLINE';
+
+  const [isCopied, setIsCopied] = useState(false);
 
   const onAvatarCropped = (dataUrl: string) => {
     updateProfile({ avatar: dataUrl });
@@ -483,7 +1207,7 @@ export function RiderProfilePage() {
   };
 
   const rider = riders.find(r => r.userId === user?.id || r.id === user?.id);
-  const deliveredCount = orders.filter(o => o.riderId === user?.id && ['delivered', 'completed'].includes(o.status)).length;
+  const deliveredCount = orders.filter(o => o.riderId === user?.riderId && ['delivered', 'completed'].includes(o.status)).length;
 
   const [form, setForm] = useState({
     name: user?.displayName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || '',
@@ -494,14 +1218,7 @@ export function RiderProfilePage() {
     vehicleNumber: rider?.vehicleNumber || '',
   });
 
-  const bannerOptions = [
-    { id: 'moto', url: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=1200&q=80', label: 'Classic Motorbike' },
-    { id: 'city', url: 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=1200&q=80', label: 'City Streets' },
-    { id: 'delivery', url: 'https://images.unsplash.com/photo-1526367790999-0150786486a9?w=1200&q=80', label: 'Logistics' },
-    { id: 'abstract', url: 'https://images.unsplash.com/photo-1557683316-973673baf926?w=1200&q=80', label: 'Abstract Orange' },
-  ];
-
-  const pickImage = (isBanner = false) => {
+const pickImage = () => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
@@ -512,42 +1229,11 @@ export function RiderProfilePage() {
       reader.onload = (event) => {
         const src = event.target?.result as string;
         if (!src) return;
-        if (isBanner) {
-          applyBannerImage(src);
-        } else {
-          setCropSrc(src);
-        }
+        setCropSrc(src);
       };
       reader.readAsDataURL(file);
     };
     input.click();
-  };
-
-  const applyBannerImage = (src: string) => {
-    const img = new (window as any).Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      let width = img.width;
-      let height = img.height;
-      const MAX = 1200;
-      if (width > height) {
-        if (width > MAX) { height *= MAX / width; width = MAX; }
-      } else {
-        if (height > MAX) { width *= MAX / height; height = MAX; }
-      }
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      ctx?.drawImage(img, 0, 0, width, height);
-      const base64 = canvas.toDataURL('image/jpeg', 0.8);
-      if (rider) {
-        updateRiderProfile(rider.id, { bannerUrl: base64 });
-        showToast('Banner Updated', 'Your cover photo has been changed.');
-      } else {
-        showToast('Error', 'Rider record not found.', 'warning');
-      }
-    };
-    img.src = src;
   };
 
   const handleSaveProfile = async () => {
@@ -570,16 +1256,30 @@ export function RiderProfilePage() {
   const fullName = user?.displayName || (user?.firstName ? `${user.firstName} ${user.lastName}` : 'Rider');
   const userInitials = fullName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || 'R';
 
+  // Server-generated referral code + stats (from GET /api/referrals/me)
+  const [referral, setReferral] = useState<MyReferral | null>(null);
+  const [showReferralQr, setShowReferralQr] = useState(false);
+  useEffect(() => {
+    ReferralService.getMyReferral()
+      .then(r => setReferral(r))
+      .catch(() => setReferral(null));
+  }, []);
+  const riderReferralCode = referral?.code || user?.referralCode || `OM-${user?.id.slice(0, 4).toUpperCase() || ''}`;
+  const referralLink = riderReferralCode ? `${window.location.origin}/register?ref=${riderReferralCode}` : '';
+  const qrUrl = referralLink ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(referralLink)}` : '';
+
   const fields = [
-    { label: 'Display Name', value: fullName },
     { label: 'Registration Email', value: user?.email || '—' },
-    { label: 'Primary Contact', value: user?.phone || '—' },
+    { label: 'Contact', value: user?.phone || '—' },
     { label: 'Alternative Contact', value: form.phoneSecondary || 'None' },
     { label: 'Vehicle Fleet', value: rider?.vehicleType || 'Motorcycle' },
-    { label: 'Plate Number', value: rider?.vehicleNumber || '—' },
-    { label: 'Account Status', value: rider?.verificationStatus || (user?.isVerified ? 'verified' : 'pending') },
-    { label: 'Service Rating', value: rider?.rating != null ? `${rider.rating.toFixed(1)}★` : 'No ratings yet' },
+    { label: 'Fleet Number', value: rider?.vehicleNumber || '—' },
   ];
+
+  const riderIdField = {
+    label: 'Rider ID',
+    value: user?.riderId || rider?.id || '—',
+  };
 
   const handleContactSupport = async () => {
     try {
@@ -594,90 +1294,83 @@ export function RiderProfilePage() {
     }
   };
 
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
   return (
-    <div className="space-y-6 pb-20">
-      <PageHeader icon={UserRound} title="My Profile" description="Manage your rider identity and account details." />
-
-      <div className="relative group overflow-hidden rounded-[2.5rem] shadow-2xl">
-        {/* Modern Banner */}
-        <div className="h-40 sm:h-56 bg-slate-900 relative group/banner">
-          <img
-            src={(rider?.bannerUrl || (user as any)?.bannerUrl) || 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=1200&q=80'}
-            className="w-full h-full object-cover opacity-60 transition-transform duration-500 group-hover/banner:scale-105"
-            alt="Banner"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent" />
-
-          <div className="absolute top-6 right-6 flex gap-2">
-             <Button size="sm" variant="outline" className="bg-white/10 backdrop-blur-md border-white/20 text-white hover:bg-white/20 rounded-xl" onClick={() => setShowBannerPicker(true)}>
-               <ImageIcon className="w-4 h-4 mr-2" /> Change Banner
-             </Button>
-          </div>
-
-          <div className="absolute bottom-6 right-8 text-white/10 font-black text-6xl sm:text-8xl uppercase tracking-tighter italic select-none pointer-events-none">
-            RIDER
-          </div>
-        </div>
-
-        {/* Profile Info Overlay */}
-        <div className="px-8 pb-8 -mt-16 sm:-mt-20 relative z-10">
-          <div className="flex flex-col sm:flex-row items-center sm:items-end gap-6">
-            <div className="relative group/avatar">
-              <div className="w-28 h-28 sm:w-40 sm:h-40 rounded-[2.5rem] bg-white dark:bg-slate-900 p-1.5 shadow-2xl overflow-hidden ring-8 ring-white dark:ring-slate-900 transition-all group-hover/avatar:scale-[1.02]">
-                {user?.avatarUrl ? (
-                  <img src={user.avatarUrl} className="w-full h-full object-cover rounded-[2rem]" alt={fullName} />
-                ) : (
-                  <div className="w-full h-full rounded-[2rem] bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-5xl font-black shadow-inner">
-                    {userInitials}
-                  </div>
-                )}
-              </div>
-              <button
-                onClick={() => pickImage(false)}
-                className="absolute -bottom-2 -right-2 p-3.5 bg-amber-500 text-white rounded-2xl shadow-2xl hover:bg-amber-600 hover:scale-110 transition-all border-4 border-white dark:border-slate-900"
-              >
-                <Camera className="w-6 h-6" />
-              </button>
+    <div className="space-y-4 pb-14">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="relative shrink-0">
+            <div className="w-14 h-14 rounded-2xl bg-white dark:bg-slate-800 p-0.5 shadow-md overflow-hidden ring-1 ring-gray-100 dark:ring-slate-700">
+              {user?.avatarUrl ? (
+                <img src={user.avatarUrl} className="w-full h-full object-cover rounded-xl" alt={fullName} />
+              ) : (
+                <div className="w-full h-full rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-lg font-black shadow-inner">
+                  {userInitials}
+                </div>
+              )}
             </div>
-
-            <div className="text-center sm:text-left flex-1 pb-2">
-              <h2 className="text-3xl sm:text-4xl font-black text-white sm:text-gray-900 sm:dark:text-white leading-tight drop-shadow-md sm:drop-shadow-none">
-                {fullName}
-              </h2>
-              <div className="flex flex-wrap justify-center sm:justify-start items-center gap-3 mt-3">
-                <Badge variant={rider?.isVerified || user?.isVerified ? 'success' : 'warning'} className="rounded-xl px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] border-none shadow-lg">
-                  {(rider?.verificationStatus || (user?.isVerified ? 'verified' : 'pending')).replace('_', ' ')}
-                </Badge>
-                <div className="flex items-center gap-2 bg-white dark:bg-slate-800 px-4 py-1.5 rounded-xl shadow-lg border border-gray-100 dark:border-slate-700">
-                  <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-                  <span className="text-xs font-black text-gray-700 dark:text-gray-200">{rider?.rating != null ? rider.rating.toFixed(1) : '—'}</span>
-                </div>
-                <div className="flex items-center gap-2 bg-white dark:bg-slate-800 px-4 py-1.5 rounded-xl shadow-lg border border-gray-100 dark:border-slate-700">
-                  <Truck className="w-4 h-4 text-orange-500" />
-                  <span className="text-xs font-black text-gray-700 dark:text-gray-200">{deliveredCount} Jobs</span>
-                </div>
-              </div>
+            <button onClick={pickImage} className="absolute -bottom-1 -right-1 p-1.5 bg-amber-500 text-white rounded-lg shadow-md hover:bg-amber-600 transition-all border-2 border-white dark:border-slate-900">
+              <Camera className="w-3 h-3" />
+            </button>
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-xl sm:text-2xl font-black text-gray-900 dark:text-white leading-tight truncate">{fullName}</h2>
+              <RiderSubscriptionStatus size="sm" />
+            </div>
+            <p className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest mt-0.5">
+              {rider?.vehicleType || 'E-Bike'} Rider
+            </p>
+            <div className="flex items-center gap-2 mt-1.5">
+              <Badge variant={rider?.isVerified || user?.isVerified ? 'success' : 'warning'} className="rounded-lg px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest border-none">
+                {(rider?.verificationStatus || (user?.isVerified ? 'verified' : 'pending')).replace('_', ' ')}
+              </Badge>
+              <span className="flex items-center gap-1 text-[11px] font-black text-gray-600 dark:text-gray-300">
+                <Star className="w-3 h-3 text-amber-500 fill-amber-500" /> {rider?.rating != null ? rider.rating.toFixed(1) : '—'}
+              </span>
+              <span className="flex items-center gap-1 text-[11px] font-black text-gray-600 dark:text-gray-300">
+                <Truck className="w-3 h-3 text-orange-500" /> {deliveredCount} jobs
+              </span>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-6">
-        <div className="md:col-span-2 space-y-6">
+      <div className="space-y-4">
           <Card className="rounded-[2.5rem] border-gray-100 dark:border-slate-800 shadow-xl overflow-hidden">
+            {/* Rider ID hero strip */}
+            <div className="flex items-center justify-between gap-4 px-8 py-5 bg-gradient-to-r from-amber-400/10 via-orange-400/5 to-transparent border-b border-gray-100 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center text-amber-600">
+                  <IdCard className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Rider ID</p>
+                  <p className="text-sm font-black font-mono text-gray-900 dark:text-white tracking-wider">{riderIdField.value}</p>
+                </div>
+              </div>
+              <Badge variant={rider?.isVerified || user?.isVerified ? 'success' : 'warning'} className="rounded-lg px-2.5 py-1 text-[9px] font-black uppercase tracking-widest border-none">
+                {(rider?.verificationStatus || (user?.isVerified ? 'verified' : 'pending')).replace('_', ' ')}
+              </Badge>
+            </div>
+
             <CardHeader className="border-b border-gray-50 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-900/50 px-8 py-6">
               <CardTitle className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Profile Details</CardTitle>
             </CardHeader>
-            <CardContent className="grid sm:grid-cols-2 gap-x-8 gap-y-6 p-8">
+            <CardContent className="p-0 divide-y divide-gray-50 dark:divide-slate-800">
               {fields.map(f => (
-                <div key={f.label} className="space-y-1">
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{f.label}</p>
-                  <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{f.value}</p>
+                <div key={f.label} className="flex items-center justify-between gap-6 px-8 py-4">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest shrink-0">{f.label}</p>
+                  <p className="text-sm font-bold text-gray-900 dark:text-white text-right truncate">{f.value}</p>
                 </div>
               ))}
               {(rider?.about || form.about) && (
-                <div className="sm:col-span-2 space-y-1.5 pt-2 border-t border-gray-100 dark:border-slate-800">
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Bio / About</p>
+                <div className="px-8 py-5">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Bio / About</p>
                   <p className="text-sm font-medium text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
                     {rider?.about || form.about}
                   </p>
@@ -686,47 +1379,169 @@ export function RiderProfilePage() {
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Button
-              onClick={handleContactSupport}
-              variant="outline"
-              className="h-16 rounded-2xl font-black uppercase tracking-widest border-2 hover:bg-gray-50 dark:hover:bg-slate-800 transition-all gap-3"
-            >
-              <MessageSquare className="w-5 h-5 text-amber-500" /> Contact Support
-            </Button>
-            <Button
-              onClick={() => setShowEditModal(true)}
-              className="h-16 rounded-2xl bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:scale-[1.02] transition-transform font-black uppercase tracking-widest shadow-xl shadow-gray-400/20"
-            >
-              Edit Profile
-            </Button>
-          </div>
-        </div>
-
-        <div className="space-y-6">
-          <Card className="rounded-[2.5rem] bg-gradient-to-br from-amber-400 to-orange-600 text-white border-none shadow-xl p-8">
-            <div className="space-y-6">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-80">Rider Earnings</p>
-                <h3 className="text-4xl font-black mt-2">GHS {(user?.walletBalance || 0).toFixed(2)}</h3>
-              </div>
-              <div className="space-y-4 pt-4 border-t border-white/20">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold opacity-80">Platform Rating</span>
-                  <span className="text-sm font-black">{rider?.rating != null ? `${rider.rating.toFixed(1)} ★` : '—'}</span>
+          {/* Settings */}
+          <Card className="rounded-[2.5rem] border-gray-100 dark:border-slate-800 shadow-xl overflow-hidden">
+            <CardHeader className="border-b border-gray-50 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-900/50 px-8 py-6">
+              <CardTitle className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Settings</CardTitle>
+            </CardHeader>
+            <CardContent className="p-8 space-y-5">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center">
+                    <Radio className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-gray-900 dark:text-white">Go Online</p>
+                    <p className="text-xs text-gray-400">Start receiving live order alerts</p>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold opacity-80">Total Trips</span>
-                  <span className="text-sm font-black">{deliveredCount}</span>
-                </div>
+                <Switch
+                  checked={online}
+                  onCheckedChange={(v: boolean) => { updateRiderStatus(v ? 'ONLINE' : 'OFFLINE'); showToast(v ? 'Online' : 'Offline', v ? 'You are now available for deliveries.' : 'You are now offline.'); }}
+                />
               </div>
-              <Button className="w-full h-12 rounded-xl bg-white text-orange-600 font-black uppercase tracking-widest hover:bg-white/90" onClick={() => navigate('/rider/earnings')}>
-                Withdraw
-              </Button>
-            </div>
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center">
+                    <Bell className="w-4 h-4 text-amber-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-gray-900 dark:text-white">Push Notifications</p>
+                    <p className="text-xs text-gray-400">New order &amp; earnings alerts</p>
+                  </div>
+                </div>
+                <Switch
+                  checked={pushPref}
+                  onCheckedChange={(v: boolean) => { setPushPref(v); localStorage.setItem('om_rider_push', v ? 'on' : 'off'); }}
+                />
+              </div>
+            </CardContent>
           </Card>
+
+          {/* Refer & Earn */}
+          <Card className="rounded-[2rem] bg-gradient-to-br from-amber-400 to-orange-600 text-white border-none shadow-lg overflow-hidden">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur">
+                    <Gift className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-black uppercase tracking-wider">Refer &amp; Earn</p>
+                    <p className="text-xs text-white/80 font-bold">Friends who register earn you bonuses</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-black leading-none">{referral?.totalReferred ?? 0}</p>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-white/70">Referred</p>
+                </div>
+              </div>
+              <div className="mt-4 flex items-center gap-2 bg-white/20 rounded-2xl border border-white/30 p-4 backdrop-blur-md shadow-inner relative">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-white/60 mb-1">Your Unique Code</p>
+                  <p className="font-mono font-black text-2xl tracking-[0.2em] text-white truncate">{riderReferralCode}</p>
+                </div>
+                <div className="relative">
+                  <AnimatePresence>
+                    {isCopied && (
+                      <motion.span
+                        initial={{ opacity: 0, y: 10, scale: 0.8 }}
+                        animate={{ opacity: 1, y: -30, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.5 }}
+                        className="absolute left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] font-black px-2 py-1 rounded shadow-xl whitespace-nowrap z-50 pointer-events-none"
+                      >
+                        COPIED!
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                  <button
+                    onClick={() => {
+                      copyText(riderReferralCode).then(ok => {
+                        if (ok) {
+                          setIsCopied(true);
+                          setTimeout(() => setIsCopied(false), 2000);
+                        }
+                        showToast(ok ? 'Code Copied!' : 'Copy Failed', ok ? 'You can now paste and share your code.' : 'Please try again or copy manually.');
+                      });
+                    }}
+                    className="px-6 py-3 rounded-xl bg-white text-orange-600 text-[10px] font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-lg flex items-center gap-2"
+                  >
+                    <Copy className="w-3.5 h-3.5" /> COPY
+                  </button>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => {
+                    shareLink('Join me on OmniMarket — use my referral code to register!', referralLink).then(r => {
+                      if (r === 'shared') showToast('Success', 'Opening share menu...');
+                      else if (r === 'copied') showToast('Link Copied', 'Share it with your friends!');
+                      else showToast('Share Unavailable', 'The share menu could not be opened. Link was copied instead.', 'warning');
+                    }).catch(() => {
+                      copyText(referralLink).then(() => showToast('Link Copied', 'Share it with your friends!'));
+                    });
+                  }}
+                  className="py-3.5 rounded-2xl bg-black/20 backdrop-blur-md text-[10px] font-black uppercase tracking-widest hover:bg-black/30 transition-all text-white border border-white/10 flex items-center justify-center gap-2 group"
+                >
+                  <Share2 className="w-4 h-4 group-hover:scale-110 transition-transform" /> SHARE LINK
+                </button>
+                <button
+                  onClick={() => setShowReferralQr(v => !v)}
+                  className="py-3.5 rounded-2xl bg-black/20 backdrop-blur-md text-[10px] font-black uppercase tracking-widest hover:bg-black/30 transition-all text-white border border-white/10 flex items-center justify-center gap-2 group"
+                >
+                  <QrCode className="w-4 h-4 group-hover:scale-110 transition-transform" /> QR CODE
+                </button>
+              </div>
+              {showReferralQr && qrUrl && (
+                <div className="mt-3 flex items-center justify-center rounded-xl bg-white p-4">
+                  <img src={qrUrl} alt="Referral QR code" className="w-36 h-36 rounded-lg" />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Edit Profile — distinct primary action */}
+          <Button
+            onClick={() => setShowEditModal(true)}
+            className="w-full h-14 rounded-2xl bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:scale-[1.02] transition-transform font-black uppercase tracking-widest shadow-xl shadow-gray-400/20"
+          >
+            Edit Profile
+          </Button>
+
+          {/* About / Version — modern premium badge */}
+          <Card className="rounded-[2rem] border-gray-100 dark:border-slate-800 shadow-xl overflow-hidden">
+            <CardContent className="p-5 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 flex items-center justify-center shadow-lg">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-black text-gray-900 dark:text-white">OmniMarket Rider</p>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">App {APP_VERSION_LABEL}</p>
+                </div>
+              </div>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 text-[9px] font-black uppercase tracking-widest">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Stable
+              </span>
+            </CardContent>
+          </Card>
+
+          {/* Contact Support — quiet, always last at the bottom */}
+          <button
+            onClick={handleContactSupport}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border border-dashed border-gray-200 dark:border-slate-700 text-[11px] font-black uppercase tracking-widest text-gray-400 dark:text-slate-500 hover:border-amber-400 hover:text-amber-500 transition-colors"
+          >
+            <MessageSquare className="w-4 h-4" /> Contact Support
+          </button>
+
+          {/* Log Out */}
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-red-50 dark:bg-red-950/30 text-red-500 dark:text-red-400 text-[11px] font-black uppercase tracking-widest hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors border border-red-100 dark:border-red-900/40"
+          >
+            <LogOut className="w-4 h-4" /> Log Out
+          </button>
         </div>
-      </div>
 
       {/* Edit Profile Modal */}
       <AnimatePresence>
@@ -784,43 +1599,6 @@ export function RiderProfilePage() {
         )}
       </AnimatePresence>
 
-      {/* Banner Picker Modal */}
-      <AnimatePresence>
-        {showBannerPicker && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
-              className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl w-full max-w-2xl overflow-hidden border border-gray-100 dark:border-slate-800">
-              <div className="p-8 space-y-6">
-                <div className="flex justify-between items-center">
-                   <div>
-                     <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-wider">Choose Banner</h3>
-                     <p className="text-xs text-gray-500 font-bold mt-1">Select from our gallery or upload your own.</p>
-                   </div>
-                   <button onClick={() => setShowBannerPicker(false)} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"><X className="w-5 h-5" /></button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  {bannerOptions.map(banner => (
-                    <button key={banner.id} onClick={() => { if (rider) updateRiderProfile(rider.id, { bannerUrl: banner.url }); setShowBannerPicker(false); }}
-                      className="group relative h-24 rounded-2xl overflow-hidden border-2 border-transparent hover:border-amber-500 transition-all">
-                      <img src={banner.url} className="w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <span className="text-white text-[10px] font-black uppercase">{banner.label}</span>
-                      </div>
-                    </button>
-                  ))}
-                  <button onClick={() => { setShowBannerPicker(false); pickImage(true); }}
-                    className="h-24 rounded-2xl border-2 border-dashed border-gray-200 dark:border-slate-800 flex flex-col items-center justify-center gap-2 hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-all">
-                    <Upload className="w-5 h-5 text-gray-400" />
-                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Upload Custom</span>
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
       <ImageCropModal
         open={!!cropSrc}
         imageSrc={cropSrc || ''}
@@ -841,9 +1619,9 @@ export function RiderProfilePage() {
  */
 export function RiderSettingsPage() {
   const navigate = useNavigate();
-  const { riderStatus, updateRiderStatus, showToast, theme, toggleTheme, riders } = useApp();
-  const { user, updateUser } = useAuth();
-  const online = riderStatus !== 'OFFLINE' && riderStatus !== 'LOCATION_PERMISSION_DENIED' && riderStatus !== 'LOCATION_UNAVAILABLE';
+  const { riderStatus, riderLocationError, geoActive, updateRiderStatus, showToast, riders } = useApp();
+  const { user, updateUser, logout } = useAuth();
+  const online = riderStatus !== 'OFFLINE';
   const [pushPref, setPushPref] = useState(() => localStorage.getItem('om_rider_push') !== 'off');
   const [showDeactivate, setShowDeactivate] = useState(false);
   const [emailStep, setEmailStep] = useState<'idle' | 'sent' | 'verified'>('idle');
@@ -889,6 +1667,11 @@ export function RiderSettingsPage() {
   const handlePushToggle = (v: boolean) => {
     setPushPref(v);
     localStorage.setItem('om_rider_push', v ? 'on' : 'off');
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
   };
 
   // Profile-setup / trust score (email verification is the biggest factor).
@@ -937,7 +1720,9 @@ export function RiderSettingsPage() {
           label: 'Live Location Tracking',
           desc: 'Allow customers to see your real-time position during active deliveries.',
           icon: MapPin,
-          action: <Badge variant="success" className="rounded-lg">Enabled</Badge>
+          action: geoActive
+            ? <Badge variant="success" className="rounded-lg">Enabled</Badge>
+            : <Badge variant="warning" className="rounded-lg">Off</Badge>
         }
       ]
     },
@@ -968,12 +1753,6 @@ export function RiderSettingsPage() {
       title: 'Preferences',
       items: [
         {
-          label: 'Dark Mode',
-          desc: 'Switch between light and dark visual themes.',
-          icon: Moon,
-          action: <Switch checked={theme === 'dark'} onCheckedChange={toggleTheme} />
-        },
-        {
           label: 'Push Notifications',
           desc: 'Receive alerts for new jobs and message updates.',
           icon: Bell,
@@ -993,6 +1772,17 @@ export function RiderSettingsPage() {
               : 'Verify your email to reach 100% account trust.',
           icon: CheckCircle,
           action: emailAction
+        }
+      ]
+    },
+    {
+      title: 'Subscription',
+      items: [
+        {
+          label: 'My Plan',
+          desc: `You are on the ${getRiderPlan(user?.id)} plan — manage or upgrade anytime.`,
+          icon: Crown,
+          action: <Button size="sm" variant="outline" className="rounded-lg" onClick={() => navigate('/rider/subscription')}>Manage</Button>
         }
       ]
     }
@@ -1067,6 +1857,13 @@ export function RiderSettingsPage() {
         </div>
       </Card>
 
+      {/* Log Out */}
+      <Card className="rounded-[2.5rem] border-gray-100 dark:border-slate-800 shadow-xl overflow-hidden">
+        <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2.5 py-5 text-red-500 dark:text-red-400 text-[11px] font-black uppercase tracking-widest hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+          <LogOut className="w-4 h-4" /> Log Out of Rider Portal
+        </button>
+      </Card>
+
       {/* Deactivate Confirmation Modal */}
       <AnimatePresence>
         {showDeactivate && (
@@ -1108,7 +1905,7 @@ export function RiderRatingsPage() {
   const { riders, orders } = useApp();
   const { user } = useAuth();
   const rider = riders.find(r => r.userId === user?.id || r.id === user?.id);
-  const deliveredCount = orders.filter(o => o.riderId === user?.id && ['delivered', 'completed'].includes(o.status)).length;
+  const deliveredCount = orders.filter(o => o.riderId === user?.riderId && ['delivered', 'completed'].includes(o.status)).length;
 
   const cards = [
     { label: 'Overall Rating', value: rider?.rating !== undefined ? `${rider.rating.toFixed(1)}★` : '—', note: `${deliveredCount} deliveries`, icon: Star, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
@@ -1166,14 +1963,30 @@ export function RiderRatingsPage() {
  * ------------------------------------------------------------
  */
 export function RiderMessagesPage() {
-  const { conversations, showToast, sendMessage } = useApp();
+  const { conversations, showToast, sendMessage, orders } = useApp();
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [messageInput, setMessageInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    const convId = searchParams.get('convId');
+    if (convId) {
+      setSelectedConvId(convId);
+      loadMessages(convId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  const orderOfChat = (c: any) => {
+    if (!c?.orderId) return null;
+    return orders.find(o => o.id === c.orderId || o.orderNumber === c.orderId) || null;
+  };
 
   const filteredChats = conversations.filter(c => {
     if (!search.trim()) return true;
@@ -1235,6 +2048,7 @@ export function RiderMessagesPage() {
               const partner = chat.participants && chat.participants.find((p: any) => p.id !== user?.id);
               const partnerName = partner?.name || chat.subject || 'User';
               const partnerInitials = getInitials(partnerName);
+              const order = orderOfChat(chat);
 
               return (
                 <div key={chat.id} onClick={() => loadMessages(chat.id)} className={cn("p-4 rounded-2xl flex items-center gap-3 cursor-pointer transition-all mb-1 hover:bg-amber-50 dark:hover:bg-amber-950/20", selectedConvId === chat.id && "bg-amber-50 dark:bg-amber-950/20 ring-1 ring-amber-500/20")}>
@@ -1246,6 +2060,15 @@ export function RiderMessagesPage() {
                       <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{partnerName}</p>
                       <span className="text-[9px] text-gray-400">{chat.lastMessageAt ? new Date(chat.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
                     </div>
+                    {order && (
+                      <p className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md mt-0.5 text-[9px] font-black uppercase tracking-wider ${
+                        deliveryKindOf(order) === 'PACKAGE' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' :
+                        deliveryKindOf(order) === 'PASS' ? 'bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400' :
+                        'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400'
+                      }`}>
+                        {deliveryKindBadge(order.deliveryType)} · {deliveryRef(order)} · Order #{order.orderNumber}
+                      </p>
+                    )}
                     <p className="text-[10px] text-gray-500 dark:text-gray-400 line-clamp-1">{chat.lastMessage || 'Open to view conversation'}</p>
                   </div>
                   {chat.unreadCount > 0 && <div className="w-2 h-2 rounded-full bg-amber-500" />}
@@ -1274,7 +2097,16 @@ export function RiderMessagesPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-black text-gray-900 dark:text-white truncate">{convPartner?.name || selectedConv.subject}</p>
-                  <p className="text-[10px] text-gray-500 truncate">{selectedConv.orderId ? `Order #${selectedConv.orderId.slice(-6).toUpperCase()}` : 'Support Thread'}</p>
+                  {selectedConv.orderId ? (() => {
+                    const ord = orderOfChat(selectedConv);
+                    return ord ? (
+                      <p className={cn("text-[10px] font-black uppercase tracking-wider mt-0.5",
+                        deliveryKindOf(ord) === 'PACKAGE' ? 'text-blue-500 dark:text-blue-400' :
+                        deliveryKindOf(ord) === 'PASS' ? 'text-violet-500 dark:text-violet-400' : 'text-amber-500 dark:text-amber-400')}>
+                        {deliveryKindBadge(ord.deliveryType)} delivery · {deliveryRef(ord)} · Order #{ord.orderNumber}
+                      </p>
+                    ) : <p className="text-[10px] text-gray-500">Order #{selectedConv.orderId.slice(-8).toUpperCase()}</p>;
+                  })() : <p className="text-[10px] text-gray-500">OmniMarket Support Thread</p>}
                 </div>
               </div>
 
@@ -1326,40 +2158,146 @@ export function RiderMessagesPage() {
  * ------------------------------------------------------------
  */
 export function RiderNotificationsPage() {
-  const { notifications, markNotificationRead, clearNotifications } = useApp();
-  const unread = notifications.filter(n => !n.read).length;
+  return <NotificationCenter role="rider" />;
+}
+
+/*
+ * ------------------------------------------------------------
+ * SUBSCRIPTION — rider plans (Free / Premium / Pro)
+ * ------------------------------------------------------------
+ */
+export function RiderSubscriptionPage() {
+  const { showToast } = useApp();
+  const { user } = useAuth();
+  const [currentPlan, setCurrentPlan] = useState(
+    () => localStorage.getItem(`omnimarket_rider_plan_${user?.id || 'guest'}`) || 'Free'
+  );
+  const current = RIDER_PLANS.find(p => p.id === currentPlan) || RIDER_PLANS[0];
+  const nextBilling = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  }, []);
+
+  const handleSelect = (planId: string) => {
+    localStorage.setItem(`omnimarket_rider_plan_${user?.id || 'guest'}`, planId);
+    setCurrentPlan(planId);
+    const plan = RIDER_PLANS.find(p => p.id === planId)!;
+    showToast('Plan Updated', planId === 'Free' ? 'You are now on the free plan.' : `You are now on the ${planId} plan — billed monthly.`);
+  };
+
   return (
-    <div className="space-y-6 pb-10">
-      <PageHeader icon={Bell} title="Notifications" description="Job alerts, payout updates, and platform announcements." count={`${unread} unread`} />
-      <Card className="rounded-2xl">
-        <CardHeader className="border-b flex items-center justify-between">
-          <CardTitle className="text-base flex items-center gap-2"><Bell className="w-4 h-4 text-amber-500" /> Inbox</CardTitle>
-          <Button variant="outline" size="sm" onClick={clearNotifications}><RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Clear All</Button>
-        </CardHeader>
-        <CardContent>
-          {notifications.length === 0 ? (
-            <p className="text-center text-gray-400 py-10 italic">No notifications.</p>
-          ) : (
-            <div className="space-y-1">
-              {notifications.map(n => (
-                <button key={n.id} onClick={() => markNotificationRead(n.id)} className={`w-full text-left flex items-start gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800/50 ${!n.read ? 'bg-amber-50/50 dark:bg-amber-900/10' : ''}`}>
-                  <div className="mt-0.5">
-                    <div className={`w-2 h-2 rounded-full mt-1.5 ${n.read ? 'bg-gray-300 dark:bg-slate-600' : 'bg-amber-500'}`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{n.title}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{n.message}</p>
-                    <div className="mt-1 inline-flex items-center gap-2">
-                      <Badge variant="outline" className="text-[9px]">{n.type}</Badge>
-                      <span className="text-[10px] text-gray-400">{n.time}</span>
-                    </div>
-                  </div>
-                </button>
-              ))}
+    <div className="space-y-8 pb-10">
+      <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 rounded-[2rem] p-8 text-white shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-56 h-56 bg-amber-500/20 rounded-full -mr-20 -mt-20 blur-3xl" />
+        <div className="absolute bottom-0 left-10 w-40 h-40 bg-orange-500/10 rounded-full blur-3xl" />
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center gap-6">
+          <div className="flex-1 space-y-3">
+            <div className="inline-flex items-center gap-2 bg-amber-500/15 border border-amber-500/30 backdrop-blur px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest text-amber-300">
+              <Crown className="w-4 h-4" /> Your Plan
             </div>
-          )}
-        </CardContent>
-      </Card>
+            <h1 className="text-3xl font-black">{current.id}</h1>
+            <p className="text-sm text-slate-300 font-medium max-w-lg">{current.tagline}</p>
+            <div className="flex items-center gap-2 text-[10px] font-black font-mono tracking-widest text-slate-400">
+              <IdCard className="w-3.5 h-3.5 text-amber-400" /> RID-{(user?.riderId || '—').toUpperCase()}
+            </div>
+          </div>
+          <div className="bg-white/5 border border-white/10 backdrop-blur rounded-2xl p-5 text-center min-w-[190px]">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Next Billing</p>
+            <p className="text-2xl font-black mt-1 flex items-center justify-center gap-2">
+              <CalendarDays className="w-5 h-5 text-amber-400" /> {current.price === 0 ? 'Never' : nextBilling}
+            </p>
+            {current.price > 0 && (
+              <p className="text-[10px] text-slate-400 mt-1">GHS {current.price}{current.period} · auto-renew</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-6">
+        {RIDER_PLANS.map(plan => {
+          const isCurrent = plan.id === currentPlan;
+          const Icon = plan.icon;
+          return (
+            <div
+              key={plan.id}
+              className={cn(
+                'rounded-[2rem] p-8 flex flex-col relative border shadow-sm transition-all',
+                plan.popular ? 'bg-white dark:bg-slate-900 border-amber-300 dark:border-amber-700 shadow-amber-500/20 ring-2 ring-amber-500/20' : 'bg-white dark:bg-slate-900 border-gray-100 dark:border-slate-800',
+                !isCurrent && 'hover:shadow-xl'
+              )}
+            >
+              {plan.popular && (
+                <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-500 to-orange-600 text-white text-[9px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full shadow-lg">
+                  Most Popular
+                </span>
+              )}
+              {isCurrent && (
+                <span className="absolute top-3 right-3 flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 dark:bg-emerald-900/40 px-3 py-1 rounded-full">
+                  <BadgeCheck className="w-3.5 h-3.5" /> Current
+                </span>
+              )}
+
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/40 dark:to-orange-900/40 flex items-center justify-center text-amber-600 dark:text-amber-300 mb-5">
+                <Icon className="w-7 h-7" />
+              </div>
+
+              <h3 className="text-lg font-black text-gray-900 dark:text-white">{plan.id}</h3>
+              <div className="mt-2 flex items-end gap-1">
+                <span className="text-4xl font-black text-gray-900 dark:text-white">GHS {plan.price}</span>
+                <span className="text-xs font-bold text-gray-400 mb-1.5">{plan.period}</span>
+              </div>
+              <p className="text-xs text-gray-500 font-medium mt-2 leading-relaxed">{plan.tagline}</p>
+
+              <ul className="mt-6 space-y-3 flex-1">
+                {plan.perks.map(perk => (
+                  <li key={perk} className="flex items-start gap-2.5 text-xs text-gray-600 dark:text-gray-300 font-medium">
+                    <Check className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                    <span>{perk}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <Button
+                className={cn(
+                  'w-full h-12 rounded-2xl mt-8 font-black text-xs shadow-lg',
+                  isCurrent
+                    ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-gray-400 cursor-default'
+                    : 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white shadow-amber-500/20'
+                )}
+                disabled={isCurrent}
+                onClick={() => handleSelect(plan.id)}
+              >
+                {isCurrent ? 'Current Plan' : plan.cta}
+              </Button>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 border border-gray-100 dark:border-slate-800 shadow-sm space-y-5">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-2xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center text-amber-500"><Zap className="w-5 h-5" /></div>
+          <div>
+            <h3 className="text-base font-black text-gray-900 dark:text-white">Why subscribe?</h3>
+            <p className="text-xs text-gray-500 font-medium">Paid plans remove per-delivery platform fees and unlock earning tools.</p>
+          </div>
+        </div>
+        <div className="grid sm:grid-cols-3 gap-4">
+          {[
+            { title: '0% Platform Fees', desc: 'Keep 100% of every delivery once on a paid plan.', icon: DollarSign },
+            { title: 'Priority Jobs', desc: 'Paid riders get first claim on nearby orders during peak.', icon: Bike },
+            { title: 'Faster Payouts', desc: 'Withdraw earnings faster and reach out instantly.', icon: ArrowDownToLine },
+          ].map(f => (
+            <div key={f.title} className="p-5 rounded-2xl bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-800">
+              <f.icon className="w-5 h-5 text-amber-500 mb-3" />
+              <p className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-widest">{f.title}</p>
+              <p className="text-[11px] text-gray-500 font-medium mt-1 leading-relaxed">{f.desc}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-[10px] text-gray-400 font-medium">Demo checkout: selecting a plan is instant on this demo build. Real billing would route through our Takoradi finance team.</p>
+      </div>
     </div>
   );
 }

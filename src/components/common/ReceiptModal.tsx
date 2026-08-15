@@ -1,4 +1,5 @@
 import { Printer, X, CheckCircle2 } from 'lucide-react';
+import { useApp } from '@/src/context/AppContext';
 
 interface ReceiptItem {
   productName?: string;
@@ -46,8 +47,11 @@ interface ReceiptModalProps {
   showItems?: boolean;
 }
 
-export function ReceiptModal({ open, order, onClose, heading = 'Official Receipt', showItems = true }: ReceiptModalProps) {
+export function ReceiptModal({ open, order, onClose, heading, showItems = true }: ReceiptModalProps) {
+  const { t } = useApp();
   if (!open || !order) return null;
+
+  const displayHeading = heading || t('receipt.official');
 
   const items = Array.isArray(order.items) ? order.items : [];
   const subtotal = items.reduce((s, i) => s + (Number(i.price || i.unitPrice) || 0) * (Number(i.quantity) || 1), 0);
@@ -69,33 +73,33 @@ export function ReceiptModal({ open, order, onClose, heading = 'Official Receipt
           </div>
 
           <div className="py-4 space-y-1.5 text-[11px] border-b border-dashed border-gray-300">
-            <p className="font-black uppercase tracking-wider text-gray-800">{heading}</p>
-            <div className="flex justify-between"><span className="text-gray-500">Receipt No</span><span className="font-bold">{order.invoiceNumber || order.id || '—'}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Order Ref</span><span className="font-bold">{order.orderNumber || order.id || '—'}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Date</span><span className="font-bold">{formatReceiptDate(order.createdAt)}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Payment</span><span className="font-bold">{order.paymentMethod || '—'}</span></div>
+            <p className="font-black uppercase tracking-wider text-gray-800">{displayHeading}</p>
+            <div className="flex justify-between"><span className="text-gray-500">{t('receipt.no')}</span><span className="font-bold">{order.invoiceNumber || order.id || '—'}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">{t('receipt.orderRef')}</span><span className="font-bold">{order.orderNumber || order.id || '—'}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">{t('receipt.date')}</span><span className="font-bold">{formatReceiptDate(order.createdAt)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">{t('receipt.payment')}</span><span className="font-bold">{order.paymentMethod || '—'}</span></div>
           </div>
 
           <div className="py-4 space-y-1.5 text-[11px] border-b border-dashed border-gray-300">
-            <p className="font-black uppercase tracking-wider text-gray-800">Restaurant</p>
+            <p className="font-black uppercase tracking-wider text-gray-800">{t('msg.restaurant')}</p>
             <p className="font-bold">{order.vendorName || '—'}</p>
-            <p className="font-black uppercase tracking-wider text-gray-800 pt-2">Billed To</p>
-            <p className="font-bold">{order.customerName || 'Customer'}</p>
+            <p className="font-black uppercase tracking-wider text-gray-800 pt-2">{t('receipt.billedTo')}</p>
+            <p className="font-bold">{order.customerName || t('auth.register.customer')}</p>
             {order.customerAddress && <p className="text-gray-600">{order.customerAddress}</p>}
             {order.customerPhone && <p className="text-gray-600">{order.customerPhone}</p>}
           </div>
 
           {showItems && (
             <div className="py-4 border-b border-dashed border-gray-300">
-              <p className="font-black uppercase tracking-wider text-[10px] mb-2">Items</p>
-              {items.length === 0 && <p className="text-[11px] text-gray-500">No line items.</p>}
+              <p className="font-black uppercase tracking-wider text-[10px] mb-2">{t('nav.products')}</p>
+              {items.length === 0 && <p className="text-[11px] text-gray-500">{t('common.noResults')}.</p>}
               <div className="space-y-1.5">
                 {items.map((i, idx) => {
                   const unit = Number(i.price || i.unitPrice) || 0;
                   const qty = Number(i.quantity) || 1;
                   return (
                     <div key={idx} className="flex justify-between gap-2 text-[11px]">
-                      <span className="flex-1">{qty} x {i.productName || 'Item'}</span>
+                      <span className="flex-1">{qty} x {i.productName || t('nav.products')}</span>
                       <span className="font-bold whitespace-nowrap">{formatMoney(unit * qty)}</span>
                     </div>
                   );
@@ -105,33 +109,33 @@ export function ReceiptModal({ open, order, onClose, heading = 'Official Receipt
           )}
 
           <div className="py-4 space-y-1.5 text-[11px]">
-            <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span>{formatMoney(subtotal)}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Delivery Fee</span><span>{formatMoney(deliveryFee)}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Tax (5%)</span><span>{formatMoney(tax)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">{t('cart.subtotal')}</span><span>{formatMoney(subtotal)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">{t('common.delivery')}</span><span>{formatMoney(deliveryFee)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">{t('cartDrawer.taxAndFee')} (5%)</span><span>{formatMoney(tax)}</span></div>
             {discount > 0 && (
-              <div className="flex justify-between"><span className="text-gray-500">Discount</span><span>- {formatMoney(discount)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">{t('cart.promo')}</span><span>- {formatMoney(discount)}</span></div>
             )}
             <div className="flex justify-between pt-2 border-t border-gray-300 text-sm font-black">
-              <span>GRAND TOTAL</span>
+              <span>{t('receipt.grandTotal')}</span>
               <span>{formatMoney(total)}</span>
             </div>
           </div>
 
           <div className="text-center pt-3 pb-1 border-t-2 border-dashed border-gray-300">
             <div className="inline-flex items-center gap-1.5 text-emerald-600 text-[10px] font-black uppercase tracking-widest">
-              <CheckCircle2 className="w-3.5 h-3.5" /> Thank you for your order
+              <CheckCircle2 className="w-3.5 h-3.5" /> {t('receipt.thankYou')}
             </div>
-            <p className="text-[9px] text-gray-400 mt-1">Powered by OmniMarket Delivery Platform</p>
+            <p className="text-[9px] text-gray-400 mt-1">{t('receipt.poweredBy')}</p>
           </div>
         </div>
 
         {/* Controls (hidden when printing) */}
         <div className="om-receipt-nobutton flex gap-3 p-5 bg-gray-50 dark:bg-slate-800/60">
           <button onClick={onClose} className="flex-1 h-12 rounded-xl border-2 border-gray-200 dark:border-slate-700 text-xs font-black uppercase tracking-widest text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-all flex items-center justify-center gap-2">
-            <X className="w-4 h-4" /> Close
+            <X className="w-4 h-4" /> {t('common.close')}
           </button>
           <button onClick={() => window.print()} className="flex-1 h-12 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all">
-            <Printer className="w-4 h-4" /> Print / Save PDF
+            <Printer className="w-4 h-4" /> {t('receipt.print')}
           </button>
         </div>
       </div>

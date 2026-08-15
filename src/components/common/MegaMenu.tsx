@@ -10,7 +10,7 @@ interface MegaMenuProps {
 
 export const MegaMenu: React.FC<MegaMenuProps> = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
-  const { setSearchCategory, vendors, categories } = useApp();
+  const { setSearchCategory, vendors, categories, t } = useApp();
 
   if (!isOpen) return null;
 
@@ -28,7 +28,7 @@ export const MegaMenu: React.FC<MegaMenuProps> = ({ isOpen, onClose }) => {
           {/* Column 1 & 2: Main Categories */}
           <div className="md:col-span-2 space-y-3">
             <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-              Food Categories
+              {t('mega.foodCategories')}
             </h3>
             <div className="grid grid-cols-2 gap-3">
               {categories.map((cat) => (
@@ -42,7 +42,7 @@ export const MegaMenu: React.FC<MegaMenuProps> = ({ isOpen, onClose }) => {
                     <h4 className="text-xs font-bold text-gray-900 dark:text-white group-hover:text-emerald-600 transition">
                       {cat.name}
                     </h4>
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400">{cat.count} Meals available</p>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">{cat.count} {t('mega.mealsAvailable')}</p>
                   </div>
                 </div>
               ))}
@@ -52,7 +52,7 @@ export const MegaMenu: React.FC<MegaMenuProps> = ({ isOpen, onClose }) => {
           {/* Column 3: Featured Vendors */}
           <div className="space-y-3">
             <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-              Top Rated Restaurants
+              {t('mega.topRestaurants')}
             </h3>
             <div className="space-y-2">
               {vendors.slice(0, 4).map((vendor) => (
@@ -85,13 +85,13 @@ export const MegaMenu: React.FC<MegaMenuProps> = ({ isOpen, onClose }) => {
           <div className="bg-gradient-to-br from-emerald-600 to-teal-800 text-white rounded-3xl p-6 flex flex-col justify-between shadow-xl relative overflow-hidden">
             <div className="relative z-10">
               <span className="bg-amber-400 text-slate-950 font-black text-[10px] px-2.5 py-1 rounded-full uppercase tracking-wide inline-block mb-3">
-                Exclusive Offer
+                {t('mega.exclusiveOffer')}
               </span>
               <h4 className="font-heading font-bold text-lg leading-tight mb-2">
-                Get 15% Off Your First Restaurant Delivery
+                {t('mega.offerTitle')}
               </h4>
               <p className="text-xs text-emerald-100 opacity-90 mb-4">
-                Order your favorite meals and get them delivered in minutes.
+                {t('mega.offerDesc')}
               </p>
             </div>
 
@@ -102,7 +102,7 @@ export const MegaMenu: React.FC<MegaMenuProps> = ({ isOpen, onClose }) => {
               }}
               className="relative z-10 bg-white text-emerald-800 hover:bg-emerald-50 text-xs font-bold py-2.5 px-4 rounded-xl flex items-center justify-center space-x-2 transition shadow"
             >
-              <span>Explore Deals</span>
+              <span>{t('mega.exploreDeals')}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>

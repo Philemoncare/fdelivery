@@ -1,0 +1,32 @@
+name: omnimarket_mobile
+description: Official OmniMarket Ghana mobile app. Connects directly to the OmniMarket Express backend - no mock backend, no fake data.
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Secure storage for access/refresh tokens (never shared_preferences).
+  flutter_secure_storage: ^9.2.0
+  # HTTP client used by the central ApiClient (no mock data anywhere).
+  http: ^1.2.0
+  # Currency/number formatting for GHS amounts.
+  intl: ^0.19.0
+  # Google Maps rendering (Android + iOS). Key is injected at build time via
+  # --dart-define / manifest placeholders - never committed.
+  google_maps_flutter: ^2.6.0
+  # Device GPS for customer addresses + rider live location.
+  geolocator: ^11.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

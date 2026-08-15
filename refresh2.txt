@@ -1,0 +1,26 @@
+﻿app.post('/api/auth/refresh', (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken) return res.status(400).json({ error: 'Missing refresh token' });
+
+  try {
+    const decoded = jwt.verify(refreshToken, JWT_SECRET, { algorithms: [JWT_ALGO] }) as any;
+    const user = db.users.find(u => u.id === decoded.sub);
+    if (!user) return res.status(401).json({ error: 'User not found' });
+    if (user.isSuspended) return res.status(401).json({ error: 'Account is suspended' });
+    // A revoked refresh token's session must not mint further access tokens.
+    if (decoded.sessionId) {
+      const session = (db.sessions || []).find((s: any) => s.id === decoded.sessionId && s.userId === user.id);
+      if (!session || session.revokedAt) return res.status(401).json({ error: 'Session revoked' });
+      session.lastActivityAt = new Date().toISOString();
+    }
+
+    const accessToken = jwt.sign({ sub: user.id, role: user.role, vendorId: (user as any).vendorId, riderId: (user as any).riderId, sessionId: decoded.sessionId || null }, JWT_SECRET, { expiresIn: '1h' });
+    res.json({ accessToken, refreshToken, expiresIn: 3600, tokenType: 'Bearer' });
+  } catch (e) {
+    res.status(401).json({ error: 'Invalid refresh token' });
+  }
+});
+
+app.post('/api/auth/request-password-reset', (req, res) => {
+  const { email } = req.body;
+  const user = db.users.find(u =

@@ -1,0 +1,33 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+build/
+pubspec.lock
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets - never commit local env overrides
+*.env
+.env.*
+!.env.example
+
+# Backend runtime data must stay in the backend repo, never inside the app bundle.
+omnimarket-db.json
+
+# Google Maps keys - NEVER commit. Keys are injected per build via
+# --dart-define, local.properties (Android manifest placeholder) or xcconfig.
+android/local.properties
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+**/GoogleService-Info.plist
+*.jks
+*.keystore
+key.properties
+ios/Flutter/*.xcconfig.local

@@ -1,0 +1,4 @@
+﻿hashedPass=0
+verifyPassword=8
+scryptSync=2
+tsc_errors=0
