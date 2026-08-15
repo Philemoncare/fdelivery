@@ -1,12 +1,16 @@
-import { Fragment, useMemo, useState, useEffect, useCallback } from 'react';
+import { Fragment, useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+
 import {
   Users, Store, Bike, CheckCircle, XCircle, Shield,
   Activity, Database, ScrollText, Lock, KeyRound, HardDrive,
   UserCog, Archive, Bell, CreditCard, FileText, Globe, AlertTriangle,
   Search, RefreshCw, Cpu, Save, ShieldAlert, Monitor, Trash2, Copy, Ban, ShieldCheck,
   MoreHorizontal, ChevronLeft, ChevronRight, Mail, Eye, X, Filter, Loader2, Inbox, Download,
-  Server, ServerCog, Gauge, Timer, Clock, History, Power, LockKeyhole
+  Server, ServerCog, Gauge, Timer, History, Power, Clock, Layers, KeySquare, ShieldOff, ChevronDown, ArrowUpRight,
+  Wallet, Banknote, Smartphone, Webhook, Send, Package, Zap, Wrench, ListChecks, Info, MessageSquare, CalendarClock,
+  CheckCircle2, ServerOff, Boxes
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Skeleton } from '@/src/components/ui/skeleton';
@@ -356,53 +360,321 @@ export function SuperAdminRiderApprovalsPage() {
  * ------------------------------------------------------------
  */
 export function SuperAdminPaymentGatewaysPage() {
-  const { orders, formatPrice } = useApp();
+  const { showToast } = useApp();
+  const { user } = useAuth();
+  const isSuper = !!user && isSuperAdminRole(user.role as Role);
 
-  const byMethod = useMemo(() => {
-    const counts: Record<string, { count: number; value: number }> = {};
-    orders.forEach(o => {
-      if (!counts[o.paymentMethod]) counts[o.paymentMethod] = { count: 0, value: 0 };
-      counts[o.paymentMethod].count += 1;
-      counts[o.paymentMethod].value += o.totalAmount;
-    });
-    return Object.entries(counts).sort((a, b) => b[1].value - a[1].value);
-  }, [orders]);
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<number>(0);
+  const [now, setNow] = useState<number>(Date.now());
 
-  const paid = orders.filter(o => o.isPaid || o.paymentStatus === 'paid').length;
-  const pending = orders.filter(o => o.paymentStatus === 'pending').length;
-  const failed = orders.filter(o => o.paymentStatus === 'failed').length;
+  const [search, setSearch] = useState('');
+  const [provider, setProvider] = useState('all');
+  const [status, setStatus] = useState('all');
+
+  const [selected, setSelected] = useState<any>(null);
+  const [toggleTarget, setToggleTarget] = useState<any>(null);
+  const [togglePassword, setTogglePassword] = useState('');
+  const [toggleBusy, setToggleBusy] = useState(false);
+  const [toggleError, setToggleError] = useState<string | null>(null);
+
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) { setLoading(true); setError(null); }
+    try {
+      const d = await AdminService.getPaymentOverview();
+      setData(d);
+      setUpdatedAt(Date.now());
+      setError(null);
+    } catch (e: any) {
+      setError(e?.message || 'Could not load payment operations');
+    } finally {
+      if (!quiet) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); const id = setInterval(() => load(true), 20000); return () => clearInterval(id); }, [load]);
+  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
+
+  const summary = data?.summary || {};
+  const providers = Array.isArray(data?.providers) ? data.providers : [];
+  const transactions = Array.isArray(data?.transactions) ? data.transactions : [];
+  const failures = Array.isArray(data?.failures) ? data.failures : [];
+  const webhooks = data?.webhooks || {};
+  const lastUpdatedSec = updatedAt ? Math.max(0, Math.floor((now - updatedAt) / 1000)) : 0;
+
+  const providerOptions = useMemo(() => Array.from(new Set(providers.map((p: any) => p.shortName || p.name).filter(Boolean))), [providers]);
+
+  const filteredTx = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return transactions.filter((t: any) => {
+      if (q && ![t.id, t.orderNumber, t.method, t.customer].some((v: any) => String(v || '').toLowerCase().includes(q))) return false;
+      if (provider !== 'all' && !String(t.method).toLowerCase().includes(String(provider).toLowerCase()) && String(t.provider).toLowerCase() !== String(provider).toLowerCase()) return false;
+      if (status !== 'all' && String(t.status || '').toLowerCase() !== status.toLowerCase()) return false;
+      return true;
+    }).sort((a: any, b: any) => new Date(b.createdAt)?.getTime() - new Date(a.createdAt)?.getTime());
+  }, [transactions, search, provider, status]);
+
+  const runToggle = async (enabled: boolean) => {
+    if (!toggleTarget) return;
+    if (!isSuper) { setToggleError('Super admin access required for this action.'); return; }
+    setToggleBusy(true); setToggleError(null);
+    try {
+      const res: any = await AdminService.updatePaymentGateway(toggleTarget.id, { enabled }, togglePassword);
+      if (res && !res?.requiresPassword) {
+        showToast(enabled ? 'Payment method enabled' : 'Payment method disabled', `${toggleTarget.name} ${enabled ? 'enabled' : 'disabled'}.`, 'success');
+        setToggleTarget(null); setTogglePassword(''); setToggleError(null);
+        load(true);
+      } else {
+        setToggleError(res?.message || 'Operation not approved. Check your password or permission.');
+      }
+    } catch (e: any) {
+      setToggleError(e?.message || 'Could not update payment method.');
+    } finally {
+      setToggleBusy(false);
+    }
+  };
+
+  const summaryCards = [
+    { label: 'Total Transactions', value: fmtNum(summary.totalTransactions), icon: Banknote, color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' },
+    { label: 'Successful', value: fmtNum(summary.successful), icon: CheckCircle, color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' },
+    { label: 'Pending', value: fmtNum(summary.pending), icon: Clock, color: 'text-amber-500 bg-amber-50 dark:bg-amber-900/20' },
+    { label: 'Failed', value: fmtNum(summary.failed), icon: XCircle, color: 'text-rose-500 bg-rose-50 dark:bg-rose-900/20' },
+    { label: 'Refunded', value: fmtNum(summary.refunded), icon: History, color: 'text-violet-500 bg-violet-50 dark:bg-violet-900/20' },
+    { label: 'Total Volume', value: fmtCurrency(summary.totalVolume), icon: Wallet, color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' },
+    { label: "Today's Volume", value: fmtCurrency(summary.todayVolume), icon: Zap, color: 'text-sky-500 bg-sky-50 dark:bg-sky-900/20' },
+    { label: 'Failure Rate', value: pct(summary.failureRate), icon: AlertTriangle, color: 'text-rose-500 bg-rose-50 dark:bg-rose-900/20' },
+  ];
+
+  const sel = selected;
+  const selDisabled = sel && sel.kind === 'provider' ? !!(sel.provider.enabled === false || sel.provider.status === 'disabled') : false;
+
+  if (loading || !data) {
+    return (
+      <div className="space-y-6 pb-10">
+        <PageHeader icon={CreditCard} title="Payments & Gateways" description="Manage payment providers, payment availability, transaction health, failures, configuration, and payment security." count="loading telemetry" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{Array.from({ length: 8 }).map((_, i) => <Fragment key={i}><Skeleton className="h-20 rounded-2xl" /></Fragment>)}</div>
+        <Skeleton className="h-48 rounded-2xl" />
+        {error && (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 dark:bg-rose-900/10 p-4 text-sm text-rose-700 dark:text-rose-300 flex items-center justify-between gap-3 flex-wrap">
+            <span>Payment telemetry unavailable — {error}</span>
+            <Button size="sm" onClick={() => load()}><RefreshCw className="w-4 h-4 mr-1" /> Retry</Button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (error && !data) {
+    return (
+      <div className="space-y-6 pb-10">
+        <PageHeader icon={CreditCard} title="Payments & Gateways" description="Manage payment providers, availability, and transaction health." />
+        <Card className="rounded-2xl border-rose-200 dark:border-rose-900/40">
+          <CardContent className="py-10 flex flex-col items-center text-center gap-3">
+            <ServerOff className="w-10 h-10 text-rose-500" />
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">Payment operations unavailable</h3>
+            <p className="text-sm text-gray-500 dark:text-slate-400 max-w-md">Could not reach the payments service. Reason: {error}</p>
+            <Button onClick={() => load()}><RefreshCw className="w-4 h-4 mr-1" /> Retry</Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-10">
-      <PageHeader icon={CreditCard} title="Payment Gateways" description="Real payment methods used across platform orders, volumes, and statuses." count={`${orders.length} transactions`} />
-      <div className="grid grid-cols-3 gap-4">
-        <Card><CardContent className="p-4"><p className="text-sm text-gray-500">Paid</p><p className="text-2xl font-bold text-emerald-600">{paid}</p></CardContent></Card>
-        <Card><CardContent className="p-4"><p className="text-sm text-gray-500">Pending</p><p className="text-2xl font-bold text-amber-600">{pending}</p></CardContent></Card>
-        <Card><CardContent className="p-4"><p className="text-sm text-gray-500">Failed</p><p className="text-2xl font-bold text-rose-600">{failed}</p></CardContent></Card>
+      <PageHeader icon={CreditCard} title="Payments & Gateways" description="Manage payment providers, payment availability, transaction health, failures, configuration, and payment security." count={`${fmtNum(summary.totalTransactions)} transactions`} />
+
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2 text-[11px] text-gray-500 dark:text-slate-400"><Clock className="w-3.5 h-3.5" /> Last updated: {lastUpdatedSec} seconds ago · {data?.environment === 'production' ? 'Production' : 'Development'} environment</div>
+        <Button size="sm" variant="outline" onClick={() => load()}><RefreshCw className="w-4 h-4 mr-1" /> Refresh</Button>
       </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {summaryCards.map(c => (
+          <div key={c.label} className="p-4 rounded-2xl bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-700/60">
+            <div className="flex items-center gap-2 mb-2"><span className={`w-7 h-7 rounded-lg flex items-center justify-center ${c.color}`}><c.icon className="w-4 h-4" /></span><p className="text-[11px] text-gray-500 dark:text-slate-400 leading-tight">{c.label}</p></div>
+            <p className="text-xl font-bold text-gray-900 dark:text-white">{c.value}</p>
+          </div>
+        ))}
+      </div>
+
       <Card className="rounded-2xl">
-        <CardHeader><CardTitle className="text-base flex items-center gap-2"><CreditCard className="w-5 h-5 text-blue-500" /> Payment Methods (Real order data)</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Webhook className="w-5 h-5 text-rose-500" /> Webhook Monitoring</CardTitle></CardHeader>
         <CardContent>
-          {byMethod.length === 0 ? (
-            <p className="text-center text-gray-400 py-8 italic">No payment transactions recorded yet.</p>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            <div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-700/60"><p className="text-[11px] text-gray-500 dark:text-slate-400">Last webhook</p><p className="text-sm font-semibold text-gray-900 dark:text-white mt-0.5">{webhooks.lastWebhook || '—'}</p></div>
+            <div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-700/60"><p className="text-[11px] text-gray-500 dark:text-slate-400">Last webhook at</p><p className="text-sm font-semibold text-gray-900 dark:text-white mt-0.5">{webhooks.lastWebhookAt ? new Date(webhooks.lastWebhookAt).toLocaleString() : '—'}</p></div>
+            <div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-700/60"><p className="text-[11px] text-gray-500 dark:text-slate-400">Webhooks processed</p><p className="text-sm font-semibold text-gray-900 dark:text-white mt-0.5">{fmtNum(webhooks.totalProcessed)}</p></div>
+            <div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-700/60"><p className="text-[11px] text-gray-500 dark:text-slate-400">Webhook failures</p><p className="text-sm font-semibold text-rose-600 dark:text-rose-400 mt-0.5">{fmtNum(webhooks.failures)}</p></div>
+            <div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-700/60"><p className="text-[11px] text-gray-500 dark:text-slate-400">Signature failures</p><p className="text-sm font-semibold text-rose-600 dark:text-rose-400 mt-0.5">{fmtNum(webhooks.signatureFailures)}</p></div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-2xl">
+        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Banknote className="w-5 h-5 text-rose-500" /> Payment Providers</CardTitle></CardHeader>
+        <CardContent>
+          {providers.length === 0 ? (
+            <EmptyState icon={<Banknote className="w-8 h-8 text-gray-300 dark:text-slate-600" />} title="No providers configured" description="No payment providers are configured yet." />
           ) : (
-            <div className="space-y-3">
-              {byMethod.map(([method, d]) => (
-                <div key={method} className="flex items-center gap-4 p-3 rounded-xl bg-gray-50 dark:bg-slate-800/50">
-                  <div className="flex-1">
-                    <p className="text-sm font-bold text-gray-900 dark:text-white">{method}</p>
-                    <p className="text-xs text-gray-500">{d.count} orders</p>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {providers.map((p: any) => (
+                <button key={p.id} onClick={() => setSelected({ kind: 'provider', provider: p })} className="text-left p-4 rounded-xl bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-700/60 hover:border-rose-200 dark:hover:border-rose-900/40 transition-colors flex flex-col gap-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0"><Wallet className="w-4 h-4 text-rose-500 shrink-0" /><p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{p.shortName || p.name}</p></div>
+                    <StateBadge state={p.status} />
                   </div>
-                  <div className="h-2 w-40 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-500 rounded-full" style={{ width: `${d.count ? Math.round((d.count / orders.length) * 100) : 0}%` }} />
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-500 dark:text-slate-400">
+                    <span className="font-mono text-gray-800 dark:text-slate-200">{fmtNum(p.transactions)}</span> tx
+                    <span>{p.successRate != null ? `${p.successRate}%` : '—'} success</span>
+                    <span>env {p.environment}</span>
+                    {p.lastTransaction && <span>last {timeAgo(p.lastTransaction, now)}</span>}
                   </div>
-                  <span className="font-bold text-gray-900 dark:text-white">{formatPrice(d.value)}</span>
-                </div>
+                </button>
               ))}
             </div>
           )}
         </CardContent>
       </Card>
+
+      {failures.length > 0 && (
+        <Card className="rounded-2xl">
+          <CardHeader><CardTitle className="text-base flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-rose-500" /> Payment Failures</CardTitle></CardHeader>
+          <CardContent>
+            <div className="space-y-1.5">
+              {failures.map((f: any) => (
+                <div key={f.id} className="p-2.5 rounded-lg bg-gray-50 dark:bg-slate-800/50 text-[11px] flex items-center justify-between gap-3 flex-wrap">
+                  <div className="min-w-0"><p className="font-semibold text-gray-800 dark:text-slate-200">{f.provider}</p><p className="text-gray-500 dark:text-slate-400">{f.customer} · {f.orderId}</p></div>
+                  <span className="font-mono text-gray-800 dark:text-slate-200">{fmtCurrency(f.amount)}</span>
+                  <span className="text-gray-500 dark:text-slate-400">{f.reason || 'Reason unavailable'}</span>
+                  <span className="text-gray-400">{timeAgo(f.timestamp, now)}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card className="rounded-2xl">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2"><Banknote className="w-5 h-5 text-rose-500" /> Transactions</CardTitle>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+            <div className="relative"><Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" /><Input className="pl-9" placeholder="Search ID, order, customer, method…" value={search} onChange={e => setSearch(e.target.value)} /></div>
+            <Select value={provider} onValueChange={v => setProvider(v)}>
+              <SelectTrigger><SelectValue placeholder="Provider" /></SelectTrigger>
+              <SelectContent><SelectItem value="all">All providers</SelectItem>{providerOptions.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
+            </Select>
+            <Select value={status} onValueChange={v => setStatus(v)}>
+              <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
+              <SelectContent>{['paid', 'pending', 'failed', 'refunded', 'cancelled'].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+            </Select>
+            <Button size="sm" variant="ghost" onClick={() => { setSearch(''); setProvider('all'); setStatus('all'); }}>Clear filters</Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {filteredTx.length === 0 ? (
+            <EmptyState icon={<Banknote className="w-8 h-8 text-gray-300 dark:text-slate-600" />} title="No transactions" description="No transactions match the current filters." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-[11px]">
+                <thead><tr className="border-b border-gray-100 dark:border-slate-800 text-gray-400">{['Transaction', 'Order', 'Customer', 'Method', 'Amount', 'Status', 'Created'].map(h => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}</tr></thead>
+                <tbody>
+                  {filteredTx.map((t: any) => (
+                    <tr key={t.id} onClick={() => setSelected({ kind: 'tx', tx: t })} className="border-b border-gray-50 dark:border-slate-800/60 hover:bg-gray-50 dark:hover:bg-slate-800/40 cursor-pointer transition-colors">
+                      <td className="px-3 py-2 font-mono text-gray-700 dark:text-slate-300">{String(t.id).slice(0, 12)}</td>
+                      <td className="px-3 py-2 text-gray-700 dark:text-slate-300">{t.orderNumber}</td>
+                      <td className="px-3 py-2 text-gray-700 dark:text-slate-300">{t.customer}</td>
+                      <td className="px-3 py-2 text-gray-700 dark:text-slate-300">{t.method}</td>
+                      <td className="px-3 py-2 font-mono text-gray-800 dark:text-slate-200">{fmtCurrency(t.amount)}</td>
+                      <td className="px-3 py-2"><StateBadge state={t.status} /></td>
+                      <td className="px-3 py-2 text-gray-500 dark:text-slate-400">{new Date(t.createdAt).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <AnimatePresence>
+        {sel && (
+          <>
+            <motion.div className="fixed inset-0 bg-black/40 z-40 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelected(null)} />
+            <motion.aside className="fixed top-0 right-0 h-full w-full max-w-md bg-white dark:bg-slate-900 z-50 shadow-2xl flex flex-col overflow-hidden" initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'tween', duration: 0.25 }}>
+              <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-slate-800">
+                <div className="flex items-center gap-2 min-w-0"><Wallet className="w-4 h-4 text-rose-500 shrink-0" /><span className="text-sm font-mono text-gray-800 dark:text-slate-200 truncate">{sel.kind === 'provider' ? sel.provider.name : sel.tx.id}</span></div>
+                <Button size="sm" variant="ghost" onClick={() => setSelected(null)}><X className="w-4 h-4" /></Button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-5">
+                {sel.kind === 'provider' ? (
+                  <>
+                    <div className="flex items-center gap-2"><StateBadge state={sel.provider.status} /><Badge variant="outline">{sel.provider.type}</Badge><span className="text-[11px] text-gray-400">env {sel.provider.environment}</span></div>
+                    <section>
+                      <h4 className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Provider</h4>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                        <div><p className="text-gray-400">Name</p><p className="text-gray-800 dark:text-slate-200 font-medium">{sel.provider.name}</p></div>
+                        <div><p className="text-gray-400">Short</p><p className="text-gray-800 dark:text-slate-200 font-medium">{sel.provider.shortName}</p></div>
+                        <div><p className="text-gray-400">Configuration</p><p className="text-gray-800 dark:text-slate-200 font-medium">{sel.provider.configured ? 'Configured' : 'Not Configured'}</p></div>
+                        <div><p className="text-gray-400">Transactions</p><p className="text-gray-800 dark:text-slate-200 font-medium">{fmtNum(sel.provider.transactions)}</p></div>
+                      </div>
+                    </section>
+                    <section>
+                      <h4 className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2 flex items-center gap-1.5"><Gauge className="w-3.5 h-3.5" /> Performance</h4>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                        <div><p className="text-gray-400">Success rate</p><p className="text-gray-800 dark:text-slate-200 font-medium">{sel.provider.successRate != null ? `${sel.provider.successRate}%` : '—'}</p></div>
+                        <div><p className="text-gray-400">Failure rate</p><p className="text-gray-800 dark:text-slate-200 font-medium">{sel.provider.failureRate != null ? `${sel.provider.failureRate}%` : '—'}</p></div>
+                        <div><p className="text-gray-400">Last transaction</p><p className="text-gray-800 dark:text-slate-200 font-medium">{sel.provider.lastTransaction ? timeAgo(sel.provider.lastTransaction, now) : '—'}</p></div>
+                      </div>
+                    </section>
+                    <section>
+                      <h4 className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2 flex items-center gap-1.5"><KeyRound className="w-3.5 h-3.5" /> API Credentials</h4>
+                      <div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-800/50 text-xs"><p className="text-gray-800 dark:text-slate-200 font-medium">{sel.provider.configured ? 'Configured ✓' : 'Not Configured'}</p><p className="text-[11px] text-gray-400 mt-1">Credentials are stored securely and are never exposed.</p></div>
+                    </section>
+                    <section className="border-t border-gray-100 dark:border-slate-800 pt-4">
+                      <h4 className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2 flex items-center gap-1.5"><Power className="w-3.5 h-3.5" /> Availability</h4>
+                      {!isSuper ? (
+                        <p className="text-[11px] text-gray-500 dark:text-slate-400">Super admin access required to enable or disable this payment method.</p>
+                      ) : toggleTarget ? (
+                        <div className="space-y-2">
+                          <Input type="password" placeholder="Enter your password to confirm" value={togglePassword} onChange={e => setTogglePassword(e.target.value)} />
+                          {toggleError && <p className="text-[11px] text-rose-600 dark:text-rose-400">{toggleError}</p>}
+                          <div className="flex gap-2">
+                            <Button size="sm" disabled={toggleBusy} onClick={() => runToggle(selDisabled)}><Power className="w-3.5 h-3.5 mr-1" /> {toggleBusy ? 'Working…' : selDisabled ? 'Enable method' : 'Disable method'}</Button>
+                            <Button size="sm" variant="ghost" onClick={() => { setToggleTarget(null); setTogglePassword(''); setToggleError(null); }}>Cancel</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <Button size="sm" variant={selDisabled ? 'success' : 'danger'} onClick={() => setToggleTarget(sel.provider)} disabled={!sel.provider.configured}>
+                          <Power className="w-3.5 h-3.5 mr-1" /> {selDisabled ? 'Enable method' : 'Disable method'}
+                        </Button>
+                      )}
+                      {!sel.provider.configured && <p className="text-[11px] text-gray-400 mt-2">Cannot be enabled until required configuration is provided.</p>}
+                    </section>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2"><StateBadge state={sel.tx.status} /><Badge variant="outline">{sel.tx.method}</Badge></div>
+                    <section>
+                      <h4 className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Transaction</h4>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                        <div><p className="text-gray-400">ID</p><p className="text-gray-800 dark:text-slate-200 font-mono font-medium">{sel.tx.id}</p></div>
+                        <div><p className="text-gray-400">Order</p><p className="text-gray-800 dark:text-slate-200 font-mono font-medium">{sel.tx.orderNumber}</p></div>
+                        <div><p className="text-gray-400">Customer</p><p className="text-gray-800 dark:text-slate-200 font-medium">{sel.tx.customer}</p></div>
+                        <div><p className="text-gray-400">Amount</p><p className="text-gray-800 dark:text-slate-200 font-mono font-medium">{fmtCurrency(sel.tx.amount)}</p></div>
+                        <div><p className="text-gray-400">Provider</p><p className="text-gray-800 dark:text-slate-200 font-medium">{sel.tx.provider}</p></div>
+                        <div><p className="text-gray-400">Created</p><p className="text-gray-800 dark:text-slate-200 font-medium">{new Date(sel.tx.createdAt).toLocaleString()}</p></div>
+                      </div>
+                    </section>
+                  </>
+                )}
+              </div>
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -775,63 +1047,257 @@ export function SuperAdminSecurityPage() {
  * ------------------------------------------------------------
  */
 export function SuperAdminSystemPage() {
-  const { vendors, riders, orders, products, isLoading } = useApp();
-  const [health, setHealth] = useState<any>(null);
-  useEffect(() => {
-    AdminService.getSystemHealth().then(setHealth).catch(() => setHealth(null));
+  const { showToast } = useApp();
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<number>(0);
+  const [now, setNow] = useState<number>(Date.now());
+  const [checking, setChecking] = useState(false);
+
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) { setLoading(true); setError(null); }
+    try {
+      const d = await AdminService.getSystemOverview();
+      setData(d);
+      setUpdatedAt(Date.now());
+      setError(null);
+    } catch (e: any) {
+      setError(e?.message || 'Could not load system health');
+    } finally {
+      if (!quiet) setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { load(); const id = setInterval(() => load(true), 15000); return () => clearInterval(id); }, [load]);
+  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
+
+  const runCheck = async () => {
+    setChecking(true);
+    try {
+      await AdminService.runSystemHealthCheck();
+      setError(null);
+      await load(true);
+      showToast('Health check complete', 'All monitored services re-verified from the backend.', 'success');
+    } catch (e: any) {
+      setError(e?.message || 'Health check failed');
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const overall = data?.overall || {};
+  const resources = data?.resources || {};
+  const marketplace = data?.marketplace || {};
+  const incidents = Array.isArray(data?.incidents) ? data.incidents : [];
+  const services = Array.isArray(data?.services) ? data.services : [];
+  const lastUpdatedSec = updatedAt ? Math.max(0, Math.floor((now - updatedAt) / 1000)) : 0;
+  const overallStatus = String(overall.status || 'unknown');
+  const overallBadge = overallStatus === 'operational' ? 'success' : overallStatus === 'down' ? 'danger' : 'warning';
+  const overallDot = overallStatus === 'operational' ? 'bg-emerald-500' : overallStatus === 'down' ? 'bg-rose-500' : 'bg-amber-500';
+
+  const marketplaceCards = [
+    { label: 'Restaurants', value: marketplace.restaurants, icon: Store, to: '/super-admin/restaurant-approvals' },
+    { label: 'Riders', value: marketplace.riders, icon: Bike, to: '/super-admin/rider-approvals' },
+    { label: 'Customers', value: marketplace.customers, icon: Users, to: '/super-admin/users' },
+    { label: 'Orders', value: marketplace.orders, icon: Activity, to: null },
+    { label: 'Active Deliveries', value: marketplace.activeDeliveries, icon: Package, to: null },
+    { label: 'Pending Approvals', value: marketplace.pendingApprovals, icon: ListChecks, to: '/super-admin/restaurant-approvals' },
+    { label: 'Failed Payments', value: marketplace.failedPayments, icon: Banknote, to: '/super-admin/payment-gateways' },
+  ];
+
+  const summaryCards = [
+    { label: 'Services Healthy', value: `${fmtNum(overall.healthy)}/${fmtNum(overall.total)}`, icon: CheckCircle, color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' },
+    { label: 'Degraded', value: fmtNum(overall.degraded), icon: Activity, color: 'text-amber-500 bg-amber-50 dark:bg-amber-900/20' },
+    { label: 'Down', value: fmtNum(overall.down), icon: XCircle, color: 'text-rose-500 bg-rose-50 dark:bg-rose-900/20' },
+    { label: 'Active Incidents', value: fmtNum(incidents.length), icon: AlertTriangle, color: 'text-rose-500 bg-rose-50 dark:bg-rose-900/20' },
+    { label: 'Requests/min', value: fmtNum(resources.requestRatePerMin), icon: Gauge, color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' },
+    { label: 'Error Rate', value: pct(resources.errorRate), icon: AlertTriangle, color: 'text-amber-500 bg-amber-50 dark:bg-amber-900/20' },
+    { label: 'Active Sessions', value: fmtNum(resources.activeSessions), icon: Monitor, color: 'text-violet-500 bg-violet-50 dark:bg-violet-900/20' },
+    { label: 'Realtime', value: fmtNum(resources.realtimeConnections), icon: Server, color: 'text-sky-500 bg-sky-50 dark:bg-sky-900/20' },
+  ];
+
+  if (loading || !data) {
+    return (
+      <div className="space-y-6 pb-10">
+        <PageHeader icon={ServerCog} title="System Health" description="Monitor the live health of OmniMarket services, infrastructure, realtime connections, database, authentication, payments, and marketplace operations." count="checking telemetry" />
+        <div className="p-4 rounded-2xl border border-gray-100 dark:border-slate-700/60 bg-gray-50 dark:bg-slate-800/40">
+          <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-slate-300"><RefreshCw className="w-4 h-4 animate-spin text-rose-500" /> Checking services…</div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{Array.from({ length: 8 }).map((_, i) => <Fragment key={i}><Skeleton className="h-20 rounded-2xl" /></Fragment>)}</div>
+        <Skeleton className="h-48 rounded-2xl" />
+        {error && (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 dark:bg-rose-900/10 p-4 text-sm text-rose-700 dark:text-rose-300 flex items-center justify-between gap-3 flex-wrap">
+            <span>Health telemetry unavailable — {error}</span>
+            <Button size="sm" onClick={() => load()}><RefreshCw className="w-4 h-4 mr-1" /> Retry</Button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (error && !data) {
+    return (
+      <div className="space-y-6 pb-10">
+        <PageHeader icon={ServerCog} title="System Health" description="Monitor the live health of OmniMarket services and infrastructure." />
+        <Card className="rounded-2xl border-rose-200 dark:border-rose-900/40">
+          <CardContent className="py-10 flex flex-col items-center text-center gap-3">
+            <ServerOff className="w-10 h-10 text-rose-500" />
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">System health unavailable</h3>
+            <p className="text-sm text-gray-500 dark:text-slate-400 max-w-md">Could not reach the health service. Reason: {error}</p>
+            <Button onClick={() => load()}><RefreshCw className="w-4 h-4 mr-1" /> Retry</Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 pb-10">
-      <PageHeader icon={Cpu} title="System" description="Live platform statistics and real service health checks." count={isLoading ? 'loading…' : 'live'} />
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: 'Restaurants', value: vendors.length, icon: Store, col: 'text-violet-500' },
-          { label: 'Riders', value: riders.length, icon: Bike, col: 'text-amber-500' },
-          { label: 'Orders', value: orders.length, icon: Activity, col: 'text-blue-500' },
-          { label: 'Meals', value: products.length, icon: Database, col: 'text-emerald-500' },
-        ].map(s => (
-          <Card key={s.label}><CardContent className="p-5 flex items-center gap-4">
-            <s.icon className={`w-5 h-5 ${s.col}`} />
-            <div><p className="text-sm text-gray-500">{s.label}</p><p className="text-xl font-bold text-gray-900 dark:text-white">{s.value}</p></div>
-          </CardContent></Card>
+      <PageHeader icon={ServerCog} title="System Health" description="Monitor the live health of OmniMarket services, infrastructure, realtime connections, database, authentication, payments, and marketplace operations." count={`${fmtNum(overall.total)} services`} />
+
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2 text-[11px] text-gray-500 dark:text-slate-400"><Clock className="w-3.5 h-3.5" /> Last checked: {lastUpdatedSec} seconds ago · uptime {data && data.uptime != null ? `< ${Math.floor(data.uptime / 60)}m` : 'unavailable'}</div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => load()}><RefreshCw className="w-4 h-4 mr-1" /> Refresh Health</Button>
+          <Button size="sm" onClick={runCheck} disabled={checking}><RefreshCw className={`w-4 h-4 mr-1 ${checking ? 'animate-spin' : ''}`} /> {checking ? 'Checking…' : 'Run Health Check'}</Button>
+          <Link to="/super-admin/security-events" className="inline-flex items-center gap-1 text-xs text-rose-500 font-semibold"><History className="w-3.5 h-3.5" /> Incident History</Link>
+        </div>
+      </div>
+
+      <div className="p-4 rounded-2xl border border-gray-100 dark:border-slate-700/60 bg-gray-50 dark:bg-slate-800/40 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <span className={`w-3 h-3 rounded-full ${overallDot} animate-pulse`} />
+          <div>
+            <p className="text-[11px] text-gray-500 dark:text-slate-400 uppercase tracking-wide font-bold">System Status</p>
+            <p className="text-lg font-black text-gray-900 dark:text-white">{overall.label}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-4 text-[11px] text-gray-500 dark:text-slate-400">
+          <span><b className="text-gray-800 dark:text-slate-200">{fmtNum(overall.healthy)}/{fmtNum(overall.total)}</b> services healthy</span>
+          <span>{data?.environment === 'production' ? 'Production' : 'Development'} environment</span>
+        </div>
+        {data?.maintenance?.mode && <Badge variant="warning" dot>Maintenance active</Badge>}
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {summaryCards.map(c => (
+          <div key={c.label} className="p-4 rounded-2xl bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-700/60">
+            <div className="flex items-center gap-2 mb-2"><span className={`w-7 h-7 rounded-lg flex items-center justify-center ${c.color}`}><c.icon className="w-4 h-4" /></span><p className="text-[11px] text-gray-500 dark:text-slate-400 leading-tight">{c.label}</p></div>
+            <p className="text-xl font-bold text-gray-900 dark:text-white">{c.value}</p>
+          </div>
         ))}
       </div>
-      <Card>
-        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Globe className="w-5 h-5 text-blue-500" /> Service Health</CardTitle></CardHeader>
+
+      <Card className="rounded-2xl">
+        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Server className="w-5 h-5 text-rose-500" /> Service Health</CardTitle></CardHeader>
         <CardContent>
-          <div className="grid md:grid-cols-3 gap-3">
-            <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/20">
-              <p className="text-xs text-emerald-700 font-bold uppercase">Core API</p>
-              <p className="text-lg font-bold text-emerald-600 mt-1">{health?.api?.status === 'operational' ? 'Operational' : 'Checking…'}</p>
-            </div>
-            <div className="p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20">
-              <p className="text-xs text-blue-700 font-bold uppercase">Live Feed (SSE)</p>
-              <p className="text-lg font-bold text-blue-600 mt-1">{health?.realtime ? `${health.realtime.activeConnections ?? 0} connections` : 'Live'}</p>
-            </div>
-            <div className="p-4 rounded-xl bg-gray-50 dark:bg-slate-800/50">
-              <p className="text-xs text-gray-500 font-bold uppercase">Uptime</p>
-              <p className="text-lg font-bold text-gray-900 dark:text-white mt-1">{health?.uptime != null ? formatUptime(health.uptime) : '—'}</p>
-            </div>
-          </div>
-          {health && (
-            <div className="mt-4 grid md:grid-cols-3 gap-3">
-              <div className="p-4 rounded-xl bg-gray-50 dark:bg-slate-800/50">
-                <p className="text-xs text-gray-500 font-bold uppercase">Database</p>
-                <p className="text-lg font-bold text-gray-900 dark:text-white mt-1">{health.database?.status === 'operational' ? 'Operational' : 'Unknown'}</p>
-                <p className="text-[10px] text-gray-400 mt-0.5">{health.database?.records ?? 0} records {health.database?.persisted ? '· persisted' : ''}</p>
-              </div>
-              <div className="p-4 rounded-xl bg-gray-50 dark:bg-slate-800/50">
-                <p className="text-xs text-gray-500 font-bold uppercase">Memory</p>
-                <p className="text-lg font-bold text-gray-900 dark:text-white mt-1">{health.memory?.used ?? 0} MB</p>
-                <p className="text-[10px] text-gray-400 mt-0.5">heap used</p>
-              </div>
-              <div className="p-4 rounded-xl bg-gray-50 dark:bg-slate-800/50">
-                <p className="text-xs text-gray-500 font-bold uppercase">Auth</p>
-                <p className="text-lg font-bold text-gray-900 dark:text-white mt-1">{health.auth?.status === 'operational' ? 'OK' : '—'}</p>
-                <p className="text-[10px] text-gray-400 mt-0.5">{health.auth?.message || ''}</p>
-              </div>
+          {services.length === 0 ? (
+            <EmptyState icon={<Server className="w-8 h-8 text-gray-300 dark:text-slate-600" />} title="No services reported" description="The backend did not report any service health yet." />
+          ) : (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              {services.map((s: any) => (
+                <div key={s.name} className="p-4 rounded-xl bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-700/60 flex flex-col gap-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-gray-800 dark:text-slate-200 truncate">{s.name}</p>
+                    <StateBadge state={s.status} />
+                  </div>
+                  {s.message && <p className="text-[11px] text-gray-500 dark:text-slate-400 line-clamp-2">{s.message}</p>}
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-500 dark:text-slate-400">
+                    {s.responseTimeMs != null && <span className="flex items-center gap-1"><Timer className="w-3 h-3 text-gray-400" />{fmtNum(s.responseTimeMs)}ms</span>}
+                    {s.lastChecked && <span>checked {timeAgo(s.lastChecked, now)}</span>}
+                    {s.uptime != null && <span>uptime {fmtNum(s.uptime)}s</span>}
+                    <span className="flex items-center gap-1"><AlertTriangle className="w-3 h-3 text-gray-400" />{pct(s.errorRate)} err</span>
+                    {s.version && <span className="font-mono">v{s.version}</span>}
+                    {s.records != null && <span>{fmtNum(s.records)} records</span>}
+                    {s.activeConnections != null && <span>{fmtNum(s.activeConnections)} conns</span>}
+                    {s.active != null && <span>{fmtNum(s.active)} active</span>}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-2xl">
+        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Cpu className="w-5 h-5 text-rose-500" /> Resource Monitoring</CardTitle></CardHeader>
+        <CardContent>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+            {[
+              { label: 'Memory (heap)', value: `${fmtNum(resources.memory?.heapUsedMB)}/${fmtNum(resources.memory?.heapTotalMB)} MB`, icon: HardDrive },
+              { label: 'CPU', value: resources.cpu != null ? `${resources.cpu}%` : 'unavailable', icon: Cpu },
+              { label: 'DB Records', value: fmtNum(resources.dbRecords), icon: Database },
+              { label: 'Realtime Conns', value: fmtNum(resources.realtimeConnections), icon: Server },
+              { label: 'Request Rate', value: `${fmtNum(resources.requestRatePerMin)}/min`, icon: Gauge },
+              { label: 'Error Rate', value: pct(resources.errorRate), icon: AlertTriangle },
+              { label: 'Background Jobs', value: fmtNum(resources.backgroundJobs), icon: Boxes },
+              { label: 'Queue Length', value: fmtNum(resources.queueLength), icon: Layers },
+              { label: 'Active Sessions', value: fmtNum(resources.activeSessions), icon: Monitor },
+            ].map((r, i) => (
+              <div key={i} className="p-4 rounded-xl bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-700/60">
+                <r.icon className="w-4 h-4 text-gray-400 mb-2" />
+                <p className="text-[11px] text-gray-500 dark:text-slate-400">{r.label}</p>
+                <p className="text-base font-bold text-gray-900 dark:text-white mt-0.5">{r.value}</p>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-2xl">
+        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Store className="w-5 h-5 text-rose-500" /> Marketplace Health</CardTitle></CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {marketplaceCards.map((m, i) => {
+              const inner = (
+                <div className="p-4 rounded-xl bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-700/60 hover:border-rose-200 dark:hover:border-rose-900/40 transition-colors flex items-center gap-3">
+                  <m.icon className="w-5 h-5 text-rose-500 shrink-0" />
+                  <div className="min-w-0"><p className="text-lg font-bold text-gray-900 dark:text-white">{fmtNum(m.value)}</p><p className="text-[11px] text-gray-500 dark:text-slate-400 truncate">{m.label}</p></div>
+                  {m.to && <ArrowUpRight className="w-3.5 h-3.5 text-gray-300 dark:text-slate-600 ml-auto shrink-0" />}
+                </div>
+              );
+              return m.to ? <Link key={i} to={m.to}>{inner}</Link> : <div key={i}>{inner}</div>;
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-2xl">
+        <CardHeader><CardTitle className="text-base flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-rose-500" /> Active Incidents</CardTitle></CardHeader>
+        <CardContent>
+          {incidents.length === 0 ? (
+            <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400"><CheckCircle2 className="w-4 h-4" /> No active incidents</div>
+          ) : (
+            <div className="space-y-2">
+              {incidents.map((inc: any, i) => (
+                <div key={i} className="p-3 rounded-xl bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-700/60 flex items-start justify-between gap-3 flex-wrap">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2"><Badge variant={inc.severity === 'critical' ? 'danger' : 'warning'} dot>{inc.service}</Badge>{inc.title}</p>
+                    {inc.reason && <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-1">{inc.reason}</p>}
+                  </div>
+                  <div className="text-right shrink-0 text-[11px] text-gray-400"><p>Started {timeAgo(inc.startedAt, now)}</p><Link to="/super-admin/security-events" className="text-rose-500 font-semibold">View Details</Link></div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-2xl">
+        <CardContent className="space-y-2">
+          <p className="text-xs font-semibold text-gray-700 dark:text-slate-300 flex items-center gap-2"><KeyRound className="w-4 h-4 text-rose-500" /> Related Console Pages</p>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { to: '/super-admin/api', label: 'API Management', icon: ServerCog },
+              { to: '/super-admin/security', label: 'Security Center', icon: ShieldCheck },
+              { to: '/super-admin/audit', label: 'Audit Logs', icon: History },
+              { to: '/super-admin/notifications', label: 'Notifications', icon: Bell },
+              { to: '/super-admin/payment-gateways', label: 'Payments & Gateways', icon: CreditCard },
+            ].map(l => (
+              <Link key={l.to} to={l.to} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-slate-700 text-xs text-gray-700 dark:text-slate-300 hover:border-rose-300 dark:hover:border-rose-800 transition-colors"><l.icon className="w-3.5 h-3.5 text-rose-500" /> {l.label}</Link>
+            ))}
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -932,6 +1398,46 @@ function timeAgo(t: any, now: number): string {
   const m = Math.floor(s / 60);
   if (m < 60) return `${m}m ${s % 60}s ago`;
   return new Date(ts).toLocaleTimeString();
+}
+
+const SVC_BADGE: Record<string, { variant: 'success' | 'warning' | 'danger' | 'outline' | 'info'; label: string; dot: string }> = {
+  operational: { variant: 'success', label: 'Operational', dot: 'bg-emerald-500' },
+  healthy: { variant: 'success', label: 'Healthy', dot: 'bg-emerald-500' },
+  enabled: { variant: 'success', label: 'Enabled', dot: 'bg-emerald-500' },
+  configured: { variant: 'success', label: 'Configured', dot: 'bg-emerald-500' },
+  available: { variant: 'success', label: 'Available', dot: 'bg-emerald-500' },
+  active: { variant: 'success', label: 'Active', dot: 'bg-emerald-500' },
+  degraded: { variant: 'warning', label: 'Degraded', dot: 'bg-amber-500' },
+  warning: { variant: 'warning', label: 'Degraded', dot: 'bg-amber-500' },
+  maintenance: { variant: 'warning', label: 'Maintenance', dot: 'bg-amber-500' },
+  disabled: { variant: 'outline', label: 'Disabled', dot: 'bg-gray-400' },
+  down: { variant: 'danger', label: 'Down', dot: 'bg-rose-500' },
+  failed: { variant: 'danger', label: 'Failed', dot: 'bg-rose-500' },
+  unknown: { variant: 'outline', label: 'Unknown', dot: 'bg-gray-400' },
+  not_configured: { variant: 'outline', label: 'Not Configured', dot: 'bg-gray-400' },
+  scheduled: { variant: 'info', label: 'Scheduled', dot: 'bg-blue-500' },
+  sent: { variant: 'success', label: 'Sent', dot: 'bg-emerald-500' },
+  queued: { variant: 'warning', label: 'Queued', dot: 'bg-amber-500' },
+  sending: { variant: 'info', label: 'Sending', dot: 'bg-blue-500' },
+  processing: { variant: 'info', label: 'Processing', dot: 'bg-blue-500' },
+  paid: { variant: 'success', label: 'Paid', dot: 'bg-emerald-500' },
+  pending: { variant: 'warning', label: 'Pending', dot: 'bg-amber-500' },
+  refunded: { variant: 'info', label: 'Refunded', dot: 'bg-blue-500' },
+  cancelled: { variant: 'outline', label: 'Cancelled', dot: 'bg-gray-400' },
+  success: { variant: 'success', label: 'Success', dot: 'bg-emerald-500' },
+};
+
+function StateBadge({ state, className }: { state: string; className?: string }) {
+  const s = String(state || 'unknown').toLowerCase();
+  const m = SVC_BADGE[s] || { variant: 'outline' as const, label: state || 'Unknown', dot: 'bg-gray-400' };
+  return <Badge variant={m.variant} dot className={className}>{m.label}</Badge>;
+}
+
+function fmtCurrency(n: any, currency = 'GHS'): string {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return '0.00';
+  const formatted = v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${currency}${formatted}`;
 }
 
 function ServiceHealthTile({ name, svc, now }: { name: string; svc: any; now: number }) {
@@ -1204,10 +1710,10 @@ export function SuperAdminApiPage() {
       <div className="space-y-6 pb-10">
         <PageHeader icon={ServerCog} title="API Management" description="Live API operations, endpoint health, performance, security, and access control." count="loading telemetry" />
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-          {Array.from({ length: 10 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-2xl" />)}
+          {Array.from({ length: 10 }).map((_, i) => <Fragment key={i}><Skeleton className="h-20 rounded-2xl" /></Fragment>)}
         </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-2xl" />)}
+          {Array.from({ length: 6 }).map((_, i) => <Fragment key={i}><Skeleton className="h-24 rounded-2xl" /></Fragment>)}
         </div>
         <Skeleton className="h-40 rounded-2xl" />
         {error && (
@@ -1277,7 +1783,7 @@ export function SuperAdminApiPage() {
             <p className="text-sm text-gray-500 dark:text-slate-400">No service health data available.</p>
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-              {orderServices.map(k => <ServiceHealthTile key={k} name={k} svc={services[k]} now={now} />)}
+              {orderServices.map(k => <Fragment key={k}><ServiceHealthTile name={k} svc={services[k]} now={now} /></Fragment>)}
             </div>
           )}
         </CardContent>
@@ -1354,7 +1860,7 @@ export function SuperAdminApiPage() {
             <CardContent>
               <div className="space-y-2">
                 {g.items.map((ep: any) => (
-                  <EndpointRow key={ep.method + ep.path} ep={ep} now={now} isSuper={isSuper} onView={() => setSelected(ep)} />
+                  <Fragment key={ep.method + ep.path}><EndpointRow ep={ep} now={now} isSuper={isSuper} onView={() => setSelected(ep)} /></Fragment>
                 ))}
               </div>
             </CardContent>
@@ -1442,8 +1948,8 @@ export function SuperAdminApiPage() {
                     </div>
                   )}
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    {Object.entries(selSecurity.types || {}).map(([k, v]: any) => (
-                      <Badge key={k} variant="outline" className="text-[10px]">{k} · {fmtNum(v)}</Badge>
+                    {Object.entries((selSecurity.types || {}) as Record<string, number>).map(([k, v]) => (
+                      <Fragment key={k}><Badge variant="outline" className="text-[10px]">{`${k} · ${fmtNum(v)}`}</Badge></Fragment>
                     ))}
                   </div>
                 </section>
@@ -1461,9 +1967,10 @@ export function SuperAdminApiPage() {
                   <div className="mt-3">
                     <p className="text-[11px] text-gray-400 mb-1.5">Status distribution</p>
                     <div className="space-y-1">
-                      {Object.entries(selMetrics.statusDist || {}).map(([k, v]: any) => {
-                        const all = Object.values(selMetrics.statusDist || {}).reduce((a: number, b: any) => a + Number(b || 0), 0);
-                        const width = all > 0 ? Math.max(2, (Number(v || 0) / all) * 100) : 0;
+                      {Object.entries((selMetrics.statusDist || {}) as Record<string, number>).map(([k, v]) => {
+                        const entries = Object.entries((selMetrics.statusDist || {}) as Record<string, number>);
+                        const all = entries.reduce<number>((acc, [, val]) => acc + (Number(val) || 0), 0);
+                        const width = all > 0 ? Math.max(2, ((Number(v) || 0) / all) * 100) : 0;
                         return (
                           <div key={k} className="flex items-center gap-2 text-[11px]">
                             <span className="w-10 font-mono text-gray-500 dark:text-slate-400">{k}</span>
@@ -2135,7 +2642,347 @@ export function SuperAdminBackupPage() {
  * ------------------------------------------------------------
  */
 export function SuperAdminNotificationsPage() {
-  return <SuperAdminDeliveryLogPage />;
+  const { showToast } = useApp();
+  const { user } = useAuth();
+  const isSuper = !!user && isSuperAdminRole(user.role as Role);
+
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [now, setNow] = useState<number>(Date.now());
+  const [updatedAt, setUpdatedAt] = useState<number>(0);
+
+  const [messages, setMessages] = useState<any[]>([]);
+  const [deliveries, setDeliveries] = useState<any[]>([]);
+  const [maintenance, setMaintenance] = useState<any>(null);
+  const [windows, setWindows] = useState<any[]>([]);
+  const [deliveryFilter, setDeliveryFilter] = useState<any>({});
+
+  const [composing, setComposing] = useState(false);
+  const [form, setForm] = useState<any>({ subject: '', message: '', messageType: 'general-announcement', priority: 'NORMAL', recipientGroup: 'all', deliveryChannels: ['In-app'], scheduleAt: '', password: '' });
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+
+  const [resendTarget, setResendTarget] = useState<any>(null);
+  const [resendPassword, setResendPassword] = useState('');
+  const [resendBusy, setResendBusy] = useState(false);
+  const [resendError, setResendError] = useState<string | null>(null);
+
+  const [detail, setDetail] = useState<any>(null);
+  const [msgDetail, setMsgDetail] = useState<any>(null);
+
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) { setLoading(true); setError(null); }
+    try {
+      const [s, msgs, del] = await Promise.all([
+        AdminService.getNotificationSummary(),
+        AdminService.getPlatformMessages(),
+        AdminService.getNotificationDeliveries({ limit: 50 }),
+      ]);
+      setData(s);
+      setMessages(Array.isArray(msgs?.items) ? msgs.items : (Array.isArray(msgs) ? msgs : []));
+      setDeliveries(Array.isArray(del?.items) ? del.items : []);
+      setUpdatedAt(Date.now());
+      setError(null);
+    } catch (e: any) {
+      setError(e?.message || 'Could not load notifications');
+    } finally {
+      if (!quiet) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); const id = setInterval(() => load(true), 20000); return () => clearInterval(id); }, [load]);
+
+  const loadMaintenance = useCallback(async () => {
+    try {
+      const [st, ws] = await Promise.all([AdminService.getMaintenanceStatus(), AdminService.getMaintenanceWindows()]);
+      setMaintenance(st);
+      setWindows(Array.isArray(ws?.items) ? ws.items : []);
+    } catch { /* keep previous */ }
+  }, []);
+  useEffect(() => { loadMaintenance(); }, [loadMaintenance]);
+  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
+
+  const summary = data?.summary || {};
+  const providers = data?.providers || {};
+  const lastUpdatedSec = updatedAt ? Math.max(0, Math.floor((now - updatedAt) / 1000)) : 0;
+
+  const summaryCards = [
+    { label: 'Notifications', value: fmtNum(summary.total), icon: Bell, color: 'text-rose-500 bg-rose-50 dark:bg-rose-900/20' },
+    { label: 'Delivered', value: fmtNum(summary.delivered), icon: CheckCircle, color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' },
+    { label: 'Pending', value: fmtNum(summary.pending), icon: Clock, color: 'text-amber-500 bg-amber-50 dark:bg-amber-900/20' },
+    { label: 'Failed', value: fmtNum(summary.failed), icon: XCircle, color: 'text-rose-500 bg-rose-50 dark:bg-rose-900/20' },
+    { label: 'Not Configured', value: fmtNum(summary.notConfigured), icon: ServerOff, color: 'text-gray-500 bg-gray-100 dark:bg-slate-800/50' },
+    { label: 'Read', value: fmtNum(summary.read), icon: Eye, color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' },
+    { label: 'Unread', value: fmtNum(summary.unread), icon: Inbox, color: 'text-violet-500 bg-violet-50 dark:bg-violet-900/20' },
+    { label: 'Maintenance Alerts', value: fmtNum(data?.maintenanceNotifications ?? 0), icon: Wrench, color: 'text-amber-500 bg-amber-50 dark:bg-amber-900/20' },
+  ];
+
+  const send = async () => {
+    if (!form.subject.trim() || !form.message.trim()) { setSendError('Title and message are required.'); return; }
+    if (!isSuper) { setSendError('Super admin access required to send notifications.'); return; }
+    if (!form.deliveryChannels.length) { setSendError('Select at least one delivery channel.'); return; }
+    setSending(true); setSendError(null);
+    try {
+      const payload: any = {
+        subject: form.subject.trim(), message: form.message.trim(),
+        messageType: form.messageType, priority: form.priority,
+        recipientGroup: form.recipientGroup, deliveryChannels: form.deliveryChannels,
+        clientRequestId: `pm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      };
+      if (form.scheduleAt) payload.scheduleAt = form.scheduleAt;
+      if (form.password) payload.password = form.password;
+      const res = await AdminService.createPlatformMessage(payload, payload.password);
+      if (res?.success) {
+        showToast(form.scheduleAt ? 'Notification scheduled' : 'Notification created', `${form.deliveryChannels.join(' + ')} message ${form.scheduleAt ? 'scheduled' : 'started sending'}.`, 'success');
+        setComposing(false); setForm({ subject: '', message: '', messageType: 'general-announcement', priority: 'NORMAL', recipientGroup: 'all', deliveryChannels: ['In-app'], scheduleAt: '', password: '' });
+        load(true);
+      } else {
+        setSendError(res?.message || 'Notification could not be created.');
+      }
+    } catch (e: any) {
+      setSendError(e?.message || 'Could not create notification.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const doResend = async () => {
+    if (!resendTarget) return;
+    setResendBusy(true); setResendError(null);
+    try {
+      const res = await AdminService.resendPlatformMessage(resendTarget.id, resendPassword);
+      if (res?.success) {
+        showToast('Retry queued', 'Failed deliveries are being re-sent by the backend.', 'success');
+        setResendTarget(null); setResendPassword(''); setResendError(null);
+        setTimeout(() => load(true), 1500);
+      } else {
+        setResendError(res?.message || 'Retry not approved. Check your password or permission.');
+      }
+    } catch (e: any) {
+      setResendError(e?.message || 'Could not retry deliveries.');
+    } finally {
+      setResendBusy(false);
+    }
+  };
+
+  const activeWindows = Array.isArray(windows) ? windows.filter((w: any) => w.status === 'scheduled' || w.status === 'warning' || w.status === 'active') : [];
+
+  if (loading || !data) {
+    return (
+      <div className="space-y-6 pb-10">
+        <PageHeader icon={Bell} title="Notifications" description="Notification delivery, messaging, and maintenance/system communications." count="loading telemetry" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{Array.from({ length: 8 }).map((_, i) => <Fragment key={i}><Skeleton className="h-20 rounded-2xl" /></Fragment>)}</div>
+        <Skeleton className="h-40 rounded-2xl" />
+        {error && (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 dark:bg-rose-900/10 p-4 text-sm text-rose-700 dark:text-rose-300 flex items-center justify-between gap-3 flex-wrap">
+            <span>Notification telemetry unavailable — {error}</span>
+            <Button size="sm" onClick={() => load()}><RefreshCw className="w-4 h-4 mr-1" /> Retry</Button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 pb-10">
+      <PageHeader icon={Bell} title="Notifications" description="Notification delivery, messaging, and maintenance/system communications." count={`${fmtNum(summary.total)} records`} />
+
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2 text-[11px] text-gray-500 dark:text-slate-400"><Clock className="w-3.5 h-3.5" /> Last updated: {lastUpdatedSec} seconds ago</div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => load()}><RefreshCw className="w-4 h-4 mr-1" /> Refresh</Button>
+          <Button size="sm" onClick={() => setComposing(true)} disabled={!isSuper}><Send className="w-4 h-4 mr-1" /> Send Notification</Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {summaryCards.map(c => (
+          <div key={c.label} className="p-4 rounded-2xl bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-700/60">
+            <div className="flex items-center gap-2 mb-2"><span className={`w-7 h-7 rounded-lg flex items-center justify-center ${c.color}`}><c.icon className="w-4 h-4" /></span><p className="text-[11px] text-gray-500 dark:text-slate-400 leading-tight">{c.label}</p></div>
+            <p className="text-xl font-bold text-gray-900 dark:text-white">{c.value}</p>
+          </div>
+        ))}
+      </div>
+
+      <Card className="rounded-2xl">
+        <CardHeader><CardTitle className="text-base flex items-center gap-2"><MessageSquare className="w-5 h-5 text-rose-500" /> Delivery Channels</CardTitle></CardHeader>
+        <CardContent>
+          <div className="grid sm:grid-cols-3 gap-3">
+            {[
+              { label: 'In-App', code: providers?.inApp?.code || 'unknown', mode: providers?.inApp?.label || 'Unknown', icon: Bell },
+              { label: 'Email', code: providers?.email?.code || 'unknown', mode: providers?.email?.label || 'Unknown', icon: Mail },
+              { label: 'SMS', code: providers?.sms?.code || 'not_configured', mode: providers?.sms?.label || 'Not Configured', icon: Smartphone },
+            ].map(c => (
+              <div key={c.label} className="p-4 rounded-xl bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-700/60">
+                <div className="flex items-center justify-between gap-2"><div className="flex items-center gap-2"><c.icon className="w-4 h-4 text-rose-500" /><p className="text-sm font-semibold text-gray-900 dark:text-white">{c.label}</p></div><StateBadge state={c.code} /></div>
+                <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-1">{c.mode}</p>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-2xl">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2"><Send className="w-5 h-5 text-rose-500" /> Recent Messages <span className="text-xs font-normal text-gray-400">{fmtNum(data?.messagesCount ?? 0)} total</span></CardTitle>
+        </CardHeader>
+        <CardContent>
+          {messages.length === 0 ? (
+            <EmptyState icon={<Send className="w-8 h-8 text-gray-300 dark:text-slate-600" />} title="No messages sent" description="No platform messages have been sent yet." />
+          ) : (
+            <div className="space-y-2">
+              {messages.slice(0, 10).map((m: any) => (
+                <div key={m.id} className="p-3 rounded-xl bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-700/60 flex items-center justify-between gap-3 flex-wrap">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{m.subject}</p>
+                    <p className="text-[11px] text-gray-500 dark:text-slate-400">to <b>{m.recipientGroup || 'all'}</b> · {Array.isArray(m.deliveryChannels) ? m.deliveryChannels.join(' + ') : 'In-app'} · {m.createdAt ? new Date(m.createdAt).toLocaleString() : '—'}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <StateBadge state={m.status} />
+                    <Button size="sm" variant="ghost" onClick={() => setMsgDetail(m)}>Details</Button>
+                    {m.status === 'failed' || m.status === 'partially_sent' ? <Button size="sm" variant="outline" onClick={() => setResendTarget(m)}><RefreshCw className="w-3.5 h-3.5 mr-1" /> Retry</Button> : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-2xl">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2"><ListChecks className="w-5 h-5 text-rose-500" /> Delivery Log <Link to="/super-admin/deliveries" className="ml-auto text-xs text-rose-500 font-semibold">View all →</Link></CardTitle>
+        </CardHeader>
+        <CardContent>
+          {deliveries.length === 0 ? (
+            <EmptyState icon={<Inbox className="w-8 h-8 text-gray-300 dark:text-slate-600" />} title="No delivery records" description="No notification deliveries have been recorded yet. Send a message to start tracking delivery." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-[11px]">
+                <thead><tr className="border-b border-gray-100 dark:border-slate-800 text-gray-400">{['Recipient', 'Notification', 'Channel', 'Status', 'Delivered At', 'Failure Reason'].map(h => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}</tr></thead>
+                <tbody>
+                  {deliveries.map((d: any) => (
+                    <tr key={d.id} onClick={() => setDetail(d)} className="border-b border-gray-50 dark:border-slate-800/60 hover:bg-gray-50 dark:hover:bg-slate-800/40 cursor-pointer transition-colors">
+                      <td className="px-3 py-2 text-gray-700 dark:text-slate-300">{d.name || d.email || '—'}</td>
+                      <td className="px-3 py-2 text-gray-700 dark:text-slate-300">{d.refTitle || '—'}</td>
+                      <td className="px-3 py-2 text-gray-700 dark:text-slate-300">{d.channel}</td>
+                      <td className="px-3 py-2"><StateBadge state={d.status} /></td>
+                      <td className="px-3 py-2 text-gray-500 dark:text-slate-400">{d.sentAt ? new Date(d.sentAt).toLocaleString() : '—'}</td>
+                      <td className="px-3 py-2 text-rose-500 dark:text-rose-400">{d.error || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-2xl">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2"><Wrench className="w-5 h-5 text-rose-500" /> Maintenance &amp; System Communications <Link to="/super-admin/maintenance" className="ml-auto text-xs text-rose-500 font-semibold">Manage maintenance →</Link></CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-xs text-gray-600 dark:text-slate-300 flex items-center gap-2 mb-3">
+            {maintenance?.status ? <StateBadge state={maintenance.status === 'active' ? 'active' : maintenance.status === 'warning' ? 'warning' : 'scheduled'} /> : <StateBadge state="unknown" />}
+            {maintenance?.title ? <span className="font-semibold">{maintenance.title}</span> : <span className="text-gray-400">No maintenance currently scheduled.</span>}
+          </div>
+          {activeWindows.length > 0 ? (
+            <div className="space-y-2">
+              {activeWindows.map((w: any) => (
+                <div key={w.id} className="p-3 rounded-xl bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-700/60 flex items-center justify-between gap-3 flex-wrap">
+                  <div className="min-w-0"><p className="text-sm font-semibold text-gray-900 dark:text-white">{w.title}</p><p className="text-[11px] text-gray-500 dark:text-slate-400">{w.scheduledStart ? new Date(w.scheduledStart).toLocaleString() : '—'} → {w.scheduledEnd ? new Date(w.scheduledEnd).toLocaleString() : '—'}</p></div>
+                  <div className="flex items-center gap-2"><StateBadge state={w.status} /><Link to="/super-admin/maintenance" className="text-rose-500 text-xs font-semibold">Manage</Link></div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500 dark:text-slate-400">Scheduled maintenance notices are created and managed from the Maintenance page, and are broadcast here upon delivery.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <AnimatePresence>
+        {composing && (
+          <>
+            <motion.div className="fixed inset-0 bg-black/40 z-40 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setComposing(false)} />
+            <motion.aside className="fixed top-0 right-0 h-full w-full max-w-lg bg-white dark:bg-slate-900 z-50 shadow-2xl flex flex-col overflow-hidden" initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'tween', duration: 0.25 }}>
+              <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-slate-800"><p className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2"><Send className="w-4 h-4 text-rose-500" /> Send Notification</p><Button size="sm" variant="ghost" onClick={() => setComposing(false)}><X className="w-4 h-4" /></Button></div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                <div><Label>Title</Label><Input value={form.subject} onChange={e => setForm({ ...form, subject: e.target.value })} placeholder="Notification title" /></div>
+                <div><Label>Message</Label><textarea className="w-full min-h-[90px] rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-rose-500/30 resize-y" value={form.message} onChange={e => setForm({ ...form, message: e.target.value })} placeholder="Notification message" /></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><Label>Type</Label><Select value={form.messageType} onValueChange={v => setForm({ ...form, messageType: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{['general-announcement', 'maintenance', 'order', 'payment', 'security', 'system'].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent></Select></div>
+                  <div><Label>Priority</Label><Select value={form.priority} onValueChange={v => setForm({ ...form, priority: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{['NORMAL', 'IMPORTANT', 'CRITICAL'].map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
+                </div>
+                <div><Label>Recipients</Label><Select value={form.recipientGroup} onValueChange={v => setForm({ ...form, recipientGroup: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{[{ v: 'all', l: 'All Users' }, { v: 'customers', l: 'All Customers' }, { v: 'vendors', l: 'All Vendors' }, { v: 'riders', l: 'All Riders' }, { v: 'administrators', l: 'All Administrators' }].map(o => <SelectItem key={o.v} value={o.v}>{o.l}</SelectItem>)}</SelectContent></Select></div>
+                <div>
+                  <Label>Channels</Label>
+                  <div className="flex gap-2 mt-1">
+                    {[['In-app', providers?.inApp?.code === 'available'], ['Email', providers?.email?.code === 'configured']].map(([ch, ok]) => (
+                      <button key={ch as string} type="button" onClick={() => { const arr = form.deliveryChannels.includes(ch as string) ? form.deliveryChannels.filter((c: string) => c !== ch) : [...form.deliveryChannels, ch as string]; setForm({ ...form, deliveryChannels: arr }); }} disabled={!ok} className={cn('px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors', form.deliveryChannels.includes(ch as string) ? 'bg-rose-50 border-rose-300 text-rose-700 dark:bg-rose-900/20 dark:border-rose-800 dark:text-rose-300' : 'bg-white dark:bg-slate-800/50 border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-400')}>{ch}{ok ? '' : ' (n/a)'}</button>
+                    ))}
+                    <span className="text-[11px] text-gray-400 self-center">SMS not configured</span>
+                  </div>
+                </div>
+                <div><Label>Schedule (optional)</Label><Input type="datetime-local" value={form.scheduleAt} onChange={e => setForm({ ...form, scheduleAt: e.target.value })} /></div>
+                <div><Label>Current password (high-risk action)</Label><Input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Confirm with your password" /></div>
+                {sendError && <p className="text-[11px] text-rose-600 dark:text-rose-400">{sendError}</p>}
+              </div>
+              <div className="p-4 border-t border-gray-100 dark:border-slate-800 flex gap-2">
+                <Button onClick={send} disabled={sending}><Send className="w-4 h-4 mr-1" /> {sending ? 'Working…' : form.scheduleAt ? 'Schedule' : 'Send'}</Button>
+                <Button size="sm" variant="ghost" onClick={() => setComposing(false)}>Cancel</Button>
+              </div>
+            </motion.aside>
+          </>
+        )}
+
+        {resendTarget && (
+          <>
+            <motion.div className="fixed inset-0 bg-black/40 z-40 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setResendTarget(null)} />
+            <motion.aside className="fixed top-0 right-0 h-full w-full max-w-md bg-white dark:bg-slate-900 z-50 shadow-2xl flex flex-col overflow-hidden" initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'tween', duration: 0.25 }}>
+              <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-slate-800"><p className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2"><RefreshCw className="w-4 h-4 text-rose-500" /> Retry Failed Deliveries</p><Button size="sm" variant="ghost" onClick={() => setResendTarget(null)}><X className="w-4 h-4" /></Button></div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                <p className="text-sm text-gray-600 dark:text-slate-300"><b className="text-gray-900 dark:text-white">{resendTarget.subject}</b> — re-send to users whose delivery failed.</p>
+                <div><Label>Current password (high-risk action)</Label><Input type="password" value={resendPassword} onChange={e => setResendPassword(e.target.value)} placeholder="Confirm with your password" /></div>
+                {resendError && <p className="text-[11px] text-rose-600 dark:text-rose-400">{resendError}</p>}
+              </div>
+              <div className="p-4 border-t border-gray-100 dark:border-slate-800 flex gap-2">
+                <Button onClick={doResend} disabled={resendBusy}><RefreshCw className={`w-4 h-4 mr-1 ${resendBusy ? 'animate-spin' : ''}`} /> {resendBusy ? 'Working…' : 'Retry'}</Button>
+                <Button size="sm" variant="ghost" onClick={() => setResendTarget(null)}>Cancel</Button>
+              </div>
+            </motion.aside>
+          </>
+        )}
+
+        {(detail || msgDetail) && (
+          <>
+            <motion.div className="fixed inset-0 bg-black/40 z-40 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { setDetail(null); setMsgDetail(null); }} />
+            <motion.aside className="fixed top-0 right-0 h-full w-full max-w-md bg-white dark:bg-slate-900 z-50 shadow-2xl flex flex-col overflow-hidden" initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'tween', duration: 0.25 }}>
+              <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-slate-800"><p className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2"><Bell className="w-4 h-4 text-rose-500" /> {detail ? 'Delivery Details' : 'Message Details'}</p><Button size="sm" variant="ghost" onClick={() => { setDetail(null); setMsgDetail(null); }}><X className="w-4 h-4" /></Button></div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-5">
+                {detail ? (
+                  <>
+                    <div className="flex items-center gap-2"><StateBadge state={detail.status} /><Badge variant="outline">{detail.channel}</Badge></div>
+                    <section><h4 className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Recipient</h4><div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs"><div><p className="text-gray-400">Name</p><p className="text-gray-800 dark:text-slate-200 font-medium">{detail.name || '—'}</p></div><div><p className="text-gray-400">Email</p><p className="text-gray-800 dark:text-slate-200 font-medium">{detail.email || '—'}</p></div><div><p className="text-gray-400">Role</p><p className="text-gray-800 dark:text-slate-200 font-medium">{detail.role || '—'}</p></div><div><p className="text-gray-400">Notification</p><p className="text-gray-800 dark:text-slate-200 font-medium">{detail.refTitle || '—'}</p></div></div></section>
+                    <section><h4 className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Timeline</h4><div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs"><div><p className="text-gray-400">Created</p><p className="text-gray-800 dark:text-slate-200 font-medium">{detail.createdAt ? new Date(detail.createdAt).toLocaleString() : '—'}</p></div><div><p className="text-gray-400">Delivered</p><p className="text-gray-800 dark:text-slate-200 font-medium">{detail.sentAt ? new Date(detail.sentAt).toLocaleString() : '—'}</p></div><div><p className="text-gray-400">Read</p><p className="text-gray-800 dark:text-slate-200 font-medium">{detail.readAt ? new Date(detail.readAt).toLocaleString() : '—'}</p></div></div>{detail.error && <div className="mt-3 p-3 rounded-xl bg-rose-50 dark:bg-rose-900/10 text-[11px] text-rose-600 dark:text-rose-400">Failure: {detail.error}</div>}</section>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2"><StateBadge state={msgDetail.status} /><Badge variant="outline">to {msgDetail.recipientGroup || 'all'}</Badge></div>
+                    <section><h4 className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Message</h4><p className="text-sm font-semibold text-gray-900 dark:text-white">{msgDetail.subject}</p><p className="text-xs text-gray-600 dark:text-slate-300 mt-1 whitespace-pre-wrap">{msgDetail.message}</p></section>
+                    <section><h4 className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Delivery</h4><div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs"><div><p className="text-gray-400">Channels</p><p className="text-gray-800 dark:text-slate-200 font-medium">{Array.isArray(msgDetail.deliveryChannels) ? msgDetail.deliveryChannels.join(' + ') : 'In-app'}</p></div><div><p className="text-gray-400">Created</p><p className="text-gray-800 dark:text-slate-200 font-medium">{msgDetail.createdAt ? new Date(msgDetail.createdAt).toLocaleString() : '—'}</p></div><div><p className="text-gray-400">Scheduled</p><p className="text-gray-800 dark:text-slate-200 font-medium">{msgDetail.scheduleAt ? new Date(msgDetail.scheduleAt).toLocaleString() : '—'}</p></div><div><p className="text-gray-400">Priority</p><p className="text-gray-800 dark:text-slate-200 font-medium">{msgDetail.priority || '—'}</p></div></div></section>
+                    <Link to={`/super-admin/deliveries`} onClick={() => { setDetail(null); setMsgDetail(null); }} className="text-rose-500 text-xs font-semibold">View delivery log →</Link>
+                  </>
+                )}
+              </div>
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+    </div>
+  );
 }
 
 /*

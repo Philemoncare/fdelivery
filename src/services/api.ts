@@ -623,4 +623,9 @@ export const AdminService = {
     method: 'POST',
     body: JSON.stringify(password ? { method, path, enabled, password } : { method, path, enabled })
   }),
+  // ---- Infrastructure / Payments / Notifications admin consoles ----
+  getSystemOverview: () => request<any>('/admin/system'),
+  runSystemHealthCheck: () => request<any>('/admin/system/check', { method: 'POST' }),
+  getPaymentOverview: () => request<any>('/admin/payments/overview'),
+  getNotificationSummary: () => request<any>('/admin/notifications/summary'),
 };
