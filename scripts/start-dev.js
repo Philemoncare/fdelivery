@@ -40,7 +40,7 @@ function runCommand(command, args, name) {
     cwd: projectRoot,
     stdio: 'inherit',
     shell: false,
-    env: { ...process.env, FORCE_COLOR: 'true' }
+    env: { ...process.env, FORCE_COLOR: 'true', ALLOW_DEMO_OTP: 'true' }
   });
 
   child.on('error', (err) => {

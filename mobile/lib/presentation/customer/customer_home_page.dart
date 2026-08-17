@@ -5,7 +5,7 @@ import '../../core/utils/formatters.dart';
 import '../../data/models/product.dart';
 import '../../data/models/user_profile.dart';
 import '../../data/models/vendor.dart';
-import '../delivery_tracking/delivery_tracking_page.dart';
+import 'delivery_tracking/delivery_tracking_page.dart';
 import '../shared/widgets/empty_view.dart';
 import '../shared/widgets/error_view.dart';
 import '../shared/widgets/loading_indicator.dart';

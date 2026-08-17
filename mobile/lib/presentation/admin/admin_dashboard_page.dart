@@ -4,7 +4,7 @@ import '../../application/service_locator.dart';
 import '../../core/utils/formatters.dart';
 import '../../data/models/dashboards.dart';
 import '../../data/models/user_profile.dart';
-import '../delivery_monitoring/delivery_monitoring_page.dart';
+import 'delivery_monitoring/delivery_monitoring_page.dart';
 import '../shared/widgets/empty_view.dart';
 import '../shared/widgets/error_view.dart';
 import '../shared/widgets/loading_indicator.dart';
