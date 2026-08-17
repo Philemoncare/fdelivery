@@ -24,10 +24,12 @@ class WalletRepository {
 
   /// `POST /api/wallets/:userId/topup` returns the created TRANSACTION,
   /// not the wallet. Call [balance] afterwards to read the new balance.
+  /// [method] MUST be a payment gateway id/name known to the backend
+  /// (`GET /api/payment-gateways`); no client-side defaults are assumed.
   Future<WalletTransaction> topup(
     String userId,
     num amount, {
-    String method = 'MTN MoMo',
+    required String method,
   }) async {
     final data = await _client
         .post(
@@ -38,10 +40,12 @@ class WalletRepository {
     return WalletTransaction.fromJson(data);
   }
 
+  /// [method] MUST be a payment gateway id/name known to the backend
+  /// (`GET /api/payment-gateways`); no client-side defaults are assumed.
   Future<WalletTransaction> requestWithdrawal(
     String userId,
     num amount, {
-    String method = 'Mobile Money',
+    required String method,
     Map<String, dynamic>? bankInfo,
   }) async {
     final data = await _client

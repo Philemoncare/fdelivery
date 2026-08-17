@@ -250,7 +250,7 @@ export interface Order {
   status: OrderStatus;
   paymentStatus: PaymentStatus;
   deliveryMethod: 'delivery' | 'pickup';
-  paymentMethod: 'MTN MoMo' | 'Telecel Cash' | 'AirtelTigo Money' | 'Visa' | 'Mastercard' | 'OmniWallet' | 'Cash on Delivery';
+  paymentMethod: string;
   isPaid: boolean;
   createdAt: string;
   updatedAt: string;
@@ -374,7 +374,37 @@ export interface DeliveryLocation {
   instructions?: string;
   latitude?: number | null;
   longitude?: number | null;
+  deliveryAddressId?: string;
   source?: 'geocoder' | 'seed' | 'saved' | 'manual' | 'gps';
+}
+
+/** Backend payment gateway configuration — single source of truth. */
+export interface PaymentGatewayConfig {
+  id: string;
+  name: string;
+  type: string;
+  enabled: boolean;
+  configured: boolean;
+  operational?: boolean;
+}
+
+/** Public platform configuration surfaced by GET /api/platform/settings. */
+export interface PlatformSettings {
+  platformName: string;
+  currency: string;
+  defaultCommissionRate: number;
+  defaultDeliveryFee: number;
+  distanceFeePerKm: number;
+  platformFee: number;
+  taxRate: number;
+  vendorApprovalMode?: 'manual' | 'automatic';
+  riderApprovalMode?: 'manual' | 'automatic';
+  allowNewCustomers?: boolean;
+  allowNewVendors?: boolean;
+  allowNewRiders?: boolean;
+  notificationsEnabled?: boolean;
+  maintenanceMode?: boolean;
+  paymentGateways?: PaymentGatewayConfig[];
 }
 
 export interface CustomerProfile {
@@ -397,6 +427,10 @@ export interface CustomerProfile {
   walletBalance: number;
   loyaltyPoints: number;
   referralCode: string;
+  /** Back-end account verification flags (only present when the server reports them). */
+  isEmailVerified?: boolean;
+  isPhoneVerified?: boolean;
+  isVerified?: boolean;
   /** Back-end update payload fields used when saving a delivery location. */
   address?: string;
   latitude?: number;

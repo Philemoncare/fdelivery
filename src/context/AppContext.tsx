@@ -3,14 +3,15 @@ import {
   Role, ThemeMode, ThemeModePreference, CurrencyCode, LanguageCode, OrderStatus,
   Vendor, Product, DispatchRider, CartItem, Order, CustomerProfile,
   Coupon, NotificationItem, WalletTransaction, Address, PaymentStatus,
-  Review, RiderStatus, RiderLocationUpdate, AccentKey, ThemeKey
+  Review, RiderStatus, RiderLocationUpdate, AccentKey, ThemeKey,
+  PlatformSettings
 } from '../types';
 import {
   readThemePreference, applyTheme, cycleTheme, themeToMode
 } from '@/src/lib/theme';
 import { useAuth } from '@/src/lib/auth/auth-store';
 import {
-  VendorService, ProductService, OrderService, RiderService,
+  VendorService, ProductService, OrderService, RiderService, PlatformService,
   CustomerService, WalletService, InteractionService, DiscoveryService,
   RealTimeService, MessagingService, AdminService
 } from '../services/api';
@@ -87,6 +88,9 @@ interface AppContextType {
   estimatedTax: number;
   discountAmount: number;
   grandTotal: number;
+
+  // Single source of truth for fees/tax/payment config (from the backend).
+  platformSettings: PlatformSettings | null;
 
   wishlist: Product[];
   toggleWishlist: (product: Product) => void;
@@ -245,6 +249,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [products, setProducts] = useState<Product[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [riders, setRiders] = useState<DispatchRider[]>([]);
+  const [platformSettings, setPlatformSettings] = useState<PlatformSettings | null>(null);
   const [categories, setCategories] = useState<any[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -398,15 +403,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         VendorService.getAll(),
         isConsumerCatalog ? ProductService.getAll() : Promise.resolve([]),
         RiderService.getAll(),
-        ProductService.getCategories(user?.vendorId)
+        ProductService.getCategories(user?.vendorId),
+        PlatformService.getSettings()
       ]);
 
-      const [vData, pData, rData, cData] = results.map(r => r.status === 'fulfilled' ? r.value : []);
+      const [vData, pData, rData, cData, sData] = results.map(r => r.status === 'fulfilled' ? r.value : []);
 
       setVendors(Array.isArray(vData) ? vData : []);
       setProducts(Array.isArray(pData) ? pData : []);
       setRiders(Array.isArray(rData) ? rData : []);
       setCategories(Array.isArray(cData) ? cData : []);
+      if (sData && typeof sData === 'object' && !Array.isArray(sData)) setPlatformSettings(sData as PlatformSettings);
 
       if (user) {
         console.log('Fetching user-specific data for:', user.id, 'Role:', user.role);
@@ -758,8 +765,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const cartTotal = useMemo(() => cart.reduce((sum, i) => sum + (i.product?.price || 0) * i.quantity, 0), [cart]);
   const cartCount = useMemo(() => cart.reduce((sum, i) => sum + i.quantity, 0), [cart]);
 
-  const deliveryFee = useMemo(() => (cart.length > 0 ? (selectedRider ? selectedRider.deliveryFee : 3.00) : 0), [cart.length, selectedRider]);
-  const estimatedTax = useMemo(() => Number((cartTotal * 0.05).toFixed(2)), [cartTotal]);
+  const deliveryFee = useMemo(() => (cart.length > 0 ? (selectedRider ? selectedRider.deliveryFee : (platformSettings?.defaultDeliveryFee ?? 0)) : 0), [cart.length, selectedRider, platformSettings]);
+  const estimatedTax = useMemo(() => Number((cartTotal * ((platformSettings?.taxRate ?? 0) / 100)).toFixed(2)), [cartTotal, platformSettings]);
   const discountAmount = useMemo(() => {
     if (!appliedCoupon) return 0;
     if (appliedCoupon.type === 'percentage') {
@@ -910,7 +917,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const placeOrder = async (checkoutData: any): Promise<Order> => {
     const vendor = vendors.find(v => v.id === cart[0].product.vendorId);
     const selected = customerProfile?.addresses || [];
-    const address = selected.find(a => a.address === checkoutData.address) || selected.find(a => a.isDefault);
+    const address = selected.find(a => (checkoutData.deliveryAddressId && a.id === checkoutData.deliveryAddressId) || a.address === checkoutData.address) || selected.find(a => a.isDefault);
     const loc = checkoutData.location ?? null;
 
     const newOrder = await OrderService.placeOrder({
@@ -932,6 +939,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       city: checkoutData.city ?? loc?.city ?? address?.city ?? '',
       country: checkoutData.country ?? loc?.region ?? '',
       customerAddress: checkoutData.address || checkoutData.customerAddress || address?.address || currentAddressName,
+      deliveryAddressId: checkoutData.deliveryAddressId ?? address?.id ?? null,
     });
     setOrders(prev => [newOrder, ...prev]);
     clearCart();
@@ -1261,7 +1269,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     selectedOrder, setSelectedOrder, selectedRider, setSelectedRider,
     quickViewProduct, setQuickViewProduct,
     cart, isCartOpen, setIsCartOpen, addToCart, removeFromCart, updateCartQuantity, clearCart, cartTotal, cartCount,
-    deliveryFee, estimatedTax, discountAmount, grandTotal,
+    deliveryFee, estimatedTax, discountAmount, grandTotal, platformSettings,
     wishlist, toggleWishlist, isInWishlist,
     searchQuery, setSearchQuery, searchCategory, setSearchCategory,
     refreshData, updateVendorProfile, updateRiderProfile, createVendor, deleteVendor, updateVendorHours,
@@ -1286,7 +1294,7 @@ products, vendors, riders, orders, customers, categories, notifications, unreadN
     selectedOrder, setSelectedOrder, selectedRider, setSelectedRider,
     quickViewProduct, setQuickViewProduct,
     cart, isCartOpen, setIsCartOpen, addToCart, removeFromCart, updateCartQuantity, clearCart, cartTotal, cartCount,
-    deliveryFee, estimatedTax, discountAmount, grandTotal,
+    deliveryFee, estimatedTax, discountAmount, grandTotal, platformSettings,
     wishlist, toggleWishlist, isInWishlist,
     searchQuery, setSearchQuery, searchCategory, setSearchCategory,
     refreshData, updateVendorProfile, updateRiderProfile, createVendor, deleteVendor, updateVendorHours,

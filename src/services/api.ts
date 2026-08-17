@@ -10,7 +10,8 @@
 import {
   Vendor, Product, Order, OrderStatus, DispatchRider, RiderStatus, RiderLocationUpdate,
   CustomerProfile, Review, NotificationItem, WalletTransaction,
-  Coupon, Address, OrderItem, PackageQuote, DeliveryLocation
+  Coupon, Address, OrderItem, PackageQuote, DeliveryLocation,
+  PaymentGatewayConfig, PlatformSettings
 } from '../types';
 import { readRequestTokens } from '@/src/lib/auth/token-scope';
 
@@ -243,6 +244,9 @@ export const OrderService = {
 
 export const RiderService = {
   getAll: () => request<DispatchRider[]>('/riders'),
+  // Backend-computed eligible riders for a booking (verified/approved, online,
+  // available, under the active-delivery cap, and within radius when coords given).
+  getEligible: (lat?: number, lng?: number) => request<DispatchRider[]>('/riders/eligible' + (lat != null && lng != null ? `?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}` : '')),
   getById: (id: string) => request<DispatchRider>(`/riders/${id}`),
   updateProfile: (id: string, data: Partial<DispatchRider>) => request<DispatchRider>(`/riders/${id}`, {
     method: 'PATCH',
@@ -263,7 +267,15 @@ export const RiderService = {
 // ------------------------------------------------------------
 
 export const PaymentService = {
-  getGateways: () => request<any[]>('/payment-gateways'),
+  getGateways: () => request<PaymentGatewayConfig[]>('/payment-gateways'),
+};
+
+// ------------------------------------------------------------
+// 5.1b PLATFORM CONFIG (public — the single source of truth for
+// fees/tax/payment configuration). Consumed by every client.
+// ------------------------------------------------------------
+export const PlatformService = {
+  getSettings: () => request<PlatformSettings>('/platform/settings'),
 };
 
 // ------------------------------------------------------------

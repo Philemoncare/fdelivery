@@ -311,6 +311,7 @@ let db = {
     defaultDeliveryFee: 3,
     distanceFeePerKm: 0,
     platformFee: 0,
+    taxRate: 5,
     vendorApprovalMode: 'manual',
     riderApprovalMode: 'manual',
     allowNewCustomers: true,
@@ -3568,7 +3569,7 @@ function paymentMethodStatus(method: string): { available: boolean; reason?: str
 }
 
 app.post('/api/orders', requireAuth, (req, res) => {
-  const { items, customerId, vendorId, paymentMethod, deliveryMethod, specialInstructions, riderId, couponCode, address, city, country, customerLat, customerLng } = req.body;
+  const { items, customerId, vendorId, paymentMethod, deliveryMethod, specialInstructions, riderId, couponCode, address, city, country, customerLat, customerLng, deliveryAddressId } = req.body;
 
   // Orders must belong to the authenticated caller.
   const currentUserId = (req as any).currentUserId;
@@ -3599,6 +3600,18 @@ app.post('/api/orders', requireAuth, (req, res) => {
   const customer = db.users.find(u => u.id === currentUserId);
   const rider = riderId ? db.riders.find(r => r.id === riderId) : null;
   if (riderId && !rider) return res.status(400).json({ success: false, message: 'Selected dispatch rider is no longer available.' });
+
+  // Saved-address reference: the customer may select one of their stored
+  // addresses instead of typing a free-form string. It must genuinely belong
+  // to this account — address IDs are the source of truth, not display text.
+  let savedDeliveryAddress: any = null;
+  if (deliveryAddressId) {
+    const savedList: any[] = Array.isArray(customer?.deliveryAddress) ? customer!.deliveryAddress : [];
+    savedDeliveryAddress = savedList.find((a: any) => a.id === deliveryAddressId);
+    if (!savedDeliveryAddress) {
+      return res.status(422).json({ success: false, message: 'Selected delivery address is no longer on your account. Please choose another.' });
+    }
+  }
 
   // A delivery order must carry a real destination address — never an empty string.
   if (deliveryMethod === 'delivery' && !String(address || '').trim()) {
@@ -3650,8 +3663,9 @@ app.post('/api/orders', requireAuth, (req, res) => {
     });
   }
 
-  const deliveryFee = deliveryMethod === 'delivery' ? (rider ? Number(rider.deliveryFee) || 0 : (Number(db.platformSettings.defaultDeliveryFee) || 3)) : 0;
-  const tax = subtotal * 0.05;
+  const deliveryFee = deliveryMethod === 'delivery' ? (rider ? Number(rider.deliveryFee) || 0 : (Number(db.platformSettings.defaultDeliveryFee) || 0)) : 0;
+  const taxRate = Number(db.platformSettings?.taxRate);
+  const tax = subtotal * (Number.isFinite(taxRate) && taxRate >= 0 ? taxRate : 5) / 100;
 
   // Real coupon validation against the database
   let discount = 0;
@@ -3680,6 +3694,12 @@ app.post('/api/orders', requireAuth, (req, res) => {
 
   // ---- Payment handling: the server decides when an order counts as paid ----
   const method = String(paymentMethod || 'Cash on Delivery');
+  const resolvedGw = resolvePaymentGatewayByMethod(method);
+  // paymentMethodId references the gateway config — the single source of truth.
+  // Wallet/COD map to their canonical ids so every order carries a stable method id.
+  const paymentMethodId =
+    resolvedGw?.id ||
+    (method === 'Wallet' || method === 'OmniWallet' ? 'gtw-wallet' : method === 'Cash on Delivery' ? 'gtw-cod' : null);
   // The platform gateway config is authoritative: a disabled, unconfigured, or
   // unknown method is rejected here even if a client still tries to use it.
   const pmCheck = paymentMethodStatus(method);
@@ -3715,11 +3735,12 @@ app.post('/api/orders', requireAuth, (req, res) => {
     customerName: customer ? `${customer.firstName} ${customer.lastName}` : 'Customer',
     customerEmail: customer?.email || '',
     customerPhone: customer?.phone || '',
-    customerAddress: address || 'Address not provided',
-    customerLat: (customerLat === null || customerLat === undefined || customerLat === '') ? null : (Number(customerLat) || null),
-    customerLng: (customerLng === null || customerLng === undefined || customerLng === '') ? null : (Number(customerLng) || null),
-    city: String(city || '').trim(),
-    country: String(country || '').trim(),
+    customerAddress: savedDeliveryAddress?.address || String(address || '').trim() || 'Address not provided',
+    customerLat: (customerLat === null || customerLat === undefined || customerLat === '') ? (savedDeliveryAddress?.latitude ? (Number(savedDeliveryAddress.latitude) || null) : null) : (Number(customerLat) || null),
+    customerLng: (customerLng === null || customerLng === undefined || customerLng === '') ? (savedDeliveryAddress?.longitude ? (Number(savedDeliveryAddress.longitude) || null) : null) : (Number(customerLng) || null),
+    city: String(city || savedDeliveryAddress?.city || '').trim(),
+    country: String(country || savedDeliveryAddress?.country || '').trim(),
+    deliveryAddressId: deliveryAddressId || null,
     vendorId,
     vendorName: vendor?.name || 'Restaurant',
     riderId: riderId || null,
@@ -3737,6 +3758,8 @@ app.post('/api/orders', requireAuth, (req, res) => {
     paymentStatus,
     isPaid: paymentStatus === 'paid',
     paymentMethod: method,
+    paymentMethodId,
+    paymentId: null,
     deliveryMethod: deliveryMethod || 'delivery',
     specialInstructions: specialInstructions || '',
     createdAt: new Date().toISOString(),
@@ -3745,6 +3768,9 @@ app.post('/api/orders', requireAuth, (req, res) => {
   };
 
   db.orders.push(newOrder as any);
+
+  // Live order event for all participants (customer on other devices included).
+  broadcastOrderUpdate(newOrder as any);
 
   // Record a debit transaction for wallet payments (money actually left the wallet).
   if (paymentStatus === 'paid') {
@@ -3764,8 +3790,9 @@ app.post('/api/orders', requireAuth, (req, res) => {
 
   // Track gateway payments so verification can be matched back to the order.
   if (!['Wallet', 'OmniWallet', 'Cash on Delivery'].includes(method)) {
+    const payId = `pay-${uuidv4().slice(0, 8)}`;
     db.payments.push({
-      id: `pay-${uuidv4().slice(0, 8)}`,
+      id: payId,
       orderId,
       provider: method,
       amount: grandTotal,
@@ -3774,6 +3801,7 @@ app.post('/api/orders', requireAuth, (req, res) => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     });
+    (newOrder as any).paymentId = payId;
   }
 
   // Send Order Confirmation Email
@@ -4900,6 +4928,46 @@ app.get('/api/riders', (req, res) => {
     ));
   }
   return res.json(db.riders.map(r => publicRider(r)));
+});
+
+// Eligible dispatch riders for a customer booking. This is the single source of
+// truth for "who can deliver this order" — clients must never decide eligibility.
+// Rules mirror /api/orders/available + /api/orders/:id/assign-rider: rider must be
+// verified/approved, not suspended, online, available, and not at the active cap.
+// Proximity narrows the list only when both rider + query coordinates exist.
+app.get('/api/riders/eligible', (req, res) => {
+  const ACTIVE_CAP = 2;
+  const lat = req.query.lat !== undefined ? Number(req.query.lat) : null;
+  const lng = req.query.lng !== undefined ? Number(req.query.lng) : null;
+  const hasQueryCoords = Number.isFinite(lat) && Number.isFinite(lng);
+
+  const eligible = db.riders.filter((r: any) => {
+    if (r.status === 'OFFLINE' || !r.isOnline || !r.isAvailable) return false;
+    if (r.verificationStatus === 'rejected') return false;
+    const account = db.users.find((u: any) => u.id === r.userId);
+    if (!account || account.isApproved === false || account.isSuspended === true) return false;
+    const activeCount = db.orders.filter((o: any) =>
+      o.riderId === r.id && !['delivered', 'completed', 'cancelled', 'failed', 'refunded'].includes(o.status)
+    ).length;
+    if (activeCount >= ACTIVE_CAP) return false;
+    return true;
+  });
+
+  const list = eligible.map((r: any) => {
+    const dist = hasQueryCoords && Number.isFinite(Number(r.currentLat)) && Number.isFinite(Number(r.currentLng))
+      ? Math.round(distanceKm(lat!, lng!, Number(r.currentLat), Number(r.currentLng)) * 10) / 10
+      : null;
+    return { ...publicRider(r), distanceKm: dist };
+  });
+
+  const nearby = list.filter((x: any) => {
+    if (!hasQueryCoords) return true;
+    if (x.distanceKm == null) return true;
+    const radius = Number(x.availableRadius) || 25;
+    return x.distanceKm <= radius;
+  }).sort((a: any, b: any) => (a.distanceKm ?? Number.MAX_SAFE_INTEGER) - (b.distanceKm ?? Number.MAX_SAFE_INTEGER));
+
+  res.json(nearby);
 });
 
 // Single rider record (owner/admin see full record, others get the sanitized shape)
@@ -6919,6 +6987,11 @@ function validatePlatformSettings(updates: any): { errors: string[]; sanitized: 
     const fee = Number(updates.platformFee);
     if (!Number.isFinite(fee) || fee < 0) errors.push('Platform fee must be a non-negative number.');
     else out.platformFee = Math.round(fee * 100) / 100;
+  }
+  if ('taxRate' in updates) {
+    const rate = Number(updates.taxRate);
+    if (!Number.isFinite(rate) || rate < 0 || rate > 100) errors.push('Tax rate must be a number between 0 and 100.');
+    else out.taxRate = Math.round(rate * 100) / 100;
   }
   if ('supportEmail' in updates) {
     const email = String(updates.supportEmail || '').trim();

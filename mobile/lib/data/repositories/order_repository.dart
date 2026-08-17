@@ -49,12 +49,14 @@ class OrderRepository {
     required String paymentMethod,
     String deliveryMethod = 'delivery',
     String? address,
+    String? deliveryAddressId,
+    String? paymentMethodId,
     String? specialInstructions,
     String? couponCode,
-    double? customerLat,
-    double? customerLng,
-    double? vendorLat,
-    double? vendorLng,
+    num? customerLat,
+    num? customerLng,
+    num? vendorLat,
+    num? vendorLng,
   }) async {
     final payload = {
       'items': items.map((i) => i.toOrderPayload()).toList(),
@@ -63,6 +65,10 @@ class OrderRepository {
       'paymentMethod': paymentMethod,
       'deliveryMethod': deliveryMethod,
       if (address != null && address.isNotEmpty) 'address': address,
+      if (deliveryAddressId != null && deliveryAddressId.isNotEmpty)
+        'deliveryAddressId': deliveryAddressId,
+      if (paymentMethodId != null && paymentMethodId.isNotEmpty)
+        'paymentMethodId': paymentMethodId,
       if (specialInstructions != null && specialInstructions.isNotEmpty)
         'specialInstructions': specialInstructions,
       if (couponCode != null && couponCode.isNotEmpty) 'couponCode': couponCode,

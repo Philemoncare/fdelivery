@@ -290,10 +290,14 @@ export function VendorOrdersPage() {
                        <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">ASSIGNED RIDER</h4>
                        {orders.find(o => o.id === selectedOrderId)?.riderId ? (
                          <div className="flex items-center gap-3">
-                            <img src={orders.find(o => o.id === selectedOrderId)?.dispatchRider?.avatar || 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=100'} className="w-10 h-10 rounded-full object-cover" />
+                            <div className="w-10 h-10 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-black text-sm shrink-0">
+                              {(orders.find(o => o.id === selectedOrderId)?.dispatchRider?.name || '?').charAt(0).toUpperCase()}
+                            </div>
                             <div>
-                               <p className="text-xs font-bold">{orders.find(o => o.id === selectedOrderId)?.dispatchRider?.name || 'Assigned Rider'}</p>
-                               <p className="text-[10px] text-gray-500">{orders.find(o => o.id === selectedOrderId)?.dispatchRider?.vehicleNumber || 'GHA-001'}</p>
+                               <p className="text-xs font-bold">{orders.find(o => o.id === selectedOrderId)?.dispatchRider?.name || 'Rider assigned'}</p>
+                               {orders.find(o => o.id === selectedOrderId)?.dispatchRider?.vehicleNumber ? (
+                                 <p className="text-[10px] text-gray-500">{orders.find(o => o.id === selectedOrderId)?.dispatchRider?.vehicleNumber}</p>
+                               ) : null}
                             </div>
                          </div>
                        ) : (
@@ -427,13 +431,13 @@ export function VendorKitchenStatusPage() {
                 <div className="space-y-2">
                   {o.items.map((it, i) => (
                     <div key={i} className="flex justify-between text-xs font-medium">
-                      <span className="text-gray-600 dark:text-gray-400">{it.quantity}x {it.productName || 'Meal'}</span>
-                      <span className="text-gray-400">{o.estimatedDeliveryTime || '25m'}</span>
+                      <span className="text-gray-600 dark:text-gray-400">{it.quantity}x {it.productName || 'Item'}</span>
+                      <span className="text-gray-400">{o.estimatedDeliveryTime || '—'}</span>
                     </div>
                   ))}
                 </div>
                 <div className="pt-4 border-t border-gray-50 dark:border-slate-800 flex items-center justify-between">
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Prep Load: High</p>
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{String(o.status || 'Pending').replace(/_/g, ' ')}</p>
                   <Button size="sm" className="rounded-xl bg-emerald-600 hover:bg-emerald-700 font-black text-[9px] uppercase h-9 px-4" onClick={() => updateOrderStatus(o.id, 'ready_for_pickup')}>MARK READY</Button>
                 </div>
               </Card>

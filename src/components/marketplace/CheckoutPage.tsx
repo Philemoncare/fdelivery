@@ -24,9 +24,9 @@ import {
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
-import { VendorService, PaymentService } from '@/src/services/api';
+import { VendorService, PaymentService, RiderService } from '@/src/services/api';
 import { LocationSearch } from '../common/LocationSearch';
-import type { DeliveryLocation } from '@/src/types';
+import type { DeliveryLocation, DispatchRider } from '@/src/types';
 
 export const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
@@ -69,6 +69,7 @@ export const CheckoutPage: React.FC = () => {
   const [placedOrder, setPlacedOrder] = useState<any>(null);
   const [gateways, setGateways] = useState<any[]>([]);
   const [gatewaysLoaded, setGatewaysLoaded] = useState(false);
+  const [eligibleRiders, setEligibleRiders] = useState<DispatchRider[]>([]);
   const submitLockRef = useRef(false);
 
   // Vendor availability state: 'checking' | 'available' | 'unavailable' | 'unknown'
@@ -98,15 +99,28 @@ export const CheckoutPage: React.FC = () => {
       .filter((g: any) => g.configured && g.enabled)
       .map((g: any) => {
         const key = String((g.id || '') + ' ' + (g.name || '')).toLowerCase();
-        if (/wallet|omni/.test(key)) return { value: 'OmniWallet', label: `${t('nav.wallet')} (${formatPrice(customerProfile?.walletBalance ?? 0)})`, icon: <Wallet className="w-5 h-5" />, color: 'bg-emerald-600' };
-        if (/cod|cash on delivery/.test(key)) return { value: 'Cash on Delivery', label: t('common.paymentCash'), icon: <Smartphone className="w-5 h-5" />, color: 'bg-gray-700' };
-        if (/mtn/.test(key)) return { value: 'MTN MoMo', label: 'MTN Mobile Money', icon: 'MoMo', color: 'bg-amber-400' };
-        if (/telecel|vodafone/.test(key)) return { value: 'Telecel Cash', label: 'Telecel Cash', icon: 'Cash', color: 'bg-red-600' };
-        if (/airteltigo/.test(key)) return { value: 'AirtelTigo Money', label: 'AirtelTigo Money', icon: 'M', color: 'bg-blue-600' };
-        if (/card|visa|mastercard/.test(key)) return { value: g.id, label: `Bank Card (${g.name})`, icon: <CreditCard className="w-5 h-5" />, color: 'bg-blue-800' };
-        return { value: g.id, label: g.name, icon: <CreditCard className="w-5 h-5" />, color: 'bg-blue-800' };
+        if (/wallet|omni/.test(key)) return { value: 'OmniWallet', gatewayId: g.id, label: `${t('nav.wallet')} (${formatPrice(customerProfile?.walletBalance ?? 0)})`, icon: <Wallet className="w-5 h-5" />, color: 'bg-emerald-600' };
+        if (/cod|cash on delivery/.test(key)) return { value: 'Cash on Delivery', gatewayId: g.id, label: t('common.paymentCash'), icon: <Smartphone className="w-5 h-5" />, color: 'bg-gray-700' };
+        if (/mtn/.test(key)) return { value: 'MTN MoMo', gatewayId: g.id, label: 'MTN Mobile Money', icon: 'MoMo', color: 'bg-amber-400' };
+        if (/telecel|vodafone/.test(key)) return { value: 'Telecel Cash', gatewayId: g.id, label: 'Telecel Cash', icon: 'Cash', color: 'bg-red-600' };
+        if (/airteltigo/.test(key)) return { value: 'AirtelTigo Money', gatewayId: g.id, label: 'AirtelTigo Money', icon: 'M', color: 'bg-blue-600' };
+        if (/card|visa|mastercard/.test(key)) return { value: g.id, gatewayId: g.id, label: `Bank Card (${g.name})`, icon: <CreditCard className="w-5 h-5" />, color: 'bg-blue-800' };
+        return { value: g.id, gatewayId: g.id, label: g.name, icon: <CreditCard className="w-5 h-5" />, color: 'bg-blue-800' };
       });
   }, [gateways, t, formatPrice, customerProfile?.walletBalance ?? 0]);
+
+  // Gateways the server knows about but that are NOT ready (disabled and/or
+  // unconfigured). These stay visible but clearly unselectable so no client
+  // silently pretends they work — the backend also rejects them at checkout.
+  const unavailablePayments = useMemo(() => {
+    return (Array.isArray(gateways) ? gateways : [])
+      .filter((g: any) => !(g.configured && g.enabled))
+      .map((g: any) => ({
+        label: g.name || g.id,
+        reason: !g.configured ? 'Not configured' : 'Currently unavailable',
+        id: g.id,
+      }));
+  }, [gateways]);
 
   // Load the authoritative gateway list from the backend.
   useEffect(() => {
@@ -115,6 +129,30 @@ export const CheckoutPage: React.FC = () => {
       .catch(() => setGateways([]))
       .finally(() => setGatewaysLoaded(true));
   }, []);
+
+  // Server-computed eligible riders (verified/approved/non-suspended, online,
+  // available, under the active cap, and within radius when coords exist).
+  useEffect(() => {
+    if (deliveryMethod !== 'delivery') return;
+    let cancelled = false;
+    let lat: number | undefined;
+    let lng: number | undefined;
+    if (typeof deliveryLocation?.latitude === 'number' && typeof deliveryLocation?.longitude === 'number') {
+      lat = deliveryLocation.latitude;
+      lng = deliveryLocation.longitude;
+    }
+    RiderService.getEligible(lat, lng)
+      .then(list => { if (!cancelled) setEligibleRiders(Array.isArray(list) ? list : []); })
+      .catch(() => { if (!cancelled) setEligibleRiders([]); });
+    return () => { cancelled = true; };
+  }, [deliveryMethod, deliveryLocation?.latitude, deliveryLocation?.longitude]);
+
+  // Eligible list is authoritative; fall back to a client-side filter only if
+  // the endpoint is unreachable so the checkout still renders.
+  const activeRiders = useMemo(() => {
+    if (eligibleRiders.length) return eligibleRiders;
+    return riders.filter(r => r.isOnline && r.isAvailable);
+  }, [eligibleRiders, riders]);
 
   // Default the payment method to the first server-available option.
   useEffect(() => {
@@ -134,18 +172,16 @@ export const CheckoutPage: React.FC = () => {
   React.useEffect(() => {
     if (!deliveryLocation && customerProfile?.addresses?.length) {
       const def = customerProfile.addresses.find(a => a.isDefault) || customerProfile.addresses[0];
-      setDeliveryLocation({ address: def.address, area: def.address, city: def.city, latitude: def.latitude, longitude: def.longitude, source: 'saved' });
+      setDeliveryLocation({ address: def.address, area: def.address, city: def.city, latitude: def.latitude, longitude: def.longitude, source: 'saved', deliveryAddressId: def.id });
     }
   }, [customerProfile, deliveryLocation]);
 
-  // Default rider
+  // Default rider — the backend-eligible pool decides who can actually take it.
   React.useEffect(() => {
-    if (deliveryMethod === 'delivery' && riders.length && !selectedRider) {
-      const available = riders.filter(r => r.isOnline && r.isAvailable);
-      if (available.length) setSelectedRider(available[0]);
-      else setSelectedRider(riders[0]);
+    if (deliveryMethod === 'delivery' && activeRiders.length && !selectedRider) {
+      setSelectedRider(activeRiders[0]);
     }
-  }, [deliveryMethod, riders, selectedRider, setSelectedRider]);
+  }, [deliveryMethod, activeRiders, selectedRider, setSelectedRider]);
 
   if (isLoading || !customerProfile) {
     return <div className="min-h-[60vh] flex items-center justify-center">
@@ -204,6 +240,8 @@ export const CheckoutPage: React.FC = () => {
         customerLng: deliveryLocation?.longitude,
         city: deliveryLocation?.city,
         country: deliveryLocation?.region,
+        deliveryAddressId: deliveryLocation?.deliveryAddressId || null,
+        paymentMethodId: availablePayments.find(p => p.value === paymentMethod)?.gatewayId || null,
         location: deliveryLocation,
       });
       setPlacedOrder(order);
@@ -281,8 +319,6 @@ export const CheckoutPage: React.FC = () => {
       </div>
     );
   }
-
-  const activeRiders = riders.filter(r => r.isOnline && r.isAvailable);
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-8 pb-32">
@@ -386,6 +422,7 @@ export const CheckoutPage: React.FC = () => {
                           latitude: a.latitude,
                           longitude: a.longitude,
                           source: 'saved' as const,
+                          deliveryAddressId: a.id,
                         }))}
                         allowSave
                         onSave={async (loc) => {
@@ -488,6 +525,25 @@ export const CheckoutPage: React.FC = () => {
                     ))
                   )}
                 </div>
+
+                {unavailablePayments.length > 0 && (
+                  <div className="space-y-2 pt-2">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Not currently available</p>
+                    {unavailablePayments.map((u) => (
+                      <div key={u.id} aria-disabled="true"
+                        className="p-4 rounded-[1.5rem] border-2 border-dashed border-gray-200 dark:border-slate-700 flex items-center gap-4 opacity-60 select-none">
+                        <div className="w-10 h-10 rounded-2xl bg-gray-100 dark:bg-slate-800 flex items-center justify-center text-gray-400 shrink-0">
+                          <CreditCard className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] font-black text-gray-500 uppercase tracking-tight">{u.label}</p>
+                          <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">{u.reason}</p>
+                        </div>
+                        <Badge variant="outline" className="text-[8px] font-black uppercase border-gray-200 text-gray-400">Unavailable</Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 <div className="p-5 rounded-2xl bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/40 flex items-start gap-4">
                   <ShieldCheck className="w-6 h-6 text-blue-500 flex-shrink-0" />

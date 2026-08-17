@@ -1285,16 +1285,26 @@ export function CustomerProfilePage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between text-xs font-bold">
                 <span className="text-gray-500">Email Verification</span>
-                <Badge variant="success" className="text-[9px] font-black px-2">VERIFIED</Badge>
+                {customerProfile.isEmailVerified ? (
+                  <Badge variant="success" className="text-[9px] font-black px-2">VERIFIED</Badge>
+                ) : (
+                  <Badge variant="warning" className="text-[9px] font-black px-2">NOT VERIFIED</Badge>
+                )}
               </div>
               <div className="flex items-center justify-between text-xs font-bold">
                 <span className="text-gray-500">Phone Verification</span>
-                <Badge variant="success" className="text-[9px] font-black px-2">VERIFIED</Badge>
+                {customerProfile.isPhoneVerified ? (
+                  <Badge variant="success" className="text-[9px] font-black px-2">VERIFIED</Badge>
+                ) : (
+                  <Badge variant="warning" className="text-[9px] font-black px-2">NOT VERIFIED</Badge>
+                )}
               </div>
-              <div className="flex items-center justify-between text-xs font-bold">
-                <span className="text-gray-500">Ghana Card (ID)</span>
-                <Badge variant="warning" className="text-[9px] font-black px-2">NOT VERIFIED</Badge>
-              </div>
+              {(customerProfile as any).idVerified ? (
+                <div className="flex items-center justify-between text-xs font-bold">
+                  <span className="text-gray-500">Ghana Card (ID)</span>
+                  <Badge variant="success" className="text-[9px] font-black px-2">VERIFIED</Badge>
+                </div>
+              ) : null}
             </div>
             <Button variant="outline" className="w-full rounded-2xl text-[10px] font-black h-12 border-gray-100 hover:border-emerald-500 hover:text-emerald-500 transition-all uppercase tracking-widest">Upgrade to Premium</Button>
           </Card>
