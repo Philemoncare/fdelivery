@@ -9,7 +9,7 @@ import {
 import { useApp } from '@/src/context/AppContext';
 import { useAuth } from '@/src/lib/auth/auth-store';
 import { LocationSearch } from '@/src/components/common/LocationSearch';
-import { OrderService, PaymentService } from '@/src/services/api';
+import { OrderService, PaymentService, RiderService } from '@/src/services/api';
 import { cn } from '@/src/lib/utils';
 import type { DispatchRider, Order, DeliveryLocation, PackageQuote, Address } from '@/src/types';
 import { useNavigate } from 'react-router-dom';
@@ -96,6 +96,7 @@ export function DeliverSomethingPage() {
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [created, setCreated] = useState<Order | null>(null);
   const [selectedRiderId, setSelectedRiderId] = useState<string | null>(null);
+  const [eligibleRiders, setEligibleRiders] = useState<DispatchRider[]>([]);
   const submittingRef = useRef(false);
 
   const [pickup, setPickup] = useState<DeliveryLocation | null>(null);
@@ -118,6 +119,14 @@ export function DeliverSomethingPage() {
     || customerProfile?.location?.address
     || customerProfile?.address
     || '';
+
+  useEffect(() => {
+    let cancelled = false;
+    RiderService.getEligible(dropoff?.latitude, dropoff?.longitude)
+      .then(list => { if (!cancelled) setEligibleRiders(Array.isArray(list) ? list : []); })
+      .catch(() => { if (!cancelled) setEligibleRiders([]); });
+    return () => { cancelled = true; };
+  }, [dropoff?.latitude, dropoff?.longitude]);
 
   useEffect(() => {
     if (!pickup && defaultAddress) {
@@ -153,7 +162,7 @@ export function DeliverSomethingPage() {
     [customerProfile?.addresses]
   );
 
-  const selectedRider = riders.find(r => r.id === selectedRiderId) || null;
+  const selectedRider = eligibleRiders.find(r => r.id === selectedRiderId) || null;
 
   // ---- Quote (server-authoritative, debounced) ----
   const [quote, setQuote] = useState<PackageQuote | null>(null);
@@ -926,7 +935,7 @@ export function DeliverSomethingPage() {
                     <span className="font-black text-gray-900 dark:text-white">{t('deliver.letDispatchMatch')}</span>
                     <span className="block text-[10px] text-gray-400 font-medium mt-0.5">{t('deliver.fastestRider')}</span>
                   </button>
-                  {riders.filter(r => r.isAvailable !== false && r.status !== 'OFFLINE').slice(0, 5).map(rider => (
+                  {eligibleRiders.slice(0, 5).map(rider => (
                     <button
                       key={rider.id}
                       onClick={() => setSelectedRiderId(rider.id)}
@@ -941,7 +950,7 @@ export function DeliverSomethingPage() {
                           <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{rider.name}</p>
                           <p className="text-[9px] text-gray-400 font-bold uppercase">{rider.vehicleType} · {rider.vehicleNumber}</p>
                         </div>
-                        <span className="text-[11px] text-amber-500 font-black flex items-center gap-1 shrink-0"><Star className="w-3 h-3 fill-current" /> {rider.rating || '4.8'}</span>
+                        <span className="text-[11px] text-amber-500 font-black flex items-center gap-1 shrink-0"><Star className="w-3 h-3 fill-current" /> {rider.rating != null ? rider.rating : '—'}</span>
                       </div>
                     </button>
                   ))}

@@ -249,7 +249,38 @@ export const CheckoutPage: React.FC = () => {
       setStep(3); // Move to Success Step
       window.scrollTo(0, 0);
     } catch (err: any) {
-      showToast('error', t('checkout.orderFailed'), err.message || 'Could not process your order.');
+      // Developers get the full diagnostic in the console; customers get a safe,
+      // category-specific message. Server 4xx messages are already customer-safe
+      // and specific (e.g. "Insufficient wallet balance") and are shown as-is.
+      console.error('[Checkout] Order creation failed', {
+        status: err?.status ?? null,
+        message: err?.message ?? 'Unknown error',
+        endpoint: '/api/orders',
+        paymentMethod,
+        deliveryMethod,
+        vendorId,
+        items: cart.map(i => ({ productId: i.product.id, qty: i.quantity })),
+      });
+      const status = err?.status ?? 0;
+      const isTimeout = err?.name === 'AbortError' || !!err?.isTimeout;
+      let message: string;
+      if (isTimeout || status === 0) {
+        message = t('checkout.networkError');
+      } else if (status >= 500) {
+        message = t('checkout.serverError');
+      } else if (status === 401 || status === 403) {
+        message = t('checkout.authError');
+      } else if (status === 402 || (err?.message ?? '').toLowerCase().includes('insufficient')) {
+        message = err?.message || t('checkout.serverError');
+      } else if (status === 400 && /payment method|not configured|currently disabled/i.test(err?.message ?? '')) {
+        message = t('checkout.paymentUnavailable');
+      } else if (status === 422 && /address/i.test(err?.message ?? '')) {
+        message = t('checkout.invalidAddress');
+      } else {
+        // Remaining 4xx validation failures carry safe, specific server messages.
+        message = err?.message || t('checkout.serverError');
+      }
+      showToast('error', t('checkout.orderFailed'), message);
     } finally {
       setIsSubmitting(false);
       submitLockRef.current = false;
@@ -554,7 +585,7 @@ export const CheckoutPage: React.FC = () => {
               <div className="flex gap-3">
                  <Button variant="outline" className="rounded-2xl py-8 px-8 font-black uppercase text-xs tracking-widest border-gray-200" onClick={() => setStep(1)}>{t('common.back')}</Button>
                  <Button className="flex-1 rounded-2xl py-8 bg-emerald-500 hover:bg-emerald-600 text-white font-black uppercase tracking-[0.2em] text-xs shadow-xl shadow-emerald-500/20" onClick={handlePlaceOrder} disabled={isSubmitting || availability === 'checking' || availability === 'unavailable' || !paymentMethod}>
-                   {isSubmitting ? t('common.loading') : availability === 'checking' ? t('checkout.checkingAvailability') : t('checkout.placeOrder')}
+                   {isSubmitting ? t('checkout.placingOrder') : availability === 'checking' ? t('checkout.checkingAvailability') : t('checkout.placeOrder')}
                  </Button>
               </div>
             </>

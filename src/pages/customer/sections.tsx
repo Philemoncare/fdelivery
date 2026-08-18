@@ -1106,11 +1106,11 @@ export function CustomerMessagesPage() {
               return (
                 <div key={chat.id} onClick={() => loadMessages(chat.id)} className={cn("p-4 rounded-2xl flex items-center gap-3 cursor-pointer transition-all mb-1 hover:bg-emerald-50 dark:hover:bg-emerald-950/20", selectedConvId === chat.id && "bg-emerald-50 dark:bg-emerald-950/20 ring-1 ring-emerald-500/20")}>
                   <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white font-bold shadow-md overflow-hidden">
-                    {partner?.avatar ? <img src={partner.avatar} className="w-full h-full object-cover" /> : (partner?.name?.charAt(0) || 'U')}
+                    {partner?.avatar ? <img src={partner.avatar} className="w-full h-full object-cover" /> : (partner?.name ? partner.name.charAt(0) : '?')}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-center mb-0.5">
-                      <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{partner?.name || chat.subject || 'User'}</p>
+                      <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{partner?.name || chat.subject || t('msg.unknownParticipant')}</p>
                       <span className="text-[9px] text-gray-400">{chat.lastMessageAt ? new Date(chat.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
                     </div>
                     <p className="text-[10px] text-gray-500 dark:text-gray-400 line-clamp-1">{chat.lastMessage || t('msg.emptyDesc')}</p>

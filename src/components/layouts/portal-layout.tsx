@@ -337,7 +337,7 @@ export function PortalLayout({ config }: { config: PortalConfig }) {
         )}
 
         {/* Page content */}
-        <main className={cn('px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-24 flex-1 w-full min-w-0', !hideSidebar && 'lg:pb-8')}>
+        <main className={cn('mx-auto w-full max-w-[1720px] px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-24 flex-1 min-w-0', !hideSidebar && 'lg:pb-8')}>
           <Outlet />
         </main>
 

@@ -2046,7 +2046,7 @@ export function RiderMessagesPage() {
                </div>
             ) : filteredChats.map(chat => {
               const partner = chat.participants && chat.participants.find((p: any) => p.id !== user?.id);
-              const partnerName = partner?.name || chat.subject || 'User';
+              const partnerName = partner?.name || chat.subject || 'Unknown participant';
               const partnerInitials = getInitials(partnerName);
               const order = orderOfChat(chat);
 

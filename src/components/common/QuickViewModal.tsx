@@ -204,10 +204,10 @@ export const QuickViewModal: React.FC = () => {
               <Truck className="w-5 h-5 text-emerald-600 flex-shrink-0" />
               <div>
                 <p className="font-bold text-gray-900 dark:text-white">
-                  {t('quickView.expressRider')}: {selectedRider?.etaMinutes || 15} {t('common.eta')}
+                  {t('quickView.expressRider')}: {selectedRider?.etaMinutes != null ? `${selectedRider.etaMinutes} ${t('common.eta')}` : t('quickView.etaUnavailable')}
                 </p>
                 <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                  {t('quickView.dispatchedBy')} {selectedRider?.name || t('deliver.fastestRider')} ({selectedRider?.vehicleType || 'Motorcycle'})
+                  {t('quickView.dispatchedBy')} {selectedRider?.name || t('deliver.fastestRider')}{selectedRider?.vehicleType ? ` (${selectedRider.vehicleType})` : ''}
                 </p>
               </div>
             </div>

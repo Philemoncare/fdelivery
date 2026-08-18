@@ -166,6 +166,12 @@ const en: Dictionary = {
   'checkout.nearbyFleet': 'Nearby Fleet Only',
   'checkout.secureNotice': 'Transactions are processed securely in Ghana Cedis (GH₵). Your payment data is never stored on our servers.',
   'checkout.etaNotice': 'Estimated delivery time is 35-45 minutes. Our dispatch riders prioritize safety first.',
+  'checkout.placingOrder': 'Placing order…',
+  'checkout.serverError': 'We couldn’t place your order right now. Please try again.',
+  'checkout.networkError': 'Connection problem. Please check your internet connection.',
+  'checkout.authError': 'Your session has expired. Please sign in again and retry your order.',
+  'checkout.paymentUnavailable': 'The selected payment method is currently unavailable. Please choose another.',
+  'checkout.invalidAddress': 'Please select a valid delivery address.',
 
   // --- Deliver Something / Parcel ---
   'deliver.title': 'Deliver Something',
@@ -340,6 +346,7 @@ const en: Dictionary = {
   'msg.rider': 'Rider',
   'msg.search': 'Search chats...',
   'msg.noChats': 'No chats',
+  'msg.unknownParticipant': 'Unknown participant',
   'msg.empty': 'Select a conversation',
   'msg.emptyDesc': 'Choose a chat to view message history and talk to your restaurant or rider.',
   'msg.typePlaceholder': 'Type a message...',
@@ -545,6 +552,7 @@ const en: Dictionary = {
   'quickView.orderNow': 'Order Now with Express Rider',
   'quickView.expressRider': 'Express Rider ETA',
   'quickView.dispatchedBy': 'Dispatched by',
+  'quickView.etaUnavailable': 'ETA unavailable — rider not yet assigned',
 
   // --- Become Partner ---
   'partner.vendor.title': 'Partner With OmniMarket to Reach More Food Lovers',
@@ -976,6 +984,7 @@ const fr: Dictionary = {
   'msg.rider': 'Coursier',
   'msg.search': 'Rechercher des discussions...',
   'msg.noChats': 'Aucune discussion',
+  'msg.unknownParticipant': 'Participant inconnu',
   'msg.empty': 'Sélectionnez une conversation',
   'msg.emptyDesc': 'Choisissez une discussion pour voir l\'historique des messages et parler à votre restaurant ou coursier.',
   'msg.typePlaceholder': 'Tapez un message...',
@@ -1181,6 +1190,7 @@ const fr: Dictionary = {
   'quickView.orderNow': 'Commander maintenant avec coursier express',
   'quickView.expressRider': 'Arrivée prévue coursier express',
   'quickView.dispatchedBy': 'Expédié par',
+  'quickView.etaUnavailable': 'Délai indisponible — coursier non assigné',
 
   // --- Become Partner ---
   'partner.vendor.title': 'Devenez partenaire d\'OmniMarket pour toucher plus de gourmets',
@@ -1612,6 +1622,7 @@ const es: Dictionary = {
   'msg.rider': 'Repartidor',
   'msg.search': 'Buscar chats...',
   'msg.noChats': 'Sin chats',
+  'msg.unknownParticipant': 'Participante desconocido',
   'msg.empty': 'Selecciona una conversación',
   'msg.emptyDesc': 'Elige un chat para ver el historial de mensajes y hablar con tu restaurante o repartidor.',
   'msg.typePlaceholder': 'Escribe un mensaje...',
@@ -1817,6 +1828,7 @@ const es: Dictionary = {
   'quickView.orderNow': 'Pedir ahora con repartidor express',
   'quickView.expressRider': 'ETA del repartidor express',
   'quickView.dispatchedBy': 'Despachado por',
+  'quickView.etaUnavailable': 'ETA no disponible — repartidor aún no asignado',
 
   // --- Become Partner ---
   'partner.vendor.title': 'Asóciese con OmniMarket para llegar a más amantes de la comida',
@@ -2248,6 +2260,7 @@ const de: Dictionary = {
   'msg.rider': 'Kurier',
   'msg.search': 'Chats suchen...',
   'msg.noChats': 'Keine Chats',
+  'msg.unknownParticipant': 'Unbekannter Teilnehmer',
   'msg.empty': 'Wählen Sie eine Konversation',
   'msg.emptyDesc': 'Wählen Sie einen Chat, um den Verlauf zu sehen und mit dem Restaurant oder Kurier zu sprechen.',
   'msg.typePlaceholder': 'Nachricht schreiben...',
@@ -2453,6 +2466,7 @@ const de: Dictionary = {
   'quickView.orderNow': 'Jetzt mit Express-Kurier bestellen',
   'quickView.expressRider': 'Express-Kurier Ankunft',
   'quickView.dispatchedBy': 'Versandt durch',
+  'quickView.etaUnavailable': 'Ankunft nicht verfügbar — Kurier noch nicht zugewiesen',
 
   // --- Become Partner ---
   'partner.vendor.title': 'Partner werden und mehr Feinschmecker erreichen',
@@ -2884,6 +2898,7 @@ const zhCN: Dictionary = {
   'msg.rider': '骑手',
   'msg.search': '搜索聊天...',
   'msg.noChats': '无聊天记录',
+  'msg.unknownParticipant': '未知参与者',
   'msg.empty': '选择一个对话',
   'msg.emptyDesc': '选择一个聊天以查看消息历史并与餐厅或骑手沟通。',
   'msg.typePlaceholder': '输入消息...',
@@ -3089,6 +3104,7 @@ const zhCN: Dictionary = {
   'quickView.orderNow': '立即使用极速骑手订购',
   'quickView.expressRider': '极速骑手预计到达时间',
   'quickView.dispatchedBy': '派遣方',
+  'quickView.etaUnavailable': '预计时间不可用 — 骑手尚未分配',
 
   // --- Become Partner ---
   'partner.vendor.title': '与 OmniMarket 合作，接触更多美食爱好者',
@@ -3520,6 +3536,7 @@ const ar: Dictionary = {
   'msg.rider': 'مندوب',
   'msg.search': 'البحث في الدردشات...',
   'msg.noChats': 'لا توجد دردشات',
+  'msg.unknownParticipant': 'مشارك غير معروف',
   'msg.empty': 'اختر محادثة',
   'msg.emptyDesc': 'اختر دردشة لعرض تاريخ الرسائل والتحدث مع المطعم أو المندوب.',
   'msg.typePlaceholder': 'اكتب رسالة...',
@@ -3725,6 +3742,7 @@ const ar: Dictionary = {
   'quickView.orderNow': 'اطلب الآن مع مندوب سريع',
   'quickView.expressRider': 'وقت وصول المندوب السريع',
   'quickView.dispatchedBy': 'مرسل بواسطة',
+  'quickView.etaUnavailable': 'وقت الوصول غير متاح — لم يتم تعيين المندوب بعد',
 
   // --- Become Partner ---
   'partner.vendor.title': 'كن شريكاً مع أومني ماركت لتصل إلى المزيد من عشاق الطعام',

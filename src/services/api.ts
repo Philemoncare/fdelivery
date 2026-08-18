@@ -450,6 +450,9 @@ export const LocationService = {
 
 export const AdminService = {
   getStats: () => request<any>('/admin/stats'),
+  getOrders: () => request<any[]>('/orders'),
+  getWallets: () => request<any[]>('/wallets'),
+  getEmailLog: () => request<any[]>('/email-log'),
   getUsers: () => request<any[]>('/users'),
   getUser: (id: string) => request<any>(`/users/${id}`),
   updateUser: (id: string, data: any) => request<any>(`/users/${id}`, {
@@ -640,4 +643,20 @@ export const AdminService = {
   runSystemHealthCheck: () => request<any>('/admin/system/check', { method: 'POST' }),
   getPaymentOverview: () => request<any>('/admin/payments/overview'),
   getNotificationSummary: () => request<any>('/admin/notifications/summary'),
+  // ---- Security Center (server-backed event feed) ----
+  getSecurityOverview: () => request<any>('/security/overview'),
+  getSecurityEvents: (params?: any) => {
+    const q = new URLSearchParams(params || {}).toString();
+    return request<{ items: any[]; total: number; totalPages: number; page: number; pageSize: number }>(`/security/events${q ? `?${q}` : ''}`);
+  },
+  getSecurityEvent: (id: string) => request<any>(`/security/events/${id}`),
+  respondSecurityEvent: (id: string, action: string, note?: string, password?: string) => request<any>(`/security/events/${id}/respond`, {
+    method: 'POST',
+    body: JSON.stringify({ action, note, ...(password ? { password } : {}) })
+  }),
+  resolveSecurityEvent: (id: string, note?: string, password?: string) => request<any>(`/security/events/${id}/resolve`, {
+    method: 'POST',
+    body: JSON.stringify({ note, ...(password ? { password } : {}) })
+  }),
+  getSecuritySettings: () => request<any>('/security/settings'),
 };

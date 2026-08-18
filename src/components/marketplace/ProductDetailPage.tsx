@@ -154,10 +154,12 @@ export const ProductDetailPage: React.FC = () => {
             <div className="flex flex-wrap items-center gap-4 text-xs font-bold text-gray-500">
               <div className="flex items-center gap-1.5 text-amber-500 bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 rounded-xl">
                 <Star className="w-4 h-4 fill-current" />
-                <span>{product.rating || '4.8'}</span>
+                <span>{product.rating != null ? product.rating : '—'}</span>
                 <span className="text-gray-400 font-medium">({product.reviewsCount} {t('product.reviews')})</span>
               </div>
-              <span className="flex items-center gap-1.5"><Clock className="w-4 h-4 text-emerald-500" /> {product.prepTime || "~15 mins"}</span>
+              {product.prepTime ? (
+                <span className="flex items-center gap-1.5"><Clock className="w-4 h-4 text-emerald-500" /> {product.prepTime}</span>
+              ) : null}
               <span className="flex items-center gap-1.5 text-emerald-600"><CheckCircle2 className="w-4 h-4" /> {t('common.inStock')} ({product.stock})</span>
             </div>
           </div>

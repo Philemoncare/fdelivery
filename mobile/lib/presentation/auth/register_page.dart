@@ -47,7 +47,7 @@ class _RegisterPageState extends State<RegisterPage> {
     final app = ServiceLocator.instance.app;
     final name = _name.text.trim();
     final nameParts = name.split(RegExp(r'\s+'));
-    final firstName = nameParts.isNotEmpty ? nameParts.first : 'User';
+    final firstName = nameParts.isNotEmpty ? nameParts.first : '';
     final lastName = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '';
 
     final payload = <String, dynamic>{

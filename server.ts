@@ -92,7 +92,12 @@ app.use((req: express.Request, res: express.Response, next: express.NextFunction
     return res.status(413).json({ success: false, message: 'Request payload is invalid.' });
   }
   const query = (req as any).query || {};
-  if (detectHostileValue(query) || (req.body && detectHostileValue(req.body))) {
+  // Query strings get the full scan (SQL + XSS); request bodies are checked for
+  // script/XSS markers only so legitimate data (data-URI images, addresses,
+  // prose) never trips an over-broad blacklist.
+  const hostileQuery = detectHostileValue(query, true);
+  const hostileBody = detectHostileValue(req.body || {}, false);
+  if (hostileQuery || hostileBody) {
     const kind = /<\/?script|<svg|javascript:/i.test(JSON.stringify(query) + JSON.stringify(req.body || {})) ? 'XSS_ATTACK_ATTEMPT' : 'SQL_INJECTION_ATTEMPT';
     recordSecurityEvent({
       type: kind, severity: 'CRITICAL',
@@ -310,6 +315,11 @@ let db = {
     defaultCommissionRate: 10,
     defaultDeliveryFee: 3,
     distanceFeePerKm: 0,
+    deliveryBaseFee: 3,
+    deliveryMinFee: 3,
+    deliveryMaxFee: 20,
+    freeDeliveryThreshold: 0,
+    maxDeliveryDistance: 20,
     platformFee: 0,
     taxRate: 5,
     vendorApprovalMode: 'manual',
@@ -1056,11 +1066,18 @@ function sanitizeJsonValue(value: any, depth: number): any {
 // Injection/XSS-style attempt detection (treats the JSON store as the data
 // layer, so we detect hostile payloads structurally rather than relying on any
 // blacklist as protection — there is no string-concatenated query to exploit).
-const INJECTION_PAT = /(\b(select|union|insert|update|delete|drop|alter|truncate|exec|execute|from|--|;)\b)|%00|<\/script>|<script|<svg|javascript:/i;
-function detectHostileValue(value: any): boolean {
-  if (typeof value === 'string') return INJECTION_PAT.test(value);
+// SQL-style markers (`select`, `from`, `;`, `--`) are only meaningful on query
+// strings (they get logged/reflected). Scanning request BODIES for them causes
+// false positives on legitimate data — data-URIs contain `;`, addresses and
+// menu prose contain words like `from`/`select` — which broke checkout payloads
+// (a product image is a `data:image/...;base64,...` string). Bodies are scanned
+// for script/XSS markers only; full SQL + XSS scanning stays on query strings.
+const XSS_PAT = /%00|<\/?script|<svg|javascript:/i;
+const SQL_PAT = /(\b(select|union|insert|update|delete|drop|alter|truncate|exec|execute|from|--|;)\b)|%00/i;
+function detectHostileValue(value: any, includeSql = false): boolean {
+  if (typeof value === 'string') return includeSql ? (SQL_PAT.test(value) || XSS_PAT.test(value)) : XSS_PAT.test(value);
   if (value && typeof value === 'object') {
-    return Object.values<any>(value).some(detectHostileValue);
+    return Object.values<any>(value).some((v) => detectHostileValue(v, includeSql));
   }
   return false;
 }
@@ -1356,6 +1373,8 @@ function stampOrderStatus(order: any, status: string) {
 
 // Ensure every order carries statusTimestamps/statusUpdatedAt (backfill for
 // records created before the fields existed) so clients render real timelines.
+// Also guarantees the embedded dispatchRider only ever exposes the sanitized
+// snapshot — legacy records that stored the full rider record never leak PII.
 function withStatusTimestamps(order: any) {
   if (!order) return order;
   if (!order.deliveryRef) order.deliveryRef = deliveryRefFor(order);
@@ -1363,6 +1382,7 @@ function withStatusTimestamps(order: any) {
   if (!order.statusTimestamps[order.status]) order.statusTimestamps[order.status] = order.statusUpdatedAt || order.updatedAt || order.createdAt;
   if (!order.statusUpdatedAt) order.statusUpdatedAt = order.statusTimestamps[order.status];
   order.deliveryStatus = deriveDeliveryStatus(order);
+  if (order.dispatchRider) order.dispatchRider = publicDispatchRider(order.dispatchRider);
   return order;
 }
 
@@ -1576,7 +1596,37 @@ function publicRider(r: any) {
     totalDeliveries: r.totalDeliveries,
     isOnline: r.isOnline,
     isAvailable: r.isAvailable,
-    status: r.status
+    status: r.status,
+    isVerified: !!r.isVerified,
+    verificationStatus: r.verificationStatus || (r.isVerified ? 'verified' : null)
+  };
+}
+
+/**
+ * Dispatch rider snapshot embedded on orders. Keeps only what customers and
+ * vendors need (name, avatar, vehicle, contact for delivery coordination) and
+ * strips personal/Security records (driver license, national id, live GPS,
+ * home contact, audit fields) so dispatchRider never leaks PII.
+ */
+function publicDispatchRider(r: any) {
+  if (!r) return r;
+  return {
+    id: r.id,
+    userId: r.userId,
+    name: r.name,
+    avatar: r.avatar,
+    vehicleType: r.vehicleType,
+    vehicleNumber: r.vehicleNumber,
+    phone: r.phone || '',
+    deliveryFee: r.deliveryFee,
+    rating: r.rating,
+    etaMinutes: r.etaMinutes,
+    totalDeliveries: r.totalDeliveries,
+    isOnline: r.isOnline,
+    isAvailable: r.isAvailable,
+    status: r.status,
+    isVerified: !!r.isVerified,
+    verificationStatus: r.verificationStatus || (r.isVerified ? 'verified' : null)
   };
 }
 
@@ -3485,7 +3535,7 @@ app.post('/api/orders/:id/assign-rider', requireAuth, (req, res) => {
   }
 
   db.orders[orderIndex].riderId = rider.id;
-  db.orders[orderIndex].dispatchRider = rider;
+  db.orders[orderIndex].dispatchRider = publicDispatchRider(rider);
   // Accepting an assignment does NOT skip to "picked up" — the rider still
   // confirms pickup separately once they physically collect the order.
   if (!['picked_up', 'in_transit', 'arriving', 'delivered', 'completed'].includes(order.status)) {
@@ -3549,8 +3599,36 @@ function normalizeGwTokens(s: string): string[] {
 
 function resolvePaymentGatewayByMethod(method: string): any | null {
   const gws = Array.isArray(db.platformSettings?.paymentGateways) ? db.platformSettings.paymentGateways : [];
+  const m = String(method || '').toLowerCase().trim();
+  if (!m) return null;
+
+  // Canonical wallet/COD methods map to their fixed gateway ids regardless of
+  // how the gateway rows are named — order paymentMethodId stays stable and the
+  // lockout logic in paymentMethodStatus stays independent of gateway naming.
+  if (m === 'wallet' || m === 'omniwallet' || m === 'omni wallet') {
+    return gws.find((g: any) => g.id === 'gtw-wallet') || null;
+  }
+  if (m === 'cash on delivery' || m === 'cod' || m === 'cash') {
+    // "Cash" alone must map to Cash on Delivery, never to a MoMo/GPR "Cash"-branded
+    // gateway (e.g. Telecel Cash) — those are separate methods resolved below.
+    const direct = gws.find((g: any) => g.id === 'gtw-cod');
+    const byName = gws.find((g: any) => /cash on delivery|^cod$/.test(String(g.name || '').toLowerCase().trim()));
+    return direct || byName || null;
+  }
+
   const methodTokens = normalizeGwTokens(method);
   if (methodTokens.length === 0) return null;
+  // Exact-grained first: a gateway whose full normalized name equals the method,
+  // then any row whose tokens fully contain the method tokens, then loose overlap.
+  for (const g of gws) {
+    const gName = normalizeGwTokens(String(g.name || '')).join(' ');
+    const gType = normalizeGwTokens(String(g.type || '')).join(' ');
+    if (gName === methodTokens.join(' ')) return g;
+  }
+  for (const g of gws) {
+    const gSet = new Set(normalizeGwTokens(`${g.id} ${g.name} ${g.type || ''}`));
+    if (methodTokens.every((t) => gSet.has(t))) return g;
+  }
   for (const g of gws) {
     const gSet = new Set(normalizeGwTokens(`${g.id} ${g.name} ${g.type || ''}`));
     if (methodTokens.some((t) => gSet.has(t))) return g;
@@ -3568,6 +3646,54 @@ function paymentMethodStatus(method: string): { available: boolean; reason?: str
   return { available: true };
 }
 
+// Platform delivery pricing. When the customer selects a specific rider, the
+// rider's dispatch fee is authoritative. Otherwise the platform charges a
+// distance-based fee from live configuration:
+//   base + (km × pricePerKm), clamped to [min, max], waived at free-delivery
+//   threshold, and rejected when the route exceeds maxDeliveryDistance.
+// Returns null when the route is beyond the configured maximum.
+function computeDeliveryCharge(opts: {
+  deliveryMethod?: string;
+  rider?: any;
+  subtotal?: number;
+  vendorLat?: any;
+  vendorLng?: any;
+  customerLat?: any;
+  customerLng?: any;
+}): { fee: number; distanceKm: number | null } | null {
+  if (opts.deliveryMethod !== 'delivery') return { fee: 0, distanceKm: null };
+  if (opts.rider) return { fee: Number(opts.rider.deliveryFee) || 0, distanceKm: null };
+
+  const settings = db.platformSettings;
+  const toCoord = (v: any) => (v === null || v === undefined || v === '' ? null : Number(v));
+  const vLat = toCoord(opts.vendorLat);
+  const vLng = toCoord(opts.vendorLng);
+  const cLat = toCoord(opts.customerLat);
+  const cLng = toCoord(opts.customerLng);
+  const hasRoute = [vLat, vLng, cLat, cLng].every((n) => n !== null && Number.isFinite(n));
+
+  let distance: number | null = null;
+  if (hasRoute) {
+    distance = Math.round(distanceKm(vLat!, vLng!, cLat!, cLng!) * 100) / 100;
+    const maxDistance = Number(settings.maxDeliveryDistance);
+    if (Number.isFinite(maxDistance) && maxDistance > 0 && distance > maxDistance) return null;
+  }
+
+  const base = Number.isFinite(Number(settings.deliveryBaseFee)) ? Number(settings.deliveryBaseFee) : Number(settings.defaultDeliveryFee) || 0;
+  const perKm = Number(settings.distanceFeePerKm) || 0;
+  let fee = base + (distance != null ? distance * perKm : 0);
+
+  const minFee = Number(settings.deliveryMinFee);
+  const maxFee = Number(settings.deliveryMaxFee);
+  if (Number.isFinite(minFee) && minFee > 0) fee = Math.max(fee, minFee);
+  if (Number.isFinite(maxFee) && maxFee > 0) fee = Math.min(fee, maxFee);
+
+  const freeThreshold = Number(settings.freeDeliveryThreshold) || 0;
+  if (freeThreshold > 0 && Number(opts.subtotal) >= freeThreshold) fee = 0;
+
+  return { fee: Math.round(fee * 100) / 100, distanceKm: distance };
+}
+
 app.post('/api/orders', requireAuth, (req, res) => {
   const { items, customerId, vendorId, paymentMethod, deliveryMethod, specialInstructions, riderId, couponCode, address, city, country, customerLat, customerLng, deliveryAddressId } = req.body;
 
@@ -3581,25 +3707,51 @@ app.post('/api/orders', requireAuth, (req, res) => {
     return res.status(403).json({ success: false, message: 'You do not have permission to place orders.' });
   }
 
+  // Order-creation failures are recorded so the Super Admin audit trail shows
+  // why orders were rejected (feeds the Audit Logs page).
+  const rejectOrder = (status: number, message: string, reason: string) => {
+    logAudit(orderCaller, 'Order creation failed', 'order', null, 'failed', { reason, vendorId, method: paymentMethod || 'none' }, req);
+    return res.status(status).json({ success: false, message });
+  };
+
   const vendor = db.vendors.find(v => v.id === vendorId);
-  if (!vendor) return res.status(404).json({ success: false, message: 'Restaurant not found.' });
+  if (!vendor) return rejectOrder(404, 'Restaurant not found.', 'restaurant_not_found');
 
   // Do not accept new orders from suspended/unavailable vendors
   if (vendor.status === 'suspended') {
-    return res.status(403).json({ success: false, message: 'This restaurant is currently suspended and cannot accept orders.' });
+    return rejectOrder(403, 'This restaurant is currently suspended and cannot accept orders.', 'restaurant_suspended');
   }
   if (vendor.status !== 'active') {
-    return res.status(403).json({ success: false, message: 'This restaurant is not currently accepting orders.' });
+    return rejectOrder(403, 'This restaurant is not currently accepting orders.', 'restaurant_not_active');
   }
   // Kitchen pause/close flags are authoritative: only explicit `false` blocks orders.
   // A missing flag on an active vendor means the kitchen is open.
   if (vendor.isKitchenOpen === false || vendor.isOpen === false) {
-    return res.status(409).json({ success: false, message: 'This restaurant is currently unavailable and cannot accept orders. Please try again later.' });
+    return rejectOrder(409, 'This restaurant is currently unavailable and cannot accept orders. Please try again later.', 'restaurant_unavailable');
   }
 
   const customer = db.users.find(u => u.id === currentUserId);
   const rider = riderId ? db.riders.find(r => r.id === riderId) : null;
-  if (riderId && !rider) return res.status(400).json({ success: false, message: 'Selected dispatch rider is no longer available.' });
+  if (riderId && !rider) return rejectOrder(400, 'Selected dispatch rider is no longer available.', 'rider_unavailable');
+  // The customer may only select a genuinely eligible rider (verified/approved,
+  // not suspended, online and available). The /eligible fleet is authoritative;
+  // this re-checks so a stale client selection can never place an invalid one.
+  if (rider) {
+    const riderUser = db.users.find((u: any) => u.id === rider.userId);
+    const suspended = riderUser?.isSuspended === true;
+    const rejected = rider.verificationStatus === 'rejected';
+    const offline = !rider.isOnline || !rider.isAvailable;
+    if (suspended || rejected || offline) {
+      return rejectOrder(400, 'Selected dispatch rider is not currently available for deliveries. Please choose another rider or let dispatch match you automatically.', 'rider_not_available');
+    }
+    const ACTIVE_CAP = 2;
+    const activeCount = db.orders.filter((o: any) =>
+      o.riderId === rider.id && !['delivered', 'completed', 'cancelled', 'failed', 'refunded'].includes(o.status)
+    ).length;
+    if (activeCount >= ACTIVE_CAP) {
+      return rejectOrder(400, 'Selected dispatch rider is at full delivery capacity. Please choose another rider or let dispatch match you automatically.', 'rider_at_capacity');
+    }
+  }
 
   // Saved-address reference: the customer may select one of their stored
   // addresses instead of typing a free-form string. It must genuinely belong
@@ -3609,44 +3761,44 @@ app.post('/api/orders', requireAuth, (req, res) => {
     const savedList: any[] = Array.isArray(customer?.deliveryAddress) ? customer!.deliveryAddress : [];
     savedDeliveryAddress = savedList.find((a: any) => a.id === deliveryAddressId);
     if (!savedDeliveryAddress) {
-      return res.status(422).json({ success: false, message: 'Selected delivery address is no longer on your account. Please choose another.' });
+      return rejectOrder(422, 'Selected delivery address is no longer on your account. Please choose another.', 'invalid_delivery_address');
     }
   }
 
   // A delivery order must carry a real destination address — never an empty string.
   if (deliveryMethod === 'delivery' && !String(address || '').trim()) {
-    return res.status(422).json({ success: false, message: 'A delivery address is required. Please select or enter your delivery location.' });
+    return rejectOrder(422, 'A delivery address is required. Please select or enter your delivery location.', 'delivery_address_required');
   }
 
   const orderId = uuidv4();
 
   // ---- Authoritative pricing: never trust client-supplied prices or totals ----
   if (!Array.isArray(items) || items.length === 0) {
-    return res.status(422).json({ success: false, message: 'Your cart is empty.' });
+    return rejectOrder(422, 'Your cart is empty.', 'empty_cart');
   }
   const orderItems: any[] = [];
   let subtotal = 0;
   for (const item of items) {
     const qty = Number(item.quantity);
     if (!Number.isInteger(qty) || qty < 1 || qty > 99) {
-      return res.status(422).json({ success: false, message: 'Invalid item quantity.' });
+      return rejectOrder(422, 'Invalid item quantity.', 'invalid_quantity');
     }
     const product = db.products.find((p: any) => p.id === item.productId || p.id === item.id);
     if (!product) {
-      return res.status(422).json({ success: false, message: 'One of the selected meals is no longer available. Please refresh your cart and try again.' });
+      return rejectOrder(422, 'One of the selected meals is no longer available. Please refresh your cart and try again.', 'item_not_found');
     }
     if (product.vendorId !== vendorId) {
-      return res.status(422).json({ success: false, message: 'One of the selected meals does not belong to this restaurant. Please refresh your cart.' });
+      return rejectOrder(422, 'One of the selected meals does not belong to this restaurant. Please refresh your cart.', 'item_vendor_mismatch');
     }
     if (product.status === 'archived' || product.status === 'inactive' || product.status === 'draft') {
-      return res.status(422).json({ success: false, message: `"${product.title}" is no longer available. Please refresh your cart and try again.` });
+      return rejectOrder(422, `"${product.title}" is no longer available. Please refresh your cart and try again.`, 'item_inactive');
     }
     if (product.isAvailable === false) {
-      return res.status(422).json({ success: false, message: `"${product.title}" is currently out of stock.` });
+      return rejectOrder(422, `"${product.title}" is currently out of stock.`, 'item_out_of_stock');
     }
     const stock = Number(product.stock);
     if (Number.isFinite(stock) && stock >= 0 && qty > stock) {
-      return res.status(422).json({ success: false, message: `Only ${stock} of "${product.title}" are left in stock.` });
+      return rejectOrder(422, `Only ${stock} of "${product.title}" are left in stock.`, 'item_insufficient_stock');
     }
     const price = Number(product.price) || 0;
     subtotal += price * qty;
@@ -3663,7 +3815,20 @@ app.post('/api/orders', requireAuth, (req, res) => {
     });
   }
 
-  const deliveryFee = deliveryMethod === 'delivery' ? (rider ? Number(rider.deliveryFee) || 0 : (Number(db.platformSettings.defaultDeliveryFee) || 0)) : 0;
+  const charge = computeDeliveryCharge({
+    deliveryMethod,
+    rider,
+    subtotal,
+    vendorLat: vendor?.latitude ?? vendor?.lat,
+    vendorLng: vendor?.longitude ?? vendor?.lng,
+    customerLat,
+    customerLng,
+  });
+  if (charge === null) {
+    return rejectOrder(422, 'The delivery distance exceeds the maximum supported by the platform. Please choose another address.', 'delivery_distance_exceeded');
+  }
+  const deliveryFee = charge.fee;
+  const deliveryDistanceKm = charge.distanceKm;
   const taxRate = Number(db.platformSettings?.taxRate);
   const tax = subtotal * (Number.isFinite(taxRate) && taxRate >= 0 ? taxRate : 5) / 100;
 
@@ -3682,10 +3847,10 @@ app.post('/api/orders', requireAuth, (req, res) => {
         else if (couponRecord.type === 'free_delivery') discount = deliveryFee;
         couponRecord.totalUsed = (couponRecord.totalUsed || 0) + 1;
       } else {
-        return res.status(400).json({ success: false, message: 'This coupon is no longer valid for this order.' });
+        return rejectOrder(400, 'This coupon is no longer valid for this order.', 'coupon_invalid');
       }
     } else {
-      return res.status(400).json({ success: false, message: 'Invalid coupon code.' });
+      return rejectOrder(400, 'Invalid coupon code.', 'coupon_not_found');
     }
   }
 
@@ -3704,7 +3869,7 @@ app.post('/api/orders', requireAuth, (req, res) => {
   // unknown method is rejected here even if a client still tries to use it.
   const pmCheck = paymentMethodStatus(method);
   if (!pmCheck.available) {
-    return res.status(400).json({ success: false, message: pmCheck.reason || 'This payment method is currently unavailable.' });
+    return rejectOrder(400, pmCheck.reason || 'This payment method is currently unavailable.', 'payment_method_unavailable');
   }
   let paymentStatus = 'pending';
   const wallet = db.wallets.find(w => w.userId === currentUserId);
@@ -3712,7 +3877,7 @@ app.post('/api/orders', requireAuth, (req, res) => {
   if (method === 'Wallet' || method === 'OmniWallet') {
     // Real wallet payment: verify balance and debit it here.
     if (!wallet || (Number(wallet.balance) || 0) < grandTotal) {
-      return res.status(402).json({ success: false, message: 'Insufficient wallet balance. Please top up your wallet or choose another payment method.' });
+      return rejectOrder(402, 'Insufficient wallet balance. Please top up your wallet or choose another payment method.', 'insufficient_wallet');
     }
     wallet.balance = Math.round(((Number(wallet.balance) || 0) - grandTotal) * 100) / 100;
     paymentStatus = 'paid';
@@ -3744,10 +3909,11 @@ app.post('/api/orders', requireAuth, (req, res) => {
     vendorId,
     vendorName: vendor?.name || 'Restaurant',
     riderId: riderId || null,
-    dispatchRider: rider || null,
+    dispatchRider: rider ? publicDispatchRider(rider) : null,
     items: orderItems,
     subtotal,
     deliveryFee,
+    deliveryDistanceKm,
     tax,
     discount,
     couponCode: couponCode || null,
@@ -3804,8 +3970,10 @@ app.post('/api/orders', requireAuth, (req, res) => {
     (newOrder as any).paymentId = payId;
   }
 
-  // Send Order Confirmation Email
+  // Send Order Confirmation Email + in-app notification to the customer
   if (customer) {
+    notifyUser(customer.id, 'Order Placed', `Your order ${newOrder.orderNumber} for ${newOrder.vendorName} has been placed.`,
+      { type: 'ORDER_PLACED', category: 'orders', priority: 'IMPORTANT', relatedOrderId: newOrder.id, action: `/customer/orders/${newOrder.id}`, dedupeKey: `placed:${newOrder.id}:${customer.id}` });
     const itemsSummary = orderItems.map((i: any) =>
       `<div style="display: flex; justify-content: space-between; margin-bottom: 5px;"><span>${i.quantity}x ${i.title}</span><span>GHS ${(i.price * i.quantity).toFixed(2)}</span></div>`
     ).join('') +
@@ -4125,7 +4293,7 @@ app.post('/api/orders/package', requireAuth, (req, res) => {
     vendorId: null,
     vendorName: carrierName,
     riderId: rider ? rider.id : null,
-    dispatchRider: rider || null,
+    dispatchRider: rider ? publicDispatchRider(rider) : null,
     items: [{
       id: uuidv4(),
       productId: null,
@@ -4159,7 +4327,7 @@ app.post('/api/orders/package', requireAuth, (req, res) => {
   // accept endpoint uses: never auto-advance past the booking state illegally).
   if (rider) {
     newOrder.riderId = rider.id;
-    newOrder.dispatchRider = rider;
+    newOrder.dispatchRider = publicDispatchRider(rider);
     newOrder.status = 'rider_assigned';
     stampOrderStatus(newOrder, 'rider_assigned');
     ensureCustomerRiderConversation(newOrder);
@@ -4625,6 +4793,25 @@ app.post('/api/orders/:id/conversation/vendor', requireAuth, (req, res) => {
   res.status(201).json(conv);
 });
 
+app.get('/api/wallets', requireAdmin, requirePermission('payments:view'), (req, res) => {
+  const rows = db.wallets.map((w: any) => {
+    const user = db.users.find((u: any) => u.id === w.userId);
+    const inflow = db.transactions.filter((t: any) => t.userId === w.userId && t.category !== 'order_payment' && t.type !== 'debit').reduce((s: number, t: any) => s + (Number(t.amount) || 0), 0);
+    const outflow = db.transactions.filter((t: any) => t.userId === w.userId && (t.type === 'debit' || t.category === 'order_payment')).reduce((s: number, t: any) => s + (Number(t.amount) || 0), 0);
+    return {
+      ...w,
+      userName: user ? `${user.firstName} ${user.lastName}`.trim() || user.email : 'Unknown',
+      userEmail: user?.email || '',
+      role: user?.role || 'unknown',
+      totalTransactions: db.transactions.filter((t: any) => t.userId === w.userId).length,
+      inflow: Math.round(inflow * 100) / 100,
+      outflow: Math.round(outflow * 100) / 100,
+      updatedAt: w.updatedAt || user?.updatedAt || null
+    };
+  });
+  res.json(rows.sort((a: any, b: any) => (Number(b.balance) || 0) - (Number(a.balance) || 0)));
+});
+
 app.get('/api/wallets/:userId/balance', (req, res) => {
   if (!isOwnerOrAdmin(req, req.params.userId)) return res.status(403).json({ error: 'Forbidden' });
   const wallet = db.wallets.find(w => w.userId === req.params.userId);
@@ -5062,17 +5249,24 @@ app.post('/api/payments/paystack/initialize', (req, res) => {
 });
 
 // Build the customer profile payload shape returned by GET/PATCH endpoints.
+// The avatar defaults to '' so clients fall back to initials from the real
+// name (or a neutral placeholder) — never a random demo avatar.
 function buildCustomerProfile(user: any, wallet: any) {
+  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || (user.displayName || '').trim();
+  const completedOrders = db.orders.filter((o: any) =>
+    o.customerId === user.id && ['delivered', 'completed'].includes(o.status)
+  );
+  const points = completedOrders.reduce((s: number, o: any) => s + Math.floor((Number(o.totalAmount) || 0) / 10), 0);
   return {
     id: user.id,
-    name: `${user.firstName} ${user.lastName}`.trim() || user.displayName || 'User',
+    name: fullName || '',
     email: user.email,
-    avatar: user.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
+    avatar: user.avatarUrl || '',
     phone: user.phone || '',
     addresses: Array.isArray(user.deliveryAddress) ? user.deliveryAddress : [],
     momo: user.momo || null,
     walletBalance: wallet?.balance || 0,
-    loyaltyPoints: 0,
+    loyaltyPoints: points,
     referralCode: user.referralCode || `OM-${user.id.slice(0, 4).toUpperCase()}`
   };
 }
@@ -6110,7 +6304,7 @@ app.get('/api/users', requireAdmin, requirePermission('users:view'), (req, res) 
   res.json(rows);
 });
 
-app.get('/api/users/:id', requireAdmin, (req, res) => {
+app.get('/api/users/:id', requireAdmin, requirePermission('users:view'), (req, res) => {
   const u = db.users.find((x: any) => x.id === req.params.id);
   if (!u) return res.status(404).json({ error: 'User not found' });
   const orders = db.orders.filter((o: any) => o.customerId === u.id);
@@ -6983,6 +7177,31 @@ function validatePlatformSettings(updates: any): { errors: string[]; sanitized: 
     if (!Number.isFinite(fee) || fee < 0) errors.push('Distance fee per km must be a non-negative number.');
     else out.distanceFeePerKm = Math.round(fee * 100) / 100;
   }
+  if ('deliveryBaseFee' in updates) {
+    const fee = Number(updates.deliveryBaseFee);
+    if (!Number.isFinite(fee) || fee < 0) errors.push('Delivery base fee must be a non-negative number.');
+    else out.deliveryBaseFee = Math.round(fee * 100) / 100;
+  }
+  if ('deliveryMinFee' in updates) {
+    const fee = Number(updates.deliveryMinFee);
+    if (!Number.isFinite(fee) || fee < 0) errors.push('Delivery minimum fee must be a non-negative number.');
+    else out.deliveryMinFee = Math.round(fee * 100) / 100;
+  }
+  if ('deliveryMaxFee' in updates) {
+    const fee = Number(updates.deliveryMaxFee);
+    if (!Number.isFinite(fee) || fee < 0) errors.push('Delivery maximum fee must be a non-negative number.');
+    else out.deliveryMaxFee = Math.round(fee * 100) / 100;
+  }
+  if ('freeDeliveryThreshold' in updates) {
+    const fee = Number(updates.freeDeliveryThreshold);
+    if (!Number.isFinite(fee) || fee < 0) errors.push('Free delivery threshold must be a non-negative number.');
+    else out.freeDeliveryThreshold = Math.round(fee * 100) / 100;
+  }
+  if ('maxDeliveryDistance' in updates) {
+    const d = Number(updates.maxDeliveryDistance);
+    if (!Number.isFinite(d) || d < 0) errors.push('Maximum delivery distance must be a non-negative number.');
+    else out.maxDeliveryDistance = Math.round(d * 100) / 100;
+  }
   if ('platformFee' in updates) {
     const fee = Number(updates.platformFee);
     if (!Number.isFinite(fee) || fee < 0) errors.push('Platform fee must be a non-negative number.');
@@ -7339,7 +7558,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     });
   }
 
-  console.error(`[Server Error] Status ${status}:`, err.message);
+  console.error(`[Server Error] ${req.method} ${req.originalUrl} → Status ${status}:`, err.message, (err as any).stack ? `\n${(err as any).stack}` : '');
   res.status(status).json({ success: false, message: err.message });
 });
 

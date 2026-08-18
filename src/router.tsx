@@ -86,9 +86,18 @@ import {
   SuperAdminPaymentGatewaysPage, SuperAdminUsersPage,
   SuperAdminSecurityEventsPage, SuperAdminSessionsPage,
 } from '@/src/pages/super-admin/sections';
-import { SuperAdminRolesPage, SuperAdminPermissionsPage } from '@/src/pages/super-admin/rbac';
+import { SuperAdminRolesPage, SuperAdminPermissionsPage, SuperAdminRolesPermissionsPage } from '@/src/pages/super-admin/rbac';
 import { SuperAdminMaintenancePage } from '@/src/pages/super-admin/maintenance';
-import { SuperAdminMessagesPage, SuperAdminDeliveryLogPage } from '@/src/pages/super-admin/messages';
+import { SuperAdminDeliveryOperationsPage } from '@/src/pages/super-admin/messages';
+import { SuperAdminOrdersPage } from '@/src/pages/super-admin/orders';
+import { SuperAdminRestaurantsPage } from '@/src/pages/super-admin/restaurants';
+import { SuperAdminRidersPage } from '@/src/pages/super-admin/riders';
+import { SuperAdminTransactionsPage } from '@/src/pages/super-admin/transactions';
+import { SuperAdminWalletsPage } from '@/src/pages/super-admin/wallets';
+import { SuperAdminReportsPage } from '@/src/pages/super-admin/reports';
+import { SuperAdminSystemLogsPage } from '@/src/pages/super-admin/system-logs';
+import { SuperAdminAccessLogsPage } from '@/src/pages/super-admin/access-logs';
+import { SuperAdminAccountSettingsPage } from '@/src/pages/super-admin/account';
 
 /** Legacy redirect: maps old /vendor/* URLs to the restaurant portal. */
 function LegacyVendorRedirect() {
@@ -367,18 +376,30 @@ export const router = createBrowserRouter([
       { path: 'database', element: <SuperAdminDatabasePage /> },
       { path: 'api', element: <SuperAdminApiPage /> },
       { path: 'audit', element: <SuperAdminAuditPage /> },
-      { path: 'settings', element: <SuperAdminSettingsPage /> },
-      { path: 'roles', element: <SuperAdminRolesPage /> },
-      { path: 'permissions', element: <SuperAdminPermissionsPage /> },
+      { path: 'roles', element: <Navigate to="/super-admin/roles-permissions" replace /> },
+      { path: 'permissions', element: <Navigate to="/super-admin/roles-permissions" replace /> },
+      { path: 'roles-permissions', element: <SuperAdminRolesPermissionsPage /> },
+      { path: 'settings', element: <Navigate to="/super-admin/platform-settings" replace /> },
       { path: 'platform-settings', element: <SuperAdminSettingsPage /> },
+      { path: 'account', element: <SuperAdminAccountSettingsPage /> },
       { path: 'users', element: <SuperAdminUsersPage /> },
+      { path: 'orders', element: <SuperAdminOrdersPage /> },
+      { path: 'restaurants', element: <SuperAdminRestaurantsPage /> },
+      { path: 'riders', element: <SuperAdminRidersPage /> },
+      { path: 'transactions', element: <SuperAdminTransactionsPage /> },
+      { path: 'wallets', element: <SuperAdminWalletsPage /> },
+      { path: 'reports', element: <SuperAdminReportsPage /> },
+      { path: 'system-logs', element: <SuperAdminSystemLogsPage /> },
+      { path: 'access-logs', element: <SuperAdminAccessLogsPage /> },
       { path: 'restaurant-approvals', element: <SuperAdminRestaurantApprovalsPage /> },
       { path: 'rider-approvals', element: <SuperAdminRiderApprovalsPage /> },
       { path: 'payment-gateways', element: <SuperAdminPaymentGatewaysPage /> },
       { path: 'backup', element: <SuperAdminBackupPage /> },
       { path: 'notifications', element: <SuperAdminNotificationsPage /> },
-      { path: 'deliveries', element: <SuperAdminDeliveryLogPage /> },
-      { path: 'messages', element: <SuperAdminMessagesPage /> },
+      // Broadcast + direct communication are consolidated into the single
+      // Notifications hub; keep the legacy route working via redirect.
+      { path: 'messages', element: <Navigate to="/super-admin/notifications" replace /> },
+      { path: 'deliveries', element: <SuperAdminDeliveryOperationsPage /> },
       { path: 'maintenance', element: <SuperAdminMaintenancePage /> },
     ],
   },
