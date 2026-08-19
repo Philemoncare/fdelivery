@@ -1,12 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Settings, ShieldCheck, Globe, CreditCard, Bell, Activity,
-  Database, RefreshCw, ChevronRight, AlertTriangle, Loader2, Bike, TrendingUp
+  Database, RefreshCw, ChevronRight, AlertTriangle, Loader2, Bike, TrendingUp,
+  Flame, Gauge, History
 } from 'lucide-react';
 import { Button } from '@/src/components/ui/button';
 import { Label } from '@/src/components/ui/label';
 import { Input } from '@/src/components/ui/input';
 import { Switch } from '@/src/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/src/components/ui/select';
 import { useApp } from '@/src/context/AppContext';
 import { AdminService } from '@/src/services/api';
 import {
@@ -38,6 +40,26 @@ const num = (s: string, fb: number) => {
   return Number.isFinite(v) && String(s).trim() !== '' ? v : fb;
 };
 
+// Mirrors server-side getFuelPriceInfo + computeFuelMultiplier exactly.
+function fuelEngineFromState(f: any) {
+  const none = { available: false, changePct: 0, adjustPct: 0, multiplier: 1, applied: false, paused: false, weight: 0 };
+  if (!f || !f.info) return none;
+  const info = f.info;
+  const current = Number(info.current);
+  const reference = Number(info.reference);
+  const weight = Number(info.weight) || 0;
+  const available = Number.isFinite(current) && current > 0;
+  const changePct = reference > 0 && Number.isFinite(current) ? Math.round(((current - reference) / reference) * 10000) / 100 : 0;
+  const adjustPct = Math.round(changePct * (weight / 100) * 100) / 100;
+  if (!available || reference <= 0) return { ...none, available, changePct, adjustPct, weight };
+  const maxInc = Number(f.maxAutoIncreasePct) || 10;
+  const maxDec = Number(f.maxAutoDecreasePct) || 10;
+  if (changePct > maxInc || changePct < -Math.abs(maxDec)) {
+    return { available, changePct, adjustPct, multiplier: 1, applied: false, paused: true, weight };
+  }
+  return { available, changePct, adjustPct, multiplier: Math.max(0, 1 + adjustPct / 100), applied: true, paused: false, weight };
+}
+
 export function SuperAdminSettingsPage() {
   const { showToast } = useApp();
   const [settings, setSettings] = useState<any>(null);
@@ -61,6 +83,26 @@ export function SuperAdminSettingsPage() {
   const [gatePassword, setGatePassword] = useState('');
   const [gateBusy, setGateBusy] = useState(false);
   const [gateError, setGateError] = useState<string | null>(null);
+
+  // ---- Fuel price / delivery adjustment engine state ----
+  const [fuel, setFuel] = useState<any>(null);
+  const [fuelLoading, setFuelLoading] = useState(false);
+  const [fuelError, setFuelError] = useState<string | null>(null);
+  const [versions, setVersions] = useState<any[]>([]);
+  const [fuelConfig, setFuelConfig] = useState<Record<string, string>>({});
+  const [syncing, setSyncing] = useState(false);
+
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [overridePrice, setOverridePrice] = useState('');
+  const [overrideReason, setOverrideReason] = useState('');
+  const [overridePassword, setOverridePassword] = useState('');
+  const [overrideBusy, setOverrideBusy] = useState(false);
+  const [overrideError, setOverrideError] = useState<string | null>(null);
+
+  const [proposalFor, setProposalFor] = useState<'approve' | 'reject' | null>(null);
+  const [proposalPassword, setProposalPassword] = useState('');
+  const [proposalBusy, setProposalBusy] = useState(false);
+  const [proposalError, setProposalError] = useState<string | null>(null);
 
   const load = useCallback(async (asRefresh = false) => {
     if (asRefresh) setRefreshing(true);
@@ -88,6 +130,37 @@ export function SuperAdminSettingsPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const loadFuel = useCallback(async () => {
+    setFuelLoading(true); setFuelError(null);
+    try {
+      const [f, v]: any[] = await Promise.all([
+        AdminService.getFuelPrice(),
+        AdminService.getPricingVersions({ page: 1, pageSize: 5 }).catch(() => ({ items: [] })),
+      ]);
+      setFuel(f);
+      setVersions(Array.isArray(v?.items) ? v.items : []);
+      setFuelConfig(prev => {
+        const merged = {
+          ...prev,
+          current: String(f?.info?.current ?? prev.current ?? ''),
+          reference: String(f?.info?.reference ?? prev.reference ?? ''),
+          providerUrl: f?.fuelProviderUrl ?? prev.providerUrl ?? '',
+          costWeight: String(f?.info?.weight ?? prev.costWeight ?? 40),
+          mode: f?.fuelAdjustmentMode ?? prev.mode ?? 'automatic',
+          maxIncrease: String(f?.maxAutoIncreasePct ?? prev.maxIncrease ?? 10),
+          maxDecrease: String(f?.maxAutoDecreasePct ?? prev.maxDecrease ?? 10),
+        };
+        return merged;
+      });
+    } catch (e: any) {
+      setFuelError(e?.message || 'Could not load fuel pricing data.');
+    } finally {
+      setFuelLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadFuel(); }, [loadFuel]);
 
   const saveBranding = async () => {
     setSaving('branding'); setSaveError(null);
@@ -150,6 +223,85 @@ export function SuperAdminSettingsPage() {
     }
   };
 
+  const saveFuelConfig = async () => {
+    setSaving('fuel'); setSaveError(null);
+    try {
+      const updated = await AdminService.updatePlatformSettings({
+        fuelPriceCurrent: num(fuelConfig.current, 0),
+        fuelPriceReference: num(fuelConfig.reference, 0),
+        fuelProviderUrl: fuelConfig.providerUrl.trim(),
+        fuelCostWeight: num(fuelConfig.costWeight, 40),
+        fuelAdjustmentMode: fuelConfig.mode,
+        maxAutoIncreasePct: num(fuelConfig.maxIncrease, 10),
+        maxAutoDecreasePct: num(fuelConfig.maxDecrease, 10),
+      });
+      setSettings(updated);
+      showToast('Fuel Config Updated', 'Fuel pricing configuration committed and versioned.', 'success');
+      loadFuel();
+    } catch (e: any) {
+      setSaveError(e?.message || 'Could not save fuel configuration.');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const runSync = async () => {
+    setSyncing(true);
+    try {
+      const r: any = await AdminService.syncFuelPrice({ source: fuel?.info?.source || 'api' });
+      if (r?.flagged) {
+        showToast('Fuel Price Flagged', r.message || 'Large fuel change — approval required before fees move.', 'warning');
+      } else {
+        showToast('Fuel Price Synced', r?.message || 'Fuel price refreshed and applied automatically.', 'success');
+      }
+      loadFuel();
+    } catch (e: any) {
+      showToast('Sync Unavailable', e?.message || 'Fuel provider unreachable. Last verified price retained.', 'warning');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const runOverride = async () => {
+    setOverrideBusy(true); setOverrideError(null);
+    try {
+      const r: any = await AdminService.overrideFuelPrice({
+        price: Number(overridePrice),
+        reason: overrideReason.trim() || undefined,
+        password: overridePassword,
+      });
+      showToast('Fuel Price Overridden', `Fuel price set to GH₵${Number(r?.newValue ?? 0).toFixed(2)} (pricing version ${r?.pricingVersion ?? '—'}).`, 'success');
+      setOverrideOpen(false); setOverridePrice(''); setOverrideReason(''); setOverridePassword('');
+      loadFuel();
+    } catch (e: any) {
+      const msg = e?.message || 'Override failed.';
+      setOverrideError(/reauth|password|re-authenticate/i.test(msg) ? 'Current password is incorrect.' : msg);
+    } finally {
+      setOverrideBusy(false);
+    }
+  };
+
+  const runProposal = async () => {
+    if (!proposalFor || !proposalPassword) return;
+    setProposalBusy(true); setProposalError(null);
+    try {
+      if (proposalFor === 'approve') {
+        await AdminService.approveFuelProposal(proposalPassword);
+        showToast('Proposal Approved', 'New fuel price applied with a new pricing version.', 'success');
+      } else {
+        await AdminService.rejectFuelProposal(proposalPassword);
+        showToast('Proposal Rejected', 'Active fuel price unchanged.', 'warning');
+      }
+      setProposalFor(null); setProposalPassword('');
+      loadFuel();
+    } catch (e: any) {
+      const msg = e?.message || 'Action failed.';
+      setProposalError(/reauth|password|re-authenticate/i.test(msg) ? 'Current password is incorrect.' : msg);
+    } finally {
+      setProposalBusy(false);
+    }
+  };
+
   // Live preview — mirrors the server-side computeDeliveryCharge logic.
   const baseFee = num(pricing.deliveryBaseFee, Number(settings?.deliveryBaseFee ?? settings?.defaultDeliveryFee ?? 3));
   const perKm = num(pricing.distanceFeePerKm, Number(settings?.distanceFeePerKm ?? 0));
@@ -160,16 +312,31 @@ export function SuperAdminSettingsPage() {
   const sampleKm = num(previewDistance, 3);
   const sampleSubtotal = num(previewSubtotal, 0);
 
+  // Fuel engine mirror — identical math to the server's computeFuelMultiplier.
+  const fuelCalc = useMemo(() => fuelEngineFromState(fuel), [fuel]);
+
   const feeFor = (km: number) => {
     if (maxDist > 0 && km > maxDist) return null;
     let fee = baseFee + km * perKm;
+    if (fuelCalc.applied) fee = fee * fuelCalc.multiplier;
     if (minFee > 0) fee = Math.max(fee, minFee);
     if (maxFee > 0) fee = Math.min(fee, maxFee);
     if (freeThreshold > 0 && sampleSubtotal >= freeThreshold) fee = 0;
     return Math.round(fee * 100) / 100;
   };
 
+  const fuelChangePct = fuelCalc.changePct;
+  const fuelAdjustPct = fuelCalc.adjustPct;
+  const fuelMultiplier = fuelCalc.multiplier;
+  const fuelApplied = fuelCalc.applied;
+  const fuelPaused = fuelCalc.paused;
+
+  const samplePreFuel = sampleKm !== null ? baseFee + sampleKm * perKm : 0;
+  const sampleFuelAdj = fuelApplied ? Math.round((samplePreFuel * (fuelMultiplier - 1)) * 100) / 100 : 0;
+
   const sampleFee = feeFor(sampleKm);
+
+  const proposal = fuel?.pendingReview || null;
 
   if (loading && !settings) return <AdminLoading message="Reading global configuration store..." />;
   if (loadError && !settings) return <AdminError message="Unable to load platform settings." detail={loadError} retry={() => load()} />;
@@ -196,6 +363,27 @@ export function SuperAdminSettingsPage() {
           </Button>
         }
       />
+
+      {proposal && (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-black uppercase tracking-wide text-amber-600">FLAG FOR SUPER ADMIN REVIEW — fuel price change pending approval</p>
+              <p className="text-sm text-ink-2 mt-1">
+                GH₵{Number(proposal.previousFuelPrice ?? 0).toFixed(2)} → GH₵{Number(proposal.newFuelPrice).toFixed(2)}{' '}
+                ({proposal.fuelChangePct >= 0 ? '+' : ''}{proposal.fuelChangePct}%).{' '}
+                {proposal.expectedImpact || 'Automatic delivery adjustment is paused pending approval.'}
+              </p>
+              {proposal.reason && <p className="text-xs text-ink-3 mt-0.5">Reason: {proposal.reason}</p>}
+            </div>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <Button size="sm" variant="outline" className="rounded-xl" onClick={() => { setProposalFor('reject'); setProposalError(null); setProposalPassword(''); }}>Reject</Button>
+            <Button size="sm" className="rounded-xl" onClick={() => { setProposalFor('approve'); setProposalError(null); setProposalPassword(''); }}>Approve &amp; Apply</Button>
+          </div>
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-4 gap-8">
          <div className="lg:col-span-1 space-y-2 sticky top-24 h-fit">
@@ -278,6 +466,28 @@ export function SuperAdminSettingsPage() {
                            <p className="text-2xl font-black text-ink">${sampleFee.toFixed(2)}</p>
                         )}
                      </div>
+                     <div className="rounded-xl border border-line divide-y divide-line text-[11px]">
+                        <div className="flex items-center justify-between px-3 py-2 text-ink-2">
+                           <span className="font-medium">Base + distance (${baseFee.toFixed(2)} + {sampleKm}km × ${perKm.toFixed(2)})</span>
+                           <span className="font-bold text-ink">${samplePreFuel.toFixed(2)}</span>
+                        </div>
+                        <div className="flex items-center justify-between px-3 py-2 text-ink-2">
+                           <span className="flex items-center gap-1.5 font-medium"><Flame className="h-3 w-3 text-orange-500" /> Fuel adjustment (×{fuelMultiplier.toFixed(3)})</span>
+                           {fuelPaused
+                              ? <AdminBadge status="warning" label="Paused" />
+                              : <span className={cn('font-black', fuelApplied ? 'text-ink' : 'text-ink-3')}>{fuelApplied ? `${sampleFuelAdj >= 0 ? '+' : ''}$${sampleFuelAdj.toFixed(2)}` : '(no fuel data)'}</span>}
+                        </div>
+                        <div className="flex items-center justify-between px-3 py-2 bg-surface-2/40">
+                           <span className="font-black uppercase tracking-wide text-ink-3">Final fee</span>
+                           <span className="font-black text-ink">${sampleFee === null ? '—' : sampleFee.toFixed(2)}</span>
+                        </div>
+                     </div>
+                     <div className="flex flex-wrap items-center gap-2">
+                        <AdminBadge status={fuelApplied ? 'success' : fuelPaused ? 'warning' : 'info'} label={fuelApplied ? 'Fuel adjustment active' : fuelPaused ? 'Fuel adjustment paused — review' : 'No fuel data · 1× fee'} />
+                        {fuelApplied && fuelChangePct !== 0 && (
+                           <AdminBadge status="info" label={`${fuelChangePct >= 0 ? '+' : ''}${fuelChangePct}% fuel change → ${fuelAdjustPct >= 0 ? '+' : ''}${fuelAdjustPct}% fee`} />
+                        )}
+                     </div>
                      <div className="space-y-1.5">
                         {PREVIEW_DISTANCES.map(km => {
                            const f = feeFor(km);
@@ -296,7 +506,103 @@ export function SuperAdminSettingsPage() {
                </AdminCard>
             </div>
 
-            <AdminCard title="Delivery Pricing Formula" subtitle="Base + per-km, clamped between min and max" icon={TrendingUp} noPadding>
+             <AdminCard
+               title="Fuel Price Engine"
+               subtitle="Fuel-price data feeds the shared delivery-pricing engine used at checkout, order math and rider charts"
+               icon={Flame}
+               actions={
+                 <div className="flex items-center gap-2">
+                   {fuelLoading && <Loader2 className="h-4 w-4 animate-spin text-ink-3" />}
+                   <AdminBadge
+                     status={fuelApplied ? 'success' : fuelPaused ? 'warning' : 'info'}
+                     label={fuelApplied ? 'Adjusting fees' : fuelPaused ? 'Paused — review' : 'Source unavailable'}
+                   />
+                 </div>
+               }
+             >
+               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                 <div className="rounded-xl border border-line bg-surface-2/50 px-4 py-3">
+                   <p className="text-[10px] font-bold uppercase tracking-widest text-ink-3">Current Price</p>
+                   <p className="text-xl font-black text-ink mt-1">GH₵{Number(fuel?.info?.current ?? 0).toFixed(2)}</p>
+                   <p className="text-[10px] text-ink-3 mt-0.5">Source: {(fuel?.info?.source || 'manual').toUpperCase()}</p>
+                 </div>
+                 <div className="rounded-xl border border-line bg-surface-2/50 px-4 py-3">
+                   <p className="text-[10px] font-bold uppercase tracking-widest text-ink-3">Reference</p>
+                   <p className="text-xl font-black text-ink mt-1">GH₵{Number(fuel?.info?.reference ?? 0).toFixed(2)}</p>
+                   <p className="text-[10px] text-ink-3 mt-0.5">Cost weight: {Number(fuel?.info?.weight ?? 0)}%</p>
+                 </div>
+                 <div className="rounded-xl border border-line bg-surface-2/50 px-4 py-3">
+                   <p className="text-[10px] font-bold uppercase tracking-widest text-ink-3">Fuel Change</p>
+                   <p className={cn('text-xl font-black mt-1', fuelChangePct > 0 ? 'text-ink' : fuelChangePct < 0 ? 'text-ink' : 'text-ink-3')}>{fuelChangePct === 0 ? '0%' : `${fuelChangePct >= 0 ? '+' : ''}${fuelChangePct}%`}</p>
+                   <p className="text-[10px] text-ink-3 mt-0.5">Fee adjustment: {fuelAdjustPct === 0 ? '0%' : `${fuelAdjustPct >= 0 ? '+' : ''}${fuelAdjustPct}%`}</p>
+                 </div>
+                 <div className="rounded-xl border border-line bg-surface-2/50 px-4 py-3">
+                   <p className="text-[10px] font-bold uppercase tracking-widest text-ink-3">Multiplier</p>
+                   <p className="text-xl font-black text-ink mt-1">×{fuelMultiplier.toFixed(3)}</p>
+                   <p className="text-[10px] text-ink-3 mt-0.5">
+                     {fuelPaused ? `Beyond ±${Math.max(Number(fuel?.maxAutoIncreasePct ?? 10), Number(fuel?.maxAutoDecreasePct ?? 10))}% auto limit` : fuelApplied ? 'Auto-applying within limits' : 'Awaiting fuel data'}
+                   </p>
+                 </div>
+               </div>
+               <p className="text-[10px] text-ink-3 mt-3">
+                 Last verified: {fuel?.fuelPriceLastVerifiedAt ? new Date(fuel.fuelPriceLastVerifiedAt).toLocaleString() : 'never'} · Status: {(fuel?.fuelPriceStatus || 'unavailable').toUpperCase()}
+                 {' · '}Mode: {(fuel?.fuelAdjustmentMode || 'automatic').toUpperCase()}
+               </p>
+
+               <div className="pt-5 mt-5 border-t border-line grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                 <div className="space-y-1.5">
+                   <Label className="block text-[11px] font-semibold text-ink-3">Current Price (GH₵)</Label>
+                   <Input type="number" value={fuelConfig.current} onChange={e => setFuelConfig({ ...fuelConfig, current: e.target.value })} className="h-10 rounded-xl text-sm" />
+                 </div>
+                 <div className="space-y-1.5">
+                   <Label className="block text-[11px] font-semibold text-ink-3">Reference Price (GH₵)</Label>
+                   <Input type="number" value={fuelConfig.reference} onChange={e => setFuelConfig({ ...fuelConfig, reference: e.target.value })} className="h-10 rounded-xl text-sm" />
+                 </div>
+                 <div className="space-y-1.5">
+                   <Label className="block text-[11px] font-semibold text-ink-3">Fuel Cost Weight (%)</Label>
+                   <Input type="number" value={fuelConfig.costWeight} onChange={e => setFuelConfig({ ...fuelConfig, costWeight: e.target.value })} className="h-10 rounded-xl text-sm" />
+                 </div>
+                 <div className="space-y-1.5">
+                   <Label className="block text-[11px] font-semibold text-ink-3">Adjustment Mode</Label>
+                   <Select value={fuelConfig.mode} onValueChange={v => setFuelConfig({ ...fuelConfig, mode: v })}>
+                     <SelectTrigger className="h-10 rounded-xl text-sm"><SelectValue placeholder="Mode" /></SelectTrigger>
+                     <SelectContent>
+                       <SelectItem value="automatic">Automatic</SelectItem>
+                       <SelectItem value="approval">Approval</SelectItem>
+                     </SelectContent>
+                   </Select>
+                 </div>
+                 <div className="space-y-1.5">
+                   <Label className="block text-[11px] font-semibold text-ink-3">Max Auto Increase (%)</Label>
+                   <Input type="number" value={fuelConfig.maxIncrease} onChange={e => setFuelConfig({ ...fuelConfig, maxIncrease: e.target.value })} className="h-10 rounded-xl text-sm" />
+                 </div>
+                 <div className="space-y-1.5">
+                   <Label className="block text-[11px] font-semibold text-ink-3">Max Auto Decrease (%)</Label>
+                   <Input type="number" value={fuelConfig.maxDecrease} onChange={e => setFuelConfig({ ...fuelConfig, maxDecrease: e.target.value })} className="h-10 rounded-xl text-sm" />
+                 </div>
+               </div>
+               <div className="mt-4 space-y-1.5">
+                 <Label className="block text-[11px] font-semibold text-ink-3">Fuel Provider URL</Label>
+                 <Input value={fuelConfig.providerUrl} onChange={e => setFuelConfig({ ...fuelConfig, providerUrl: e.target.value })} placeholder="https://api.example.com/fuel-price" className="h-10 rounded-xl text-sm font-mono" />
+                 <p className="text-[10px] text-ink-3 font-medium">When set, Sync pulls the latest price from this endpoint; a source failure retains the last verified price and surfaces SOURCE UNAVAILABLE — no number is invented.</p>
+               </div>
+
+               <div className="pt-5 mt-5 border-t border-line flex flex-wrap items-center justify-between gap-3">
+                 <p className="text-[10px] text-ink-3 font-medium">Any committed change bumps the pricing version; historical orders keep the version active when they were created.</p>
+                 <div className="flex flex-wrap gap-2">
+                   <Button size="sm" variant="outline" className="h-9 rounded-xl px-3 text-xs" onClick={runSync} disabled={syncing}>
+                     {syncing ? <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> Syncing…</> : <><RefreshCw className="w-3.5 h-3.5 mr-2" /> Sync</>}
+                   </Button>
+                   <Button size="sm" variant="outline" className="h-9 rounded-xl px-3 text-xs" onClick={() => { setOverrideOpen(true); setOverrideError(null); }}>Manual Override</Button>
+                   <Button size="sm" className="h-9 rounded-xl px-3 text-xs" onClick={saveFuelConfig} disabled={saving === 'fuel'}>
+                     {saving === 'fuel' ? <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> Saving…</> : 'Commit Config'}
+                   </Button>
+                 </div>
+               </div>
+               {fuelError && <p className="text-xs font-medium text-danger mt-3">{fuelError}</p>}
+             </AdminCard>
+
+             <AdminCard title="Delivery Pricing Formula" subtitle="Base + per-km, clamped between min and max" icon={TrendingUp} noPadding>
                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 px-6 py-5">
                   {PRICING_FIELDS.map(f => (
                      <div key={f.key} className="space-y-1.5">
@@ -318,6 +624,34 @@ export function SuperAdminSettingsPage() {
                      {saving === 'pricing' ? <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> Saving…</> : 'Commit Pricing'}
                   </Button>
                </div>
+            </AdminCard>
+
+            <AdminCard title="Pricing Versions" subtitle={`Historical snapshots — orders keep the version active at creation`} icon={History} noPadding>
+               {versions.length === 0 ? (
+                 <p className="px-6 py-8 text-center text-xs text-ink-3">No pricing versions recorded yet. Committing pricing or fuel changes creates versioned snapshots.</p>
+               ) : (
+                 <div className="divide-y divide-line">
+                   {versions.map(v => (
+                     <div key={v.version} className="px-6 py-3.5 flex items-center justify-between gap-4">
+                       <div className="min-w-0">
+                         <div className="flex items-center gap-2">
+                           <span className="font-mono text-xs font-black text-ink">v{v.version}</span>
+                           <AdminBadge status={fuel?.currentPricingVersion === v.version ? 'success' : 'info'} label={fuel?.currentPricingVersion === v.version ? 'Active' : 'Superseded'} />
+                         </div>
+                         <p className="text-[10px] text-ink-3 mt-0.5">{new Date(v.timestamp).toLocaleString()} · {v.changedBy}</p>
+                       </div>
+                       <div className="text-right shrink-0">
+                         <p className="max-w-[260px] truncate text-[10px] font-medium text-ink-3">{v.reason || 'pricing update'}</p>
+                         <p className="font-mono text-[11px] text-ink-2 mt-0.5">
+                           {(v.before?.fuelPriceCurrent !== undefined ? `GH₵${Number(v.before.fuelPriceCurrent ?? 0).toFixed(2)}` : v.before?.deliveryBaseFee !== undefined ? `$${Number(v.before.deliveryBaseFee ?? 0).toFixed(2)}` : '—')}
+                           {' → '}
+                           {(v.after?.fuelPriceCurrent !== undefined ? `GH₵${Number(v.after.fuelPriceCurrent ?? 0).toFixed(2)}` : v.after?.deliveryBaseFee !== undefined ? `$${Number(v.after.deliveryBaseFee ?? 0).toFixed(2)}` : '—')}
+                         </p>
+                       </div>
+                     </div>
+                   ))}
+                 </div>
+               )}
             </AdminCard>
             </div>
 
@@ -371,6 +705,71 @@ export function SuperAdminSettingsPage() {
             <Input type="password" value={gatePassword} onChange={e => setGatePassword(e.target.value)} className="h-11 rounded-xl text-sm" autoFocus />
           </div>
           {gateError && <p className="text-xs font-medium text-danger">{gateError}</p>}
+        </div>
+      </AdminModal>
+
+      <AdminModal
+        open={overrideOpen}
+        onClose={() => !overrideBusy && setOverrideOpen(false)}
+        icon={Flame}
+        title="Manual Fuel Price Override"
+        subtitle="Explicit operator confirmation — bypasses the automatic approval gate."
+        footer={
+          <>
+            <Button variant="outline" className="flex-1 h-11 rounded-xl text-xs font-semibold" disabled={overrideBusy} onClick={() => setOverrideOpen(false)}>Cancel</Button>
+            <Button className="flex-1 h-11 rounded-xl text-xs font-semibold" disabled={!overridePrice || !overridePassword || overrideBusy} onClick={runOverride}>
+              {overrideBusy ? 'Applying…' : 'Apply Override'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm leading-relaxed text-ink-2">Commit a verified fuel price in GH₵. The change is versioned and written to the audit trail with before/after values.</p>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label className="mb-2 block text-xs font-semibold text-ink-3">New Fuel Price (GH₵)</Label>
+              <Input type="number" value={overridePrice} onChange={e => setOverridePrice(e.target.value)} className="h-11 rounded-xl text-sm" autoFocus />
+            </div>
+            <div>
+              <Label className="mb-2 block text-xs font-semibold text-ink-3">Current Password</Label>
+              <Input type="password" value={overridePassword} onChange={e => setOverridePassword(e.target.value)} className="h-11 rounded-xl text-sm" />
+            </div>
+          </div>
+          <div>
+            <Label className="mb-2 block text-xs font-semibold text-ink-3">Reason (optional)</Label>
+            <Input value={overrideReason} onChange={e => setOverrideReason(e.target.value)} placeholder="e.g. national fuel price adjustment" className="h-11 rounded-xl text-sm" />
+          </div>
+          {overrideError && <p className="text-xs font-medium text-danger">{overrideError}</p>}
+        </div>
+      </AdminModal>
+
+      <AdminModal
+        open={!!proposalFor}
+        onClose={() => !proposalBusy && setProposalFor(null)}
+        icon={AlertTriangle}
+        title={proposalFor === 'approve' ? 'Approve Fuel Price Proposal?' : 'Reject Fuel Price Proposal?'}
+        subtitle={`GH₵${Number(proposal?.previousFuelPrice ?? 0).toFixed(2)} → GH₵${Number(proposal?.newFuelPrice).toFixed(2)} (${proposal?.fuelChangePct >= 0 ? '+' : ''}${proposal?.fuelChangePct}%)`}
+        danger={proposalFor === 'reject'}
+        footer={
+          <>
+            <Button variant="outline" className="flex-1 h-11 rounded-xl text-xs font-semibold" disabled={proposalBusy} onClick={() => setProposalFor(null)}>Cancel</Button>
+            <Button variant={proposalFor === 'reject' ? 'danger' : 'primary'} className="flex-1 h-11 rounded-xl text-xs font-semibold" disabled={!proposalPassword || proposalBusy} onClick={runProposal}>
+              {proposalBusy ? 'Confirming…' : proposalFor === 'approve' ? 'Approve & Apply' : 'Reject'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm leading-relaxed text-ink-2">
+            {proposalFor === 'approve'
+              ? 'Approval applies the staged price with a new pricing version. Delivery fees move according to the shared fuel engine.'
+              : 'Rejection keeps the last verified price active. No pricing version change occurs.'}
+          </p>
+          <div>
+            <Label className="mb-2 block text-xs font-semibold text-ink-3">Current Password</Label>
+            <Input type="password" value={proposalPassword} onChange={e => setProposalPassword(e.target.value)} className="h-11 rounded-xl text-sm" autoFocus />
+          </div>
+          {proposalError && <p className="text-xs font-medium text-danger">{proposalError}</p>}
         </div>
       </AdminModal>
     </div>

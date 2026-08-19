@@ -1,6 +1,6 @@
 import {
-  LayoutDashboard, Users, ShieldCheck, ShieldAlert, Cpu, Database, Plug2,
-  Settings, UserCog, KeyRound, Archive, Bell, Store, Bike, CreditCard,
+  LayoutDashboard, Users, ShieldCheck, ShieldAlert, Database, Plug2,
+  Settings, KeyRound, Archive, Bell, Store, Bike, CreditCard,
   LockKeyhole, Monitor, Wrench, History, Activity, Shield, ShoppingCart,
   ReceiptText, Wallet, FileText, Truck, ScrollText
 } from 'lucide-react';
@@ -67,40 +67,17 @@ export function buildSuperAdminNav(badges: SuperAdminNavBadges): SuperAdminNavDa
   return {
     mobileItems: [
       { label: 'Overview', icon: LayoutDashboard, path: '/super-admin/dashboard' },
+      { label: 'Orders', icon: ShoppingCart, path: '/super-admin/orders' },
       { label: 'Platform Settings', icon: Settings, path: '/super-admin/platform-settings' },
-      { label: 'Security Center', icon: ShieldCheck, path: '/super-admin/security' },
       { label: 'Restaurant Approvals', icon: Store, path: '/super-admin/restaurant-approvals', badge: b.pendingVendors > 0 ? b.pendingVendors : undefined },
-      { label: 'Account Settings', icon: UserCog, path: '/super-admin/account' },
+      { label: 'Notifications', icon: Bell, path: '/super-admin/notifications', badge: b.unreadNotifs > 0 ? b.unreadNotifs : undefined },
     ],
     sections: [
       {
+        // Primary navigation — always visible, never inside a dropdown.
         title: 'Command Center',
         items: [
           { label: 'Overview', icon: LayoutDashboard, path: '/super-admin/dashboard' },
-        ],
-      },
-      {
-        title: 'Platform',
-        items: [
-          { label: 'Platform Settings', icon: Settings, path: '/super-admin/platform-settings' },
-          { label: 'API Management', icon: Plug2, path: '/super-admin/api' },
-          { label: 'System Health', icon: Activity, path: '/super-admin/system' },
-        ],
-      },
-      {
-        title: 'Identity & Access',
-        items: [
-          { label: 'Users', icon: Users, path: '/super-admin/users' },
-          { label: 'Administrators', icon: Shield, path: '/super-admin/admins' },
-          { label: 'Roles & Permissions', icon: KeyRound, path: '/super-admin/roles-permissions' },
-          { label: 'Sessions', icon: Monitor, path: '/super-admin/sessions' },
-        ],
-      },
-      {
-        title: 'Marketplace',
-        items: [
-          { label: 'Restaurant Approvals', icon: Store, path: '/super-admin/restaurant-approvals', badge: b.pendingVendors > 0 ? b.pendingVendors : undefined },
-          { label: 'Rider Approvals', icon: Bike, path: '/super-admin/rider-approvals', badge: b.pendingRiders > 0 ? b.pendingRiders : undefined },
           { label: 'Orders', icon: ShoppingCart, path: '/super-admin/orders' },
           { label: 'Restaurants', icon: Store, path: '/super-admin/restaurants' },
           { label: 'Riders', icon: Bike, path: '/super-admin/riders' },
@@ -108,6 +85,7 @@ export function buildSuperAdminNav(badges: SuperAdminNavBadges): SuperAdminNavDa
       },
       {
         title: 'Finance',
+        collapsible: true,
         items: [
           { label: 'Payments & Gateways', icon: CreditCard, path: '/super-admin/payment-gateways' },
           { label: 'Transactions', icon: ReceiptText, path: '/super-admin/transactions' },
@@ -117,14 +95,28 @@ export function buildSuperAdminNav(badges: SuperAdminNavBadges): SuperAdminNavDa
       },
       {
         title: 'Operations',
+        collapsible: true,
         items: [
+          { label: 'Restaurant Approvals', icon: Store, path: '/super-admin/restaurant-approvals', badge: b.pendingVendors > 0 ? b.pendingVendors : undefined },
+          { label: 'Rider Approvals', icon: Bike, path: '/super-admin/rider-approvals', badge: b.pendingRiders > 0 ? b.pendingRiders : undefined },
           { label: 'Notifications', icon: Bell, path: '/super-admin/notifications', badge: b.unreadNotifs > 0 ? b.unreadNotifs : undefined },
           { label: 'Delivery Operations', icon: Truck, path: '/super-admin/deliveries' },
           { label: 'System Logs', icon: ScrollText, path: '/super-admin/system-logs' },
         ],
       },
       {
+        title: 'Identity & Access',
+        collapsible: true,
+        items: [
+          { label: 'Users', icon: Users, path: '/super-admin/users' },
+          { label: 'Administrators', icon: Shield, path: '/super-admin/admins' },
+          { label: 'Roles & Permissions', icon: KeyRound, path: '/super-admin/roles-permissions' },
+          { label: 'Sessions', icon: Monitor, path: '/super-admin/sessions' },
+        ],
+      },
+      {
         title: 'Security & Audit',
+        collapsible: true,
         items: [
           { label: 'Security Center', icon: ShieldCheck, path: '/super-admin/security' },
           { label: 'Audit Logs', icon: History, path: '/super-admin/audit' },
@@ -134,16 +126,14 @@ export function buildSuperAdminNav(badges: SuperAdminNavBadges): SuperAdminNavDa
       },
       {
         title: 'System',
+        collapsible: true,
         items: [
+          { label: 'Platform Settings', icon: Settings, path: '/super-admin/platform-settings' },
+          { label: 'System Health', icon: Activity, path: '/super-admin/system' },
+          { label: 'API Management', icon: Plug2, path: '/super-admin/api' },
           { label: 'Database', icon: Database, path: '/super-admin/database' },
           { label: 'Backup & Restore', icon: Archive, path: '/super-admin/backup' },
           { label: 'Maintenance', icon: Wrench, path: '/super-admin/maintenance' },
-        ],
-      },
-      {
-        title: 'Account',
-        items: [
-          { label: 'Account Settings', icon: UserCog, path: '/super-admin/account' },
         ],
       },
     ],

@@ -659,4 +659,39 @@ export const AdminService = {
     body: JSON.stringify({ note, ...(password ? { password } : {}) })
   }),
   getSecuritySettings: () => request<any>('/security/settings'),
+  // ---- System Logs (technical events) ----
+  getSystemLogs: (params?: any) => {
+    const q = new URLSearchParams(params || {}).toString();
+    return request<{ items: any[]; total: number; totalPages: number; page: number; pageSize: number; summary: any; sources: string[] }>(`/admin/system-logs${q ? `?${q}` : ''}`);
+  },
+  clearSystemLogs: (password: string) => request<any>('/admin/system-logs/clear', {
+    method: 'POST',
+    body: JSON.stringify({ password })
+  }),
+  // ---- Fuel price + delivery pricing engine ----
+  getFuelPrice: () => request<any>('/admin/fuel/price'),
+  getFuelHistory: (params?: any) => {
+    const q = new URLSearchParams(params || {}).toString();
+    return request<{ items: any[]; total: number; totalPages: number; page: number; pageSize: number }>(`/admin/fuel/history${q ? `?${q}` : ''}`);
+  },
+  syncFuelPrice: (data: any) => request<any>('/admin/fuel/sync', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  }),
+  overrideFuelPrice: (data: any) => request<any>('/admin/fuel/override', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  }),
+  approveFuelProposal: (password: string) => request<any>('/admin/fuel/proposal/approve', {
+    method: 'POST',
+    body: JSON.stringify({ password })
+  }),
+  rejectFuelProposal: (password: string) => request<any>('/admin/fuel/proposal/reject', {
+    method: 'POST',
+    body: JSON.stringify({ password })
+  }),
+  getPricingVersions: (params?: any) => {
+    const q = new URLSearchParams(params || {}).toString();
+    return request<{ items: any[]; total: number; totalPages: number; page: number; pageSize: number }>(`/admin/pricing/versions${q ? `?${q}` : ''}`);
+  },
 };

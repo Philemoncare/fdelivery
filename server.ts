@@ -298,6 +298,7 @@ let db = {
   backups: [],
   tickets: [],
   audit: [],
+  auditSequence: { value: 0 },
   announcements: [],
   referrals: [],
   emailLog: [],
@@ -320,6 +321,23 @@ let db = {
     deliveryMaxFee: 20,
     freeDeliveryThreshold: 0,
     maxDeliveryDistance: 20,
+    // Fuel-price-based delivery adjustment. `fuelPriceCurrent` stays 0 until a
+    // Super Admin explicitly sets/verifies a price; 0 disables the fuel
+    // component entirely (honest default — no fabricated fuel data).
+    fuelPriceCurrent: 0,
+    fuelPriceReference: 0,
+    fuelCostWeight: 40,
+    fuelAdjustmentMode: 'automatic',
+    fuelApprovedMultiplier: null,
+    maxAutoIncreasePct: 10,
+    maxAutoDecreasePct: 10,
+    fuelPriceSource: 'manual',
+    fuelPriceStatus: 'unavailable',
+    fuelPriceUpdatedAt: '',
+    fuelPriceLastVerifiedAt: '',
+    fuelProviderUrl: '',
+    fuelPendingReview: null,
+    currentPricingVersion: 0,
     platformFee: 0,
     taxRate: 5,
     vendorApprovalMode: 'manual',
@@ -346,6 +364,9 @@ let db = {
   // Real security events and operator-tunable detection/response settings.
   // All populated by actual backend monitoring — never simulated.
   securityEvents: [],
+  fuelPriceHistory: [],
+  pricingVersions: [],
+  systemLogs: [],
   processedWebhooks: [],
   securitySettings: {
     loginRateLimit: 10,            // allowed login attempts per IP per window
@@ -602,14 +623,47 @@ function auditSeverity(action: string): 'critical' | 'high' | 'medium' | 'low' {
   return 'low';
 }
 
+function auditDescription(action: string, entity: string, entityId: string, meta: any): string {
+  const changed = meta && typeof meta === 'object' && meta.changed && typeof meta.changed === 'object' && !Array.isArray(meta.changed)
+    ? Object.keys(meta.changed).map(k => k.replace(/([A-Z])/g, ' $1').toLowerCase()).join(', ')
+    : null;
+  const idPart = entityId && entityId !== 'global' && entityId !== 'health' ? ` (${entityId})` : '';
+  return changed ? `${action} on ${entity}${idPart} — changed: ${changed}` : `${action} on ${entity}${idPart}`;
+}
+
 function logAudit(actor: any, action: string, entity: string, entityId: string, result: string, meta?: any, req?: any) {
   // Immutable, server-authored audit record. `actor` may be null only for
   // system/session-level events (e.g. a failed login from an unknown account),
   // which are attributed to the "system" actor. IP/user-agent are captured from
   // the Express request when available. Critical secrets are never stored here.
+
+  // Sequential, human-readable audit ID (e.g. AUD-000338) so records are
+  // trivially referenceable and sortable by id.
+  db.auditSequence = db.auditSequence && typeof db.auditSequence === 'object' ? db.auditSequence : { value: db.audit.length };
+  db.auditSequence.value = (Number(db.auditSequence.value) || db.audit.length) + 1;
   const sessionId = actor?.sessionId || (req && req.sessionId) || null;
+  const severity = auditSeverity(action);
+  function singleChangeMeta(meta: any): { from: any; to: any } | null {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return null;
+  const changed = meta.changed;
+  if (!changed || typeof changed !== 'object' || Array.isArray(changed)) return null;
+  const keys = Object.keys(changed);
+  if (keys.length !== 1) return null;
+  const c = (changed as any)[keys[0]];
+  return (c && typeof c === 'object' && !Array.isArray(c)) ? { from: c.from, to: c.to } : null;
+}
+
+const single = singleChangeMeta(meta);
+  const prev =
+    meta && typeof meta === 'object'
+      ? (meta.previousValue ?? meta.before ?? meta.old ?? single?.from)
+      : null;
+  const next =
+    meta && typeof meta === 'object'
+      ? (meta.newValue ?? meta.after ?? meta.new ?? single?.to)
+      : null;
   db.audit.push({
-    id: `a-${uuidv4().slice(0, 8)}`,
+    id: `AUD-${String(db.auditSequence.value).padStart(6, '0')}`,
     actorId: actor?.id || 'system',
     actorName: actor ? (`${actor.firstName || ''} ${actor.lastName || ''}`.trim() || actor.email || 'System') : 'System',
     actorEmail: actor?.email || null,
@@ -617,9 +671,15 @@ function logAudit(actor: any, action: string, entity: string, entityId: string, 
     action,
     entity,
     entityId,
+    resourceType: entity,
+    resourceId: entityId,
     category: auditCategory(entity),
-    severity: auditSeverity(action),
+    severity,
+    riskLevel: severity,
+    description: auditDescription(action, entity, entityId, meta),
     result,
+    previousValue: prev === undefined || prev === null ? null : prev,
+    newValue: next === undefined || next === null ? null : next,
     meta: meta || null,
     ipAddress: req ? (req.ip || req.socket?.remoteAddress || null) : null,
     userAgent: req ? (req.get?.('user-agent') || null) : null,
@@ -628,6 +688,37 @@ function logAudit(actor: any, action: string, entity: string, entityId: string, 
     timestamp: new Date().toISOString()
   });
   if (db.audit.length > 5000) db.audit = db.audit.slice(db.audit.length - 5000);
+}
+
+// Wrapper for the common call pattern: an admin (from req) performs `action`
+// on `entity/entityId` with metadata carrying `before`/`after` snapshots. The
+// metadata is stored as-is (callers must pass a safe subset — never secrets).
+function ensureAudited(req: any, action: string, entity: string, entityId: string, result: string, meta?: any) {
+  const actor = (req as any).admin || (req as any).user || null;
+  logAudit(actor, action, entity, entityId, result, meta, req);
+}
+
+// Technical event log — the counterpart to the audit log. Audit log records
+// *human admin actions*; system logs record *technical events* (service
+// restart, worker failure, API/DB error, integration error). Kept separate so
+// the System Logs page never shows fabricated personnel activity.
+const SYSTEM_LOG_SOURCES = ['system', 'auth', 'api', 'db', 'worker', 'delivery', 'email', 'integration', 'gateway', 'fuel'] as const;
+function systemLog(opts: { level?: 'error' | 'warn' | 'info' | 'debug'; source?: string; event: string; message: string; meta?: any; req?: any }) {
+  const level = opts.level || 'info';
+  const source = SYSTEM_LOG_SOURCES.includes(opts.source as any) ? (opts.source as string) : 'system';
+  db.systemLogs = Array.isArray(db.systemLogs) ? db.systemLogs : [];
+  db.systemLogs.push({
+    id: `sys-${uuidv4().slice(0, 8)}`,
+    timestamp: new Date().toISOString(),
+    level,
+    source,
+    event: opts.event,
+    message: opts.message,
+    meta: opts.meta || null,
+    ipAddress: opts.req ? (opts.req.ip || opts.req.socket?.remoteAddress || null) : null,
+    userAgent: opts.req ? (opts.req.get?.('user-agent') || null) : null
+  });
+  if (db.systemLogs.length > 1000) db.systemLogs = db.systemLogs.slice(db.systemLogs.length - 1000);
 }
 
 // Map a legacy/event type string to a user-facing category so filters stay
@@ -1769,6 +1860,7 @@ function persistDb() {
     console.log(`\x1b[32m[DB]\x1b[0m Saved ${db.users.length} users, ${db.vendors.length} vendors, ${db.products.length} products to disk.`);
   } catch (e: any) {
     console.error('[DB] persist failed:', e?.message || e);
+    systemLog({ level: 'error', source: 'db', event: 'db_persist_failure', message: `Database persist failed: ${e?.message || e}` });
   }
 }
 
@@ -1820,6 +1912,53 @@ function migrateNotifications() {
   });
 }
 migrateNotifications();
+
+// Backfill collections/keys added after the persisted DB was first written
+// (loadDb is a shallow merge, so new arrays/keys need explicit backfill).
+function migrateNewCollections() {
+  db.systemLogs = Array.isArray(db.systemLogs) ? db.systemLogs : [];
+  db.fuelPriceHistory = Array.isArray(db.fuelPriceHistory) ? db.fuelPriceHistory : [];
+  db.pricingVersions = Array.isArray(db.pricingVersions) ? db.pricingVersions : [];
+  if (!db.audit || !Array.isArray(db.audit)) db.audit = [];
+  if (Array.isArray(db.audit)) {
+    db.audit.forEach((a: any) => {
+      if (!a.description && a.action && a.entity) a.description = auditDescription(a.action, a.entity, a.entityId || '', a.meta);
+      if (!a.resourceType) a.resourceType = a.entity || null;
+      if (!a.resourceId) a.resourceId = a.entityId || null;
+      if (!a.riskLevel && a.severity) a.riskLevel = a.severity;
+      if (a.previousValue === undefined) a.previousValue = null;
+      if (a.newValue === undefined) a.newValue = null;
+    });
+  }
+  if (db.platformSettings && typeof db.platformSettings === 'object') {
+    const defaults: Record<string, any> = {
+      fuelPriceCurrent: 12,
+      fuelPriceReference: 12,
+      fuelCostWeight: 40,
+      fuelAdjustmentMode: 'automatic',
+      fuelApprovedMultiplier: null,
+      maxAutoIncreasePct: 10,
+      maxAutoDecreasePct: 10,
+      fuelPriceSource: 'manual',
+      fuelPriceStatus: 'verified',
+      fuelPriceUpdatedAt: null,
+      fuelPriceLastVerifiedAt: null,
+      fuelProviderUrl: '',
+      fuelPendingReview: null,
+      currentPricingVersion: 0
+    };
+    for (const [k, v] of Object.entries(defaults)) {
+      if (db.platformSettings[k] === undefined) db.platformSettings[k] = v;
+    }
+  }
+  if (!db.auditSequence || typeof db.auditSequence !== 'object') {
+    db.auditSequence = { value: db.audit?.length || 0 };
+  }
+  db.auditSequence.value = Math.max(Number(db.auditSequence.value) || 0, db.audit?.length || 0);
+}
+migrateNewCollections();
+
+systemLog({ level: 'info', source: 'system', event: 'service_startup', message: `OmniMarket server starting. Version ${process.env.npm_package_version || 'dev'}.` });
 
 
 app.get('/', (req, res) => {
@@ -2503,6 +2642,7 @@ app.post('/api/auth/register', (req, res) => {
     }
 
     console.log('\x1b[32m[Registration]\x1b[0m SUCCESS for:', normalizedEmail);
+    logAudit(newUser, 'Account registered', 'user', userId, 'success', { role, autoApproved: newUser.isApproved }, req);
     return res.status(201).json({ success: true, user: { id: newUser.id, email: newUser.email, role: newUser.role } });
   } catch (err: any) {
     console.error('\x1b[31m[Registration Error]\x1b[0m', err.message);
@@ -2995,6 +3135,10 @@ app.delete('/api/auth/sessions/:userId/:sessionId', (req, res) => {
   const session = (db.sessions || []).find((s: any) => s.id === req.params.sessionId && s.userId === req.params.userId);
   if (!session) return res.status(404).json({ error: 'Session not found' });
   session.revokedAt = new Date().toISOString();
+  const actor = (req as any).currentUser;
+  if (actor && (actor.role === 'administrator' || actor.role === 'super-administrator')) {
+    logAudit(actor, 'Session revoked', 'session', session.id, 'success', { user: req.params.userId, deviceName: session.deviceName });
+  }
   res.json({ success: true });
 });
 
@@ -3652,6 +3796,147 @@ function paymentMethodStatus(method: string): { available: boolean; reason?: str
 //   base + (km × pricePerKm), clamped to [min, max], waived at free-delivery
 //   threshold, and rejected when the route exceeds maxDeliveryDistance.
 // Returns null when the route is beyond the configured maximum.
+// ------------------------------------------------------------
+// FUEL-PRICE-BASED DELIVERY PRICING ENGINE (shared)
+// ------------------------------------------------------------
+// Single source of truth for how fuel prices feed delivery fees. Used by the
+// Super Admin pricing preview, order checkout, delivery/charting math and the
+// fuel provider. One engine — never duplicated checkout logic.
+//
+// Fuel adjustment formula (configurable):
+//   fuelChange%  = (current - reference) / reference * 100
+//   adjustment%  = fuelChange% * (fuelCostWeight / 100)
+// When the price drops (negative change) the adjustment lowers the fee by the
+// same formula, clamped to maxAutoDecreasePct.
+//
+// If the change exceeds maxAutoIncreasePct/maxAutoDecreasePct the automatic
+// adjustment is PAUSED and a `fuelPendingReview` proposal is staged so a Super
+// Admin must approve before any fee moves. 0 current price means "no fuel data"
+// → the fuel component stays at 0 (honest default).
+
+const FUEL_SOURCES = ['manual', 'api', 'scraper'] as const;
+
+function getFuelPriceInfo() {
+  const s = db.platformSettings;
+  const current = Number(s.fuelPriceCurrent);
+  const reference = Number(s.fuelPriceReference);
+  const weight = Number(s.fuelCostWeight) || 0;
+  const fuelChangePct = reference > 0 && Number.isFinite(current) ? Math.round(((current - reference) / reference) * 10000) / 100 : 0;
+  const adjustmentPct = Math.round(fuelChangePct * (weight / 100) * 100) / 100;
+  return {
+    current: Number.isFinite(current) ? current : 0,
+    reference: Number.isFinite(reference) ? reference : 0,
+    fuelChangePct,
+    adjustmentPct,
+    weight,
+    source: s.fuelPriceSource || 'manual',
+    status: s.fuelPriceStatus || 'unavailable',
+    lastVerifiedAt: s.fuelPriceLastVerifiedAt || null,
+    updatedAt: s.fuelPriceUpdatedAt || null,
+    available: Number.isFinite(current) && current > 0
+  };
+}
+
+// Returns the delivery-fee multiplier the fuel component should apply, or null
+// when automatic adjustment is paused (Super Admin review required).
+function computeFuelMultiplier(): { multiplier: number; applied: boolean; paused: boolean; reason?: string } | null {
+  const s = db.platformSettings;
+  const info = getFuelPriceInfo();
+  if (!info.available || info.reference <= 0) {
+    return { multiplier: 1, applied: false, paused: false, reason: 'no_fuel_price' };
+  }
+  const maxIncrease = Number(s.maxAutoIncreasePct) || 10;
+  const maxDecrease = Number(s.maxAutoDecreasePct) || 10;
+  const change = info.fuelChangePct;
+  if (change > maxIncrease || change < -Math.abs(maxDecrease)) {
+    // A super-admin approval explicitly reviews the staged multiplier and lets
+    // that large change move fees (recorded in the audit trail). Without it the
+    // automatic adjustment stays PAUSED — fees never silently swing.
+    const approved = Number(s.fuelApprovedMultiplier);
+    if (Number.isFinite(approved) && approved >= 0 && approved !== 0) {
+      return { multiplier: Math.max(0, approved), applied: true, paused: false, reason: 'approved_proposal' };
+    }
+    return { multiplier: 1, applied: false, paused: true, reason: 'beyond_auto_limits' };
+  }
+  // adjustmentPct is a % of the *delivery component*; multiplier = 1 ± pct.
+  return { multiplier: Math.max(0, 1 + info.adjustmentPct / 100), applied: true, paused: false };
+}
+
+// Register every pricing/fuel change as a versioned snapshot so historical
+// orders keep the pricing version they were created under (never recalculated
+// with today's fuel price).
+function applyPricingVersion(meta: { changedBy: string; reason?: string; before: Record<string, any>; after: Record<string, any> }) {
+  db.pricingVersions = Array.isArray(db.pricingVersions) ? db.pricingVersions : [];
+  const version = (Number(db.platformSettings.currentPricingVersion) || 0) + 1;
+  db.platformSettings.currentPricingVersion = version;
+  db.pricingVersions.push({
+    version,
+    timestamp: new Date().toISOString(),
+    changedBy: meta.changedBy,
+    reason: meta.reason || 'pricing update',
+    before: meta.before,
+    after: meta.after
+  });
+  return version;
+}
+
+// Provider abstraction. `fetchFuelPriceFromProvider` can connect to a real
+// Ghana fuel data API/feed; when the source is unavailable the last verified
+// price is retained and surfaced as LAST VERIFIED PRICE / SOURCE UNAVAILABLE —
+// never a silently invented number.
+async function fetchCurrentFuelPrice(source?: string): Promise<{ price: number; source: string; providerUrl?: string }> {
+  const s = db.platformSettings;
+  const providerUrl = String(s.fuelProviderUrl || '').trim();
+  if (providerUrl) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 8000);
+      const r = await fetch(providerUrl, { signal: ctrl.signal, headers: { accept: 'application/json' } });
+      clearTimeout(timer);
+      if (r.ok) {
+        const j = await r.json();
+        const price = parseFuelPriceFromPayload(j);
+        if (Number.isFinite(price) && price > 0) {
+          return { price: Math.round(price * 100) / 100, source: source || 'api', providerUrl };
+        }
+      }
+    } catch (e: any) {
+      systemLog({ level: 'error', source: 'fuel', event: 'fuel_source_unavailable', message: `Fuel provider unreachable at ${providerUrl}: ${e?.message || e}` });
+    }
+  }
+  // No usable provider → return the last verified price (caller marks SOURCE UNAVAILABLE).
+  return { price: Number(s.fuelPriceLastVerifiedAt ? Number(s.fuelPriceCurrent) : 0) || 0, source: 'fallback', providerUrl };
+}
+
+function parseFuelPriceFromPayload(payload: any): number {
+  if (!payload || typeof payload !== 'object') return 0;
+  for (const key of ['price', 'currentPrice', 'petrolPrice', 'dieselPrice', 'avgPrice']) {
+    const v = payload[key];
+    if (Array.isArray(v) && v.length) {
+      const n = Number(v[0]?.price ?? v[0]?.value ?? null);
+      if (Number.isFinite(n) && n > 0) return n;
+    } else {
+      const n = Number(v);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  }
+  return 0;
+}
+
+function recordFuelPriceHistory(entry: { price: number; reference: number; source: string; status: string; note?: string }) {
+  db.fuelPriceHistory = Array.isArray(db.fuelPriceHistory) ? db.fuelPriceHistory : [];
+  db.fuelPriceHistory.push({
+    id: `fuel-${uuidv4().slice(0, 8)}`,
+    timestamp: new Date().toISOString(),
+    price: Math.round(entry.price * 100) / 100,
+    reference: Math.round(entry.reference * 100) / 100,
+    source: entry.source,
+    status: entry.status,
+    note: entry.note || null
+  });
+  if (db.fuelPriceHistory.length > 1000) db.fuelPriceHistory = db.fuelPriceHistory.slice(db.fuelPriceHistory.length - 1000);
+}
+
 function computeDeliveryCharge(opts: {
   deliveryMethod?: string;
   rider?: any;
@@ -3682,6 +3967,12 @@ function computeDeliveryCharge(opts: {
   const base = Number.isFinite(Number(settings.deliveryBaseFee)) ? Number(settings.deliveryBaseFee) : Number(settings.defaultDeliveryFee) || 0;
   const perKm = Number(settings.distanceFeePerKm) || 0;
   let fee = base + (distance != null ? distance * perKm : 0);
+
+  const info = getFuelPriceInfo();
+  const fuel = computeFuelMultiplier();
+  if (fuel && fuel.applied && Number.isFinite(fuel.multiplier)) {
+    fee = fee * fuel.multiplier;
+  }
 
   const minFee = Number(settings.deliveryMinFee);
   const maxFee = Number(settings.deliveryMaxFee);
@@ -3920,6 +4211,19 @@ app.post('/api/orders', requireAuth, (req, res) => {
     totalAmount: grandTotal,
     platformCommission,
     vendorPayout,
+    pricingVersion: Number(db.platformSettings?.currentPricingVersion) || 0,
+    pricingSnapshot: {
+      deliveryBaseFee: Number(db.platformSettings?.deliveryBaseFee) || 0,
+      distanceFeePerKm: Number(db.platformSettings?.distanceFeePerKm) || 0,
+      deliveryMinFee: Number(db.platformSettings?.deliveryMinFee) || 0,
+      deliveryMaxFee: Number(db.platformSettings?.deliveryMaxFee) || 0,
+      freeDeliveryThreshold: Number(db.platformSettings?.freeDeliveryThreshold) || 0,
+      maxDeliveryDistance: Number(db.platformSettings?.maxDeliveryDistance) || 0,
+      fuelPriceCurrent: Number(db.platformSettings?.fuelPriceCurrent) || 0,
+      fuelPriceReference: Number(db.platformSettings?.fuelPriceReference) || 0,
+      fuelCostWeight: Number(db.platformSettings?.fuelCostWeight) || 0,
+      fuelAdjustmentMode: db.platformSettings?.fuelAdjustmentMode || 'automatic'
+    },
     status: 'pending',
     paymentStatus,
     isPaid: paymentStatus === 'paid',
@@ -7051,11 +7355,13 @@ app.get('/api/audit/summary', requireSuperAdmin, requirePermission('security:vie
   const byCategory: Record<string, number> = {};
   const bySeverity: Record<string, number> = {};
   const byDay: Record<string, number> = {};
-  let today = 0;
+let today = 0;
   let failed = 0;
   let security = 0;
   let payments = 0;
   let adminActions = 0;
+  let criticalRisk = 0;
+  let operations = 0;
   const now = new Date();
   const todayKey = now.toISOString().slice(0, 10);
 
@@ -7068,10 +7374,14 @@ app.get('/api/audit/summary', requireSuperAdmin, requirePermission('security:vie
     byDay[(r.timestamp || '').slice(0, 10)] = (byDay[(r.timestamp || '').slice(0, 10)] || 0) + 1;
     if ((r.timestamp || '').slice(0, 10) === todayKey) today += 1;
     if (r.result === 'failed') failed += 1;
+    if ((r.severity || auditSeverity(r.action)) === 'critical') criticalRisk += 1;
+    if (['order', 'payment', 'wallet', 'delivery', 'menu_item', 'category', 'coupon',
+      'vendor', 'rider', 'referral', 'support_ticket', 'announcement'].includes(r.entity)) operations += 1;
     if (['auth', 'permission', 'role', 'session'].includes(r.entity) || r.category === 'Security' || r.category === 'RBAC') security += 1;
     if (['payment', 'wallet', 'payment_gateway'].includes(r.entity) || r.category === 'Payments') payments += 1;
     if (['administrator', 'super-administrator'].includes(r.actorRole)) adminActions += 1;
   });
+
   const last24 = rows.filter((r: any) => (new Date(r.timestamp).getTime() || 0) > Date.now() - 24 * 60 * 60 * 1000).length;
 
   res.json({
@@ -7079,7 +7389,9 @@ app.get('/api/audit/summary', requireSuperAdmin, requirePermission('security:vie
     last24h: last24,
     today,
     failed,
+    criticalRisk,
     security,
+    operations,
     payments,
     adminActions,
     byAction: Object.entries(actions).sort((a, b) => b[1] - a[1]),
@@ -7134,6 +7446,100 @@ app.get('/api/audit/facets', requireSuperAdmin, requirePermission('audit:view'),
     roleLabels,
     entityLabels
   });
+});
+
+// ------------------------------------------------------------
+// SYSTEM LOGS (technical events — super admin only)
+// ------------------------------------------------------------
+// Distinct from the audit log: System Logs record technical/service events
+// (restart, worker failure, API/DB error, integration error). The System Logs
+// page therefore never shows fabricated personnel activity.
+function filterSystemLogs(q: any) {
+  const level = String(q.level || '').trim();
+  const source = String(q.source || '').trim();
+  const search = String(q.search || '').trim().toLowerCase();
+  const from = q.from ? new Date(String(q.from)).getTime() : null;
+  const to = q.to ? new Date(String(q.to)).getTime() : null;
+  const sort = String(q.sort || 'newest').trim();
+
+  let rows: any[] = [...(Array.isArray(db.systemLogs) ? db.systemLogs : [])];
+
+  if (level) rows = rows.filter(r => r.level === level);
+  if (source) rows = rows.filter(r => r.source === source);
+  if (search) {
+    rows = rows.filter(r =>
+      String(r.event || '').toLowerCase().includes(search) ||
+      String(r.message || '').toLowerCase().includes(search) ||
+      String(r.source || '').toLowerCase().includes(search) ||
+      String(r.id || '').toLowerCase().includes(search)
+    );
+  }
+  if (from || to) {
+    rows = rows.filter(r => {
+      const t = new Date(r.timestamp).getTime();
+      if (from && t < from) return false;
+      if (to && t > to) return false;
+      return true;
+    });
+  }
+
+  if (sort === 'oldest') rows.sort((a, b) => (a.timestamp < b.timestamp ? -1 : 1));
+  else if (sort === 'level') {
+    const rank = (l?: string) => ({ error: 0, warn: 1, info: 2, debug: 3 } as Record<string, number>)[String(l || 'info')] ?? 2;
+    rows.sort((a, b) => rank(a.level) - rank(b.level) || (a.timestamp < b.timestamp ? 1 : -1));
+  }
+  else rows.sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
+
+  return { rows, total: rows.length };
+}
+
+app.get('/api/admin/system-logs', requireSuperAdmin, requirePermission('api:view'), (req, res) => {
+  const q = req.query;
+  const page = Math.max(Number(q.page) || 1, 1);
+  const pageSize = Math.min(Math.max(Number(q.pageSize) || 50, 1), 200);
+
+  const { rows, total } = filterSystemLogs(q);
+  const start = (page - 1) * pageSize;
+  const items = rows.slice(start, start + pageSize);
+
+  const all = Array.isArray(db.systemLogs) ? db.systemLogs : [];
+  const byLevel: Record<string, number> = {};
+  const bySource: Record<string, number> = {};
+  let errors24h = 0;
+  all.forEach(r => {
+    byLevel[r.level] = (byLevel[r.level] || 0) + 1;
+    bySource[r.source] = (bySource[r.source] || 0) + 1;
+    if (r.level === 'error' && (new Date(r.timestamp).getTime() || 0) > Date.now() - 24 * 60 * 60 * 1000) errors24h += 1;
+  });
+
+  res.json({
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    items,
+    summary: {
+      total: all.length,
+      errors: byLevel.error || 0,
+      warnings: byLevel.warn || 0,
+      infos: byLevel.info || 0,
+      errors24h,
+      byLevel,
+      bySource
+    },
+    sources: SYSTEM_LOG_SOURCES
+  });
+});
+
+// Clear system logs (super admin, re-auth required). The clear itself is
+// recorded as an audit event so the action is traceable.
+app.post('/api/admin/system-logs/clear', requireSuperAdmin, requirePermission('api:view'), (req, res) => {
+  const actor = (req as any).currentUser;
+  if (applyReAuth(req.body, actor, res)) return;
+  const before = (Array.isArray(db.systemLogs) ? db.systemLogs : []).length;
+  db.systemLogs = [];
+  logAudit(actor, 'System logs cleared', 'database', 'global', 'success', { before, cleared: true }, req);
+  res.json({ ok: true, cleared: before });
 });
 
 // Platform settings (super admin)
@@ -7235,6 +7641,40 @@ function validatePlatformSettings(updates: any): { errors: string[]; sanitized: 
     if (!['manual', 'automatic'].includes(updates.riderApprovalMode)) errors.push('Rider approval mode must be manual or automatic.');
     else out.riderApprovalMode = updates.riderApprovalMode;
   }
+  if ('fuelPriceCurrent' in updates) {
+    const p = Number(updates.fuelPriceCurrent);
+    if (!Number.isFinite(p) || p < 0) errors.push('Current fuel price must be a non-negative number.');
+    else out.fuelPriceCurrent = Math.round(p * 100) / 100;
+  }
+  if ('fuelPriceReference' in updates) {
+    const p = Number(updates.fuelPriceReference);
+    if (!Number.isFinite(p) || p <= 0) errors.push('Fuel price baseline must be greater than zero.');
+    else out.fuelPriceReference = Math.round(p * 100) / 100;
+  }
+  if ('fuelCostWeight' in updates) {
+    const w = Number(updates.fuelCostWeight);
+    if (!Number.isFinite(w) || w < 0 || w > 100) errors.push('Fuel cost weight must be between 0 and 100.');
+    else out.fuelCostWeight = Math.round(w * 100) / 100;
+  }
+  if ('fuelAdjustmentMode' in updates) {
+    if (!['automatic', 'approval'].includes(updates.fuelAdjustmentMode)) errors.push('Fuel adjustment mode must be automatic or approval.');
+    else out.fuelAdjustmentMode = updates.fuelAdjustmentMode;
+  }
+  if ('maxAutoIncreasePct' in updates) {
+    const m = Number(updates.maxAutoIncreasePct);
+    if (!Number.isFinite(m) || m < 0 || m > 100) errors.push('Max auto increase % must be between 0 and 100.');
+    else out.maxAutoIncreasePct = Math.round(m * 100) / 100;
+  }
+  if ('maxAutoDecreasePct' in updates) {
+    const m = Number(updates.maxAutoDecreasePct);
+    if (!Number.isFinite(m) || m < 0 || m > 100) errors.push('Max auto decrease % must be between 0 and 100.');
+    else out.maxAutoDecreasePct = Math.round(m * 100) / 100;
+  }
+  if ('fuelProviderUrl' in updates) {
+    const url = String(updates.fuelProviderUrl || '').trim();
+    if (url && !/^https?:\/\/.+/i.test(url)) errors.push('Fuel provider URL must be a valid http(s) URL.');
+    else out.fuelProviderUrl = url;
+  }
 
   return { errors, sanitized: out };
 }
@@ -7268,9 +7708,334 @@ app.put('/api/platform/settings', requireSuperAdmin, requirePermission('settings
 
   if (Object.keys(changed).length === 0) return res.json(db.platformSettings);
 
+  const PRICING_KEYS = ['deliveryBaseFee', 'distanceFeePerKm', 'deliveryMinFee', 'deliveryMaxFee',
+    'freeDeliveryThreshold', 'maxDeliveryDistance', 'fuelPriceCurrent', 'fuelPriceReference',
+    'fuelCostWeight', 'fuelAdjustmentMode', 'maxAutoIncreasePct', 'maxAutoDecreasePct'];
+  const pricingChanged = Object.keys(changed).some(k => PRICING_KEYS.includes(k));
+
+  const beforeSnapshot: Record<string, any> = {};
+  Object.entries(changed).forEach(([k, v]) => { beforeSnapshot[k] = (v as any).from; });
+
   db.platformSettings = { ...db.platformSettings, ...sanitized, updatedAt: new Date().toISOString() };
+
+  if (pricingChanged) {
+    const afterSnapshot: Record<string, any> = {};
+    Object.entries(changed).forEach(([k, v]) => { afterSnapshot[k] = (v as any).to; });
+    applyPricingVersion({ changedBy: actor?.email || 'system', reason: 'pricing update via platform settings', before: beforeSnapshot, after: afterSnapshot });
+    // mark fuel price as manually verified/updated when the operator sets it
+    if ('fuelPriceCurrent' in changed || 'fuelPriceReference' in changed) {
+      db.platformSettings.fuelPriceStatus = 'verified';
+      db.platformSettings.fuelPriceSource = 'manual';
+      db.platformSettings.fuelPriceUpdatedAt = new Date().toISOString();
+      db.platformSettings.fuelPriceLastVerifiedAt = new Date().toISOString();
+      recordFuelPriceHistory({
+        price: Number(db.platformSettings.fuelPriceCurrent) || 0,
+        reference: Number(db.platformSettings.fuelPriceReference) || 0,
+        source: 'manual',
+        status: 'verified',
+        note: 'Super admin set fuel price'
+      });
+    }
+    logAudit(actor, 'Delivery pricing updated', 'platform_settings', 'global', 'success', { changed, pricingVersion: db.platformSettings.currentPricingVersion });
+  }
+
   logAudit(actor, 'Platform settings updated', 'platform_settings', 'global', 'success', { changed });
   res.json(db.platformSettings);
+});
+
+// ------------------------------------------------------------
+// FUEL PRICE + DELIVERY PRICING API (super admin)
+// ------------------------------------------------------------
+// Read model shared by the Pricing preview, System Logs fuel source, and the
+// checkout hint. `fuelPendingReview` carries the staged proposal when automatic
+// adjustment is paused (see computeFuelMultiplier) or approval-mode is on.
+
+function fuelProposalState() {
+  const s = db.platformSettings;
+  const info = getFuelPriceInfo();
+  const fuel = computeFuelMultiplier();
+  const paused = !!(fuel && fuel.paused && fuel.reason === 'beyond_auto_limits');
+  const pendingReview = paused || (s.fuelAdjustmentMode === 'approval' && !s.fuelPendingReview);
+  return { info, fuel, paused, pendingReview };
+}
+
+app.get('/api/admin/fuel/price', requireSuperAdmin, requirePermission('settings:update'), (req, res) => {
+  const s = db.platformSettings;
+  const state = fuelProposalState();
+  res.json({
+    info: state.info,
+    multiplier: state.fuel ? state.fuel.multiplier : null,
+    applied: state.fuel ? state.fuel.applied : false,
+    paused: state.paused,
+    pendingReview: s.fuelPendingReview || null,
+    fuelPriceStatus: s.fuelPriceStatus || 'unavailable',
+    fuelPriceUpdatedAt: s.fuelPriceUpdatedAt || null,
+    fuelPriceLastVerifiedAt: s.fuelPriceLastVerifiedAt || null,
+    fuelProviderUrl: s.fuelProviderUrl || '',
+    fuelAdjustmentMode: s.fuelAdjustmentMode || 'automatic',
+    maxAutoIncreasePct: Number(s.maxAutoIncreasePct) || 10,
+    maxAutoDecreasePct: Number(s.maxAutoDecreasePct) || 10,
+    currentPricingVersion: Number(s.currentPricingVersion) || 0,
+    delivery: {
+      baseFee: Number(s.deliveryBaseFee) || 0,
+      perKm: Number(s.distanceFeePerKm) || 0,
+      minFee: Number(s.deliveryMinFee) || 0,
+      maxFee: Number(s.deliveryMaxFee) || 0,
+      freeDeliveryThreshold: Number(s.freeDeliveryThreshold) || 0,
+      maxDeliveryDistance: Number(s.maxDeliveryDistance) || 0
+    }
+  });
+});
+
+app.get('/api/admin/fuel/history', requireSuperAdmin, requirePermission('settings:update'), (req, res) => {
+  const q = req.query;
+  let rows: any[] = [...(Array.isArray(db.fuelPriceHistory) ? db.fuelPriceHistory : [])];
+  const from = q.from ? new Date(String(q.from)).getTime() : null;
+  const to = q.to ? new Date(String(q.to)).getTime() : null;
+  if (from || to) {
+    rows = rows.filter(r => {
+      const t = new Date(r.timestamp).getTime();
+      if (from && t < from) return false;
+      if (to && t > to) return false;
+      return true;
+    });
+  }
+  rows.sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
+  const page = Math.max(Number(q.page) || 1, 1);
+  const pageSize = Math.min(Math.max(Number(q.pageSize) || 50, 1), 200);
+  const start = (page - 1) * pageSize;
+  res.json({ total: rows.length, page, pageSize, totalPages: Math.max(1, Math.ceil(rows.length / pageSize)), items: rows.slice(start, start + pageSize) });
+});
+
+// Sync fuel price from the configured provider (or the supplied price). The
+// outcome is audited. When a *new* provider price lands beyond auto limits, an
+// approval proposal is staged instead of silently applying a large change.
+app.post('/api/admin/fuel/sync', requireSuperAdmin, requirePermission('settings:update'), async (req, res) => {
+  const actor = (req as any).currentUser;
+  const raw = req.body.body ?? req.body;
+  const source = String(raw?.source || '').trim();
+  const manualPrice = raw?.price !== undefined && raw?.price !== null && String(raw?.price) !== '' ? Number(raw.price) : null;
+
+  const result = await (manualPrice !== null
+    ? Promise.resolve({ price: manualPrice, source: 'manual' })
+    : fetchCurrentFuelPrice(source));
+
+  if (!Number.isFinite(result.price) || result.price <= 0) {
+    logAudit(actor, 'Fuel price sync failed', 'platform_settings', 'global', 'failed', {
+      reason: 'source_unavailable',
+      providerUrl: db.platformSettings.fuelProviderUrl || null
+    }, req);
+    return res.status(502).json({
+      success: false,
+      message: 'Fuel price source is currently unavailable. The last verified price is retained — no new price was applied.',
+      retained: getFuelPriceInfo()
+    });
+  }
+
+  const s = db.platformSettings;
+  const reference = Number(s.fuelPriceReference) || result.price;
+  const changePct = reference > 0 ? ((result.price - reference) / reference) * 100 : 0;
+  const maxIncrease = Number(s.maxAutoIncreasePct) || 10;
+  const maxDecrease = Number(s.maxAutoDecreasePct) || 10;
+  const prev = { ...s, fuelPriceCurrent: s.fuelPriceCurrent };
+
+  const newPrice = Math.round(result.price * 100) / 100;
+  const beyondLimits = changePct > maxIncrease || changePct < -Math.abs(maxDecrease);
+
+  // A source-unavailable fallback must never be presented as a new verified price.
+  if (result.source === 'fallback' && !db.platformSettings.fuelProviderUrl) {
+    logAudit(actor, 'Fuel price sync failed', 'platform_settings', 'global', 'failed', { reason: 'no_provider' }, req);
+    return res.status(502).json({ success: false, message: 'No fuel provider is configured (fuelProviderUrl missing). Configure a provider URL or set the price manually.' });
+  }
+
+  const effectiveSource = result.source === 'manual' ? 'manual' : 'api';
+  db.platformSettings.fuelPriceCurrent = newPrice;
+  db.platformSettings.fuelPriceSource = effectiveSource;
+  db.platformSettings.fuelPriceUpdatedAt = new Date().toISOString();
+  db.platformSettings.fuelPriceLastVerifiedAt = new Date().toISOString();
+  db.platformSettings.fuelPriceStatus = 'verified';
+  // A freshly synced price supersedes any previously approved multiplier.
+  db.platformSettings.fuelApprovedMultiplier = null;
+
+  if (beyondLimits) {
+    // Stage proposal instead of applying the automatic adjustment.
+    const proposal = {
+      id: `proposal-${uuidv4().slice(0, 8)}`,
+      createdAt: new Date().toISOString(),
+      stagedBy: actor?.email || 'system',
+      fuelChangePct: Math.round(changePct * 100) / 100,
+      newFuelPrice: newPrice,
+      previousFuelPrice: reference,
+      currentPricing: {
+        baseFee: Number(s.deliveryBaseFee) || 0,
+        perKm: Number(s.distanceFeePerKm) || 0,
+        minFee: Number(s.deliveryMinFee) || 0,
+        maxFee: Number(s.deliveryMaxFee) || 0
+      },
+      plannedAdjustmentPct: Math.round((Math.round(changePct * 100) / 100) * (Number(s.fuelCostWeight) || 0) / 100 * 100) / 100,
+      proposedFuelMultiplier: Math.max(0, 1 + (Math.round(changePct * 100) / 100) * (Number(s.fuelCostWeight) || 0) / 10000),
+      expectedImpact: `Fuel price changed by ${changePct >= 0 ? '+' : ''}${Math.round(changePct * 100) / 100}%. Automatic delivery adjustment is paused pending approval.`,
+      reason: raw?.reason || 'fuel price change detected',
+      status: 'pending'
+    };
+    db.platformSettings.fuelPendingReview = proposal;
+    systemLog({ level: 'warn', source: 'fuel', event: 'fuel_price_large_change', message: `Fuel price changed by ${changePct >= 0 ? '+' : ''}${Math.round(changePct * 100) / 100}%. Automatic delivery adjustment has been paused pending approval.` });
+    logAudit(actor, 'Fuel price change flagged for review', 'platform_settings', 'global', 'success', {
+      newFuelPrice: newPrice,
+      previousFuelPrice: reference,
+      fuelChangePct: Math.round(changePct * 100) / 100,
+      mode: db.platformSettings.fuelAdjustmentMode
+    }, req);
+    recordFuelPriceHistory({ price: newPrice, reference, source: effectiveSource, status: 'pending_review', note: 'beyond auto limits — flagged for approval' });
+    return res.json({
+      success: true,
+      flagged: true,
+      message: `Fuel price updated to GH₵${newPrice.toFixed(2)} but the change is beyond automatic limits. Approval is required before delivery fees move.`,
+      pendingReview: proposal,
+      info: getFuelPriceInfo()
+    });
+  }
+
+  applyPricingVersion({
+    changedBy: actor?.email || 'system',
+    reason: raw?.reason || 'fuel price sync',
+    before: { fuelPriceCurrent: prev.fuelPriceCurrent, fuelPriceReference: reference },
+    after: { fuelPriceCurrent: newPrice, fuelPriceReference: reference }
+  });
+
+  logAudit(actor, 'Fuel price synced', 'platform_settings', 'global', 'success', {
+    newFuelPrice: newPrice,
+    previousFuelPrice: reference,
+    fuelChangePct: Math.round(changePct * 100) / 100,
+    source: effectiveSource,
+    mode: db.platformSettings.fuelAdjustmentMode
+  }, req);
+  recordFuelPriceHistory({ price: newPrice, reference, source: effectiveSource, status: 'applied', note: 'auto adjustment applied within limits' });
+  systemLog({ level: 'info', source: 'fuel', event: 'fuel_price_synced', message: `Fuel price synced (${effectiveSource}): GH₵${reference.toFixed(2)} → GH₵${newPrice.toFixed(2)}.` });
+  res.json({ success: true, flagged: false, info: getFuelPriceInfo(), message: 'Fuel price updated and applied automatically.' });
+});
+
+// Manual override with re-auth. Audited with before/after values. Bypasses the
+// approval gate because the operator explicitly confirms the value.
+app.post('/api/admin/fuel/override', requireSuperAdmin, requirePermission('settings:update'), (req, res) => {
+  const actor = (req as any).currentUser;
+  const raw = req.body.body ?? req.body;
+  if (applyReAuth(raw, actor, res)) return;
+  const price = Number(raw?.price);
+
+  if (!Number.isFinite(price) || price <= 0) {
+    return res.status(400).json({ success: false, message: 'A positive fuel price is required.' });
+  }
+  const s = db.platformSettings;
+  const reference = Number(s.fuelPriceReference) || price;
+  const before = Number(s.fuelPriceCurrent) || 0;
+  const rounded = Math.round(price * 100) / 100;
+
+  const prevSettings = { ...s };
+  db.platformSettings.fuelPriceCurrent = rounded;
+  db.platformSettings.fuelPriceReference = reference;
+  db.platformSettings.fuelPriceSource = 'manual';
+  db.platformSettings.fuelPriceStatus = 'verified';
+  db.platformSettings.fuelPriceUpdatedAt = new Date().toISOString();
+  db.platformSettings.fuelPriceLastVerifiedAt = new Date().toISOString();
+  db.platformSettings.fuelPendingReview = null;
+  db.platformSettings.fuelApprovedMultiplier = null;
+
+  applyPricingVersion({
+    changedBy: actor?.email || 'system',
+    reason: raw?.reason || 'manual fuel price override',
+    before: { fuelPriceCurrent: before, fuelPriceReference: reference },
+    after: { fuelPriceCurrent: rounded, fuelPriceReference: reference }
+  });
+
+  logAudit(actor, 'Fuel price override', 'platform_settings', 'global', 'success', {
+    previousValue: before,
+    newValue: rounded,
+    reference,
+    reason: raw?.reason || null,
+    pricingVersion: db.platformSettings.currentPricingVersion
+  }, req);
+  recordFuelPriceHistory({ price: rounded, reference, source: 'manual', status: 'applied', note: raw?.reason || 'super admin override' });
+  res.json({
+    success: true,
+    previousValue: before,
+    newValue: rounded,
+    reference,
+    pricingVersion: db.platformSettings.currentPricingVersion,
+    info: getFuelPriceInfo()
+  });
+});
+
+// Approval endpoints: approve a staged fuel-proposal (applies the pricing
+// version with the new multiplier) or reject it (reverts to the last applied
+// price). Both are audited.
+app.post('/api/admin/fuel/proposal/approve', requireSuperAdmin, requirePermission('settings:update'), (req, res) => {
+  const actor = (req as any).currentUser;
+  if (applyReAuth(req.body, actor, res)) return;
+  const proposal = db.platformSettings.fuelPendingReview;
+  if (!proposal) return res.status(404).json({ success: false, message: 'No pending fuel review proposal.' });
+
+  const s = db.platformSettings;
+  const prev = Number(s.fuelPriceCurrent) || 0;
+  const prevRef = Number(s.fuelPriceReference) || proposal.previousFuelPrice || prev;
+  s.fuelPriceCurrent = proposal.newFuelPrice;
+  s.fuelPriceReference = prevRef;
+  s.fuelPriceStatus = 'verified';
+  s.fuelPriceUpdatedAt = new Date().toISOString();
+  s.fuelPriceLastVerifiedAt = new Date().toISOString();
+  s.fuelPendingReview = null;
+  // The approved change may exceed the automatic limits; the explicitly-reviewed
+  // multiplier now drives delivery fees until the next price change.
+  s.fuelApprovedMultiplier = Number(proposal.proposedFuelMultiplier);
+  if (!Number.isFinite(s.fuelApprovedMultiplier) || s.fuelApprovedMultiplier <= 0) s.fuelApprovedMultiplier = 1;
+
+  applyPricingVersion({
+    changedBy: actor?.email || 'system',
+    reason: `approved proposal ${proposal.id}: ${proposal.reason || 'fuel price change'}`,
+    before: { fuelPriceCurrent: prev, fuelPriceReference: prevRef },
+    after: { fuelPriceCurrent: proposal.newFuelPrice, fuelPriceReference: prevRef }
+  });
+
+  logAudit(actor, 'Fuel price proposal approved', 'platform_settings', 'global', 'success', {
+    proposalId: proposal.id,
+    previousValue: prev,
+    newValue: proposal.newFuelPrice,
+    reason: proposal.reason || null,
+    pricingVersion: db.platformSettings.currentPricingVersion
+  }, req);
+  recordFuelPriceHistory({ price: proposal.newFuelPrice, reference: prevRef, source: 'api', status: 'applied', note: 'approved proposal' });
+  systemLog({ level: 'info', source: 'fuel', event: 'fuel_proposal_approved', message: `Fuel price proposal ${proposal.id} approved by ${actor?.email}.` });
+  res.json({ success: true, message: 'Proposal approved and applied.', info: getFuelPriceInfo() });
+});
+
+app.post('/api/admin/fuel/proposal/reject', requireSuperAdmin, requirePermission('settings:update'), (req, res) => {
+  const actor = (req as any).currentUser;
+  if (applyReAuth(req.body, actor, res)) return;
+  const proposal = db.platformSettings.fuelPendingReview;
+  if (!proposal) return res.status(404).json({ success: false, message: 'No pending fuel review proposal.' });
+
+  const prev = Number(db.platformSettings.fuelPriceCurrent) || 0;
+  db.platformSettings.fuelPendingReview = null;
+  db.platformSettings.fuelApprovedMultiplier = null;
+  // Retain the last verified price as the active price; no pricing version bump
+  // because no pricing change occurred.
+  logAudit(actor, 'Fuel price proposal rejected', 'platform_settings', 'global', 'success', {
+    proposalId: proposal.id,
+    retainedPrice: prev,
+    reason: 'rejected by super admin'
+  }, req);
+  systemLog({ level: 'warn', source: 'fuel', event: 'fuel_proposal_rejected', message: `Fuel price proposal ${proposal.id} rejected by ${actor?.email}. Active price unchanged.` });
+  res.json({ success: true, message: 'Proposal rejected. Active price unchanged.', info: getFuelPriceInfo() });
+});
+
+// Historical pricing versions (orders retain the version at creation).
+app.get('/api/admin/pricing/versions', requireSuperAdmin, requirePermission('settings:update'), (req, res) => {
+  let rows: any[] = [...(Array.isArray(db.pricingVersions) ? db.pricingVersions : [])];
+  rows.sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
+  const page = Math.max(Number(req.query.page) || 1, 1);
+  const pageSize = Math.min(Math.max(Number(req.query.pageSize) || 50, 1), 200);
+  const start = (page - 1) * pageSize;
+  res.json({ total: rows.length, page, pageSize, totalPages: Math.max(1, Math.ceil(rows.length / pageSize)), items: rows.slice(start, start + pageSize) });
 });
 
 app.get('/api/payment-gateways', (req, res) => {
@@ -7559,6 +8324,11 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   }
 
   console.error(`[Server Error] ${req.method} ${req.originalUrl} → Status ${status}:`, err.message, (err as any).stack ? `\n${(err as any).stack}` : '');
+  systemLog({
+    level: 'error', source: 'api', event: 'http_error',
+    message: `${req.method} ${req.originalUrl} failed (HTTP ${status}): ${err.message}`,
+    meta: { status, path: req.originalUrl, method: req.method }, req
+  });
   res.status(status).json({ success: false, message: err.message });
 });
 

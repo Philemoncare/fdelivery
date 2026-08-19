@@ -924,11 +924,17 @@ export function SuperAdminAdminsPage() {
  * SECURITY
  * ------------------------------------------------------------
  */
+const SEC_POSTURE: Record<string, { status: AdminStatus; label: string }> = {
+  SECURE: { status: 'success', label: 'Secure' },
+  MONITORING: { status: 'info', label: 'Monitoring' },
+  ATTENTION: { status: 'warning', label: 'Attention' },
+  AT_RISK: { status: 'error', label: 'At Risk' },
+};
+
 export function SuperAdminSecurityPage() {
   const { user } = useAuth();
-  const [summary, setSummary] = useState<any>(null);
+  const [ov, setOv] = useState<any>(null);
   const [mySessions, setMySessions] = useState<any[]>([]);
-  const [health, setHealth] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -936,39 +942,54 @@ export function SuperAdminSecurityPage() {
     setLoading(true);
     setLoadError(null);
     Promise.all([
-      AdminService.getAuditSummary(),
+      AdminService.getSecurityOverview(),
       user ? AuthApiService.getSessions(user.id) : Promise.resolve([]),
     ])
-      .then(([s, sess]) => { setSummary(s); setMySessions(Array.isArray(sess) ? sess : []); })
+      .then(([o, sess]) => { setOv(o); setMySessions(Array.isArray(sess) ? sess : []); })
       .catch((e: any) => setLoadError(e?.message || 'Could not load security telemetry.'))
       .finally(() => setLoading(false));
-    AdminService.getSystemHealth().then(setHealth).catch(() => null);
   }, [user]);
 
   useEffect(() => { load(); }, [load]);
 
-  const securityEvents = (summary?.byAction || []).filter(([a]: any) =>
-    String(a).toLowerCase().includes('login') ||
-    String(a).toLowerCase().includes('lock') ||
-    String(a).toLowerCase().includes('revoke') ||
-    String(a).toLowerCase().includes('suspend') ||
-    String(a).toLowerCase().includes('reset') ||
-    String(a).toLowerCase().includes('password')
-  );
+  if (loading && !ov) return <AdminLoading message="Reading security posture…" />;
+  if (loadError && !ov) return <AdminError message="Unable to load security telemetry." detail={loadError} retry={load} />;
 
-  const active = (mySessions || []).filter(s => !s.revoked);
+  const c = ov?.counters || {};
+  const posture = SEC_POSTURE[ov?.posture] || { status: 'info' as AdminStatus, label: 'Unknown' };
+  const sev = ov?.bySeverity || {};
+  const activeSessions = (mySessions || []).filter(s => !s.revoked);
+  const hasAdminRole = user ? isSuperAdminRole(user.role) || user.role === 'administrator' : false;
+  const rbacChecks = user
+    ? ROLE_PERMISSIONS[user.role]?.some((p: string) => String(p).startsWith('security') || String(p).startsWith('audit'))
+    : false;
 
-  if (loading && !summary) return <AdminLoading message="Reading security telemetry…" />;
-  if (loadError && !summary) return <AdminError message="Unable to load security telemetry." detail={loadError} retry={load} />;
+  const severityStatus = (sevName: string): AdminStatus =>
+    sevName === 'CRITICAL' ? 'error' : sevName === 'HIGH' ? 'warning' : sevName === 'MEDIUM' ? 'info' : 'success';
+
+  const severityRows = [
+    { label: 'Critical', value: sev.CRITICAL || 0, status: 'error' as AdminStatus },
+    { label: 'High', value: sev.HIGH || 0, status: 'warning' as AdminStatus },
+    { label: 'Medium', value: sev.MEDIUM || 0, status: 'info' as AdminStatus },
+    { label: 'Low', value: sev.LOW || 0, status: 'success' as AdminStatus },
+    { label: 'Info', value: sev.INFO || 0, status: 'info' as AdminStatus },
+  ];
 
   return (
     <div className="space-y-8 pb-12">
       <AdminPageHeader
         icon={Shield}
-        title="Security Command"
-        description="Monitor system security posture, administrative identity, and live authentication sessions."
-        stats={<AdminBadge status="operational" label="Hardened" />}
+        title="Security Center"
+        description="Live security posture, threat feed, identity enforcement, and administrative governance."
+        stats={<AdminBadge status={posture.status} label={posture.label} />}
       />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <AdminStatCard label="Critical Alerts" value={String(c.criticalAlerts ?? 0)} icon={ShieldAlert} status={(c.criticalAlerts ?? 0) > 0 ? 'error' : 'success'} />
+        <AdminStatCard label="Active Threats" value={String(ov?.summary?.activeThreats ?? 0)} icon={AlertTriangle} status={(ov?.summary?.activeThreats ?? 0) > 0 ? 'warning' : 'info'} />
+        <AdminStatCard label="Failed Auth (24h)" value={String(c.failedAuthentication ?? 0)} icon={Ban} status={(c.failedAuthentication ?? 0) > 0 ? 'warning' : 'info'} />
+        <AdminStatCard label="Active Sessions" value={String(c.activeSessions ?? activeSessions.length)} icon={Monitor} status="info" />
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <AdminCard title="Identity Enforcement" icon={Lock}>
@@ -976,60 +997,106 @@ export function SuperAdminSecurityPage() {
             <div className="space-y-1">
               <p className="text-[10px] font-black text-ink-3 uppercase tracking-widest">Signed in as</p>
               <p className="text-sm font-black text-ink uppercase tracking-tight">{user?.displayName || user?.email}</p>
-              <p className="text-[10px] text-primary font-black uppercase tracking-widest">{user ? ROLE_LABELS[user.role] : 'N/A'}</p>
+              <p className="text-[10px] text-primary font-black uppercase tracking-widest">{user ? ROLE_LABELS[user.role] || user.role : 'N/A'}</p>
             </div>
 
             <div className="pt-4 border-t border-line space-y-3">
               {[
-                { label: 'RBAC Enforcement', status: 'success' as AdminStatus },
-                { label: 'Immutable Audit', status: 'success' as AdminStatus },
-                { label: '2FA Status', status: user?.twoFactorEnabled ? 'success' : 'warning' as AdminStatus, labelTxt: user?.twoFactorEnabled ? 'Enabled' : 'Disabled' },
+                { label: 'Privileged Access', status: hasAdminRole ? ('success' as AdminStatus) : ('warning' as AdminStatus), labelTxt: hasAdminRole ? 'Granted' : 'Restricted' },
+                { label: 'Security Permissions', status: rbacChecks ? ('success' as AdminStatus) : ('warning' as AdminStatus), labelTxt: rbacChecks ? 'Granted' : 'Restricted' },
+                { label: '2FA Status', status: user?.twoFactorEnabled ? ('success' as AdminStatus) : ('warning' as AdminStatus), labelTxt: user?.twoFactorEnabled ? 'Enabled' : 'Disabled' },
+                { label: 'Identity Account', status: (ov?.summary?.total ?? 0) > 0 ? ('success' as AdminStatus) : ('info' as AdminStatus), labelTxt: 'Verified' },
               ].map(p => (
                 <div key={p.label} className="flex items-center justify-between p-3 rounded-xl bg-surface-2 border border-line">
                   <span className="text-[10px] font-black text-ink-2 uppercase tracking-widest">{p.label}</span>
-                  <AdminBadge status={p.status} label={p.labelTxt || 'Active'} />
+                  <AdminBadge status={p.status} label={p.labelTxt} />
                 </div>
               ))}
             </div>
           </div>
         </AdminCard>
 
-        <AdminCard title="Active Sessions" icon={Monitor} noPadding>
-          <div className="divide-y divide-line">
-            {active.length === 0 ? (
-              <AdminEmptyState icon={Monitor} title="No active sessions" description="You have no other active sessions recorded." />
-            ) : (
-              active.map(s => (
-                <div key={s.sessionId} className="p-4 flex items-center justify-between">
-                  <div>
-                    <p className={cn('text-xs font-black uppercase tracking-tight', s.isCurrent ? 'text-primary' : 'text-ink')}>
-                      {s.deviceName || 'Internal API'}
-                    </p>
-                    <p className="text-[10px] text-ink-3 font-mono">{s.ipAddress} · {timeAgo(s.lastActivityAt, Date.now())}</p>
-                  </div>
-                  {s.isCurrent && <AdminBadge status="success" label="Current" />}
+        <AdminCard
+          title="Threat Monitoring"
+          icon={ShieldAlert}
+          actions={<Link to="/super-admin/security-events"><Button variant="ghost" size="sm" className="h-7 text-[10px] font-semibold uppercase tracking-wider">All Events</Button></Link>}
+          noPadding
+        >
+          <div className="space-y-3 p-5">
+            {severityRows.map(r => (
+              <div key={r.label} className="flex items-center gap-3">
+                <span className="w-16 text-[10px] font-black text-ink-2 uppercase tracking-widest">{r.label}</span>
+                <div className="flex-1 h-1.5 bg-line rounded-full overflow-hidden">
+                  <div className="h-full rounded-full bg-current" style={{ width: `${(r.value / Math.max(ov?.summary?.total || 1, 1)) * 100}%`, color: r.status === 'error' ? 'var(--color-danger)' : r.status === 'warning' ? 'var(--color-warn)' : 'var(--color-primary)' }} />
                 </div>
-              ))
+                <span className="w-7 text-right text-xs font-black text-ink">{r.value}</span>
+              </div>
+            ))}
+          </div>
+          <div className="border-t border-line">
+            {(ov?.recentEvents || []).length === 0 ? (
+              <AdminEmptyState icon={Shield} title="No security events" description="No events have been recorded yet." />
+            ) : (
+              <div className="divide-y divide-line max-h-64 overflow-y-auto">
+                {(ov?.recentEvents || []).slice(0, 6).map((e: any, i: number) => (
+                  <div key={e.id || i} className="px-5 py-3 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-black text-ink uppercase tracking-tight truncate">{String(e.type || 'EVENT').replace(/_/g, ' ')}</p>
+                      <p className="text-[10px] text-ink-3 font-mono mt-0.5 truncate">{e.account || e.endpoint || 'system'}</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                      <AdminBadge status={severityStatus(e.severity)} label={e.severity || 'INFO'} />
+                      <span className="text-[9px] text-ink-3 font-mono">{timeAgo(e.timestamp, Date.now())}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </AdminCard>
 
-        <AdminCard title="Threat Indicators" icon={ShieldAlert}>
-           <div className="space-y-3">
-              {securityEvents.length === 0 ? (
-                <p className="text-[10px] text-ink-3 font-bold uppercase tracking-widest text-center py-4">No recent security events</p>
-              ) : (
-                securityEvents.slice(0, 5).map(([a, n]: any) => (
-                  <div key={a} className="flex items-center justify-between p-2 rounded-xl border border-line bg-surface-2/50">
-                    <span className="text-[10px] font-black text-ink uppercase tracking-tight">{String(a).replace(/_/g, ' ')}</span>
-                    <span className="text-xs font-black text-ink">{n}</span>
+        <AdminCard
+          title="Governance & Audit"
+          icon={ScrollText}
+          actions={<Link to="/super-admin/audit-logs"><Button variant="ghost" size="sm" className="h-7 text-[10px] font-semibold uppercase tracking-wider">Audit Log</Button></Link>}
+          noPadding
+        >
+          <div className="grid grid-cols-3 divide-x divide-line border-b border-line">
+            <div className="p-4 text-center">
+              <p className="text-lg font-black text-ink">{ov?.summary?.total ?? 0}</p>
+              <p className="text-[9px] font-bold text-ink-3 uppercase tracking-widest">Audit Events</p>
+            </div>
+            <div className="p-4 text-center">
+              <p className="text-lg font-black text-ink">{ov?.summary?.last24h ?? 0}</p>
+              <p className="text-[9px] font-bold text-ink-3 uppercase tracking-widest">Last 24h</p>
+            </div>
+            <div className="p-4 text-center">
+              <p className="text-lg font-black text-warn">{c.suspendedAccounts ?? 0}</p>
+              <p className="text-[9px] font-bold text-ink-3 uppercase tracking-widest">Suspended</p>
+            </div>
+          </div>
+          <div className="p-5 space-y-2">
+            <p className="text-[10px] font-black text-ink-3 uppercase tracking-widest">Recent Admin Actions</p>
+            {(ov?.recentAdminActions || []).length === 0 ? (
+              <p className="text-[10px] text-ink-3 font-bold uppercase tracking-widest text-center py-3">No privileged actions recorded</p>
+            ) : (
+              (ov?.recentAdminActions || []).slice(0, 6).map((a: any, i: number) => (
+                <div key={a.id || i} className="flex items-center justify-between py-1.5">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold text-ink truncate">{String(a.action || a.type || 'event').replace(/_/g, ' ')}</p>
+                    <p className="text-[9px] text-ink-3 font-mono truncate">{a.actorEmail || a.actor || 'admin'} · {timeAgo(a.timestamp, Date.now())}</p>
                   </div>
-                ))
-              )}
-              <div className="pt-4 mt-4 border-t border-line">
-                 <p className="text-[9px] text-ink-3 font-bold uppercase tracking-widest text-center">System Audit Events: {summary?.total || 0}</p>
-              </div>
-           </div>
+                  <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', a.outcome === 'failure' || a.failure ? 'bg-danger' : 'bg-ok')} />
+                </div>
+              ))
+            )}
+          </div>
+          <div className="border-t border-line px-5 py-3">
+            <Link to="/super-admin/access-logs" className="flex items-center justify-between text-[11px] font-bold text-primary uppercase tracking-widest hover:underline">
+              <span>Access &amp; Sessions</span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
         </AdminCard>
       </div>
     </div>
@@ -1300,6 +1367,10 @@ export function SuperAdminApiPage() {
   });
 
   const [selected, setSelected] = useState<any>(null);
+  const [toggleTarget, setToggleTarget] = useState<any>(null);
+  const [authPassword, setAuthPassword] = useState('');
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) { setLoading(true); setError(null); }
@@ -1341,6 +1412,25 @@ export function SuperAdminApiPage() {
     filtered.forEach((ep: any) => { const g = ep?.group || 'Other'; (map[g] = map[g] || []).push(ep); });
     return Object.keys(map).map(g => ({ group: g, items: map[g] }));
   }, [filtered]);
+
+  const doToggle = async () => {
+    if (!toggleTarget) return;
+    const next = !toggleTarget.disabled;
+    setAuthBusy(true);
+    setAuthError(null);
+    try {
+      await AdminService.toggleApiEndpoint(toggleTarget.method, toggleTarget.path, next, authPassword || undefined);
+      showToast(next ? 'Endpoint Enabled' : 'Endpoint Disabled', `${toggleTarget.method} ${toggleTarget.path} ${next ? 'enabled' : 'disabled'}.`, next ? 'success' : 'warning');
+      setToggleTarget(null);
+      setAuthPassword('');
+      setSelected(null);
+      await load(true);
+    } catch (e: any) {
+      setAuthError(e?.message || 'Re-authentication failed.');
+    } finally {
+      setAuthBusy(false);
+    }
+  };
 
   if (error && !data) return <AdminError message="Unable to load API telemetry." detail={error} retry={() => load()} />;
   if (loading || !data) return <AdminLoading message="Reading API Gateway telemetry..." />;
@@ -1410,16 +1500,161 @@ export function SuperAdminApiPage() {
                               <p className="text-[10px] font-black text-ink uppercase tracking-tight">{fmtNum(ep.metrics?.requestsPerMinute)} req/m</p>
                               <p className={cn('text-[9px] font-bold uppercase', ep.metrics?.errorRate > 0 ? 'text-rose-500' : 'text-emerald-500')}>{pct(ep.metrics?.errorRate)} err</p>
                            </div>
-                           <AdminBadge status={ep.status.toLowerCase() as AdminStatus} label={ep.status} />
+                           {ep.disabled ? (
+                             <AdminBadge status="error" label="Disabled" />
+                           ) : (
+                             <AdminBadge status={ep.status.toLowerCase() as AdminStatus} label={ep.status} />
+                           )}
                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setSelected(ep)}><MoreHorizontal className="w-4 h-4" /></Button>
                         </div>
                      </div>
                    ))}
                 </div>
              </div>
-           ))}
+            ))}
         </div>
       </AdminCard>
+
+      <AdminDrawer
+        open={!!selected}
+        onClose={() => setSelected(null)}
+        icon={Globe}
+        title={selected ? `${selected.method} ${selected.path}` : 'Endpoint'}
+        subtitle={selected?.description}
+        footer={selected && (
+          <div className="flex w-full items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black text-ink-3 uppercase tracking-widest">{selected.disabled ? 'Currently Disabled' : 'Currently Live'}</p>
+              <p className="text-[10px] text-ink-3">Changing state requires re-authentication.</p>
+            </div>
+            <Button
+              variant={selected.disabled ? 'default' : 'destructive'}
+              size="sm"
+              className="gap-2 rounded-xl"
+              disabled={!isSuper}
+              onClick={() => { setAuthError(null); setAuthPassword(''); setToggleTarget(selected); }}
+            >
+              <Power className="w-3.5 h-3.5" /> {selected.disabled ? 'Enable Endpoint' : 'Disable Endpoint'}
+            </Button>
+          </div>
+        )}
+      >
+        {selected && (
+          <div className="space-y-6">
+            <div>
+              <p className="mb-2 text-[10px] font-black text-ink-3 uppercase tracking-widest">Access &amp; Governance</p>
+              <div className="space-y-2">
+                {[
+                  { k: 'Authentication', v: selected.auth ? 'Required' : 'Public' },
+                  { k: 'Role', v: selected.role ? String(selected.role).replace(/-/g, ' ') : 'Any authenticated' },
+                  { k: 'Permission', v: selected.permission ? String(selected.permission) : 'None required' },
+                  { k: 'Rate Limit', v: selected.rateLimit ? `${selected.rateLimit}/min` : 'Unlimited' },
+                  { k: 'Destructive', v: selected.destructive ? 'Yes' : 'No' },
+                ].map(r => (
+                  <div key={r.k} className="flex items-center justify-between rounded-xl border border-line bg-surface-2/50 px-3 py-2">
+                    <span className="text-[10px] font-bold text-ink-2 uppercase tracking-widest">{r.k}</span>
+                    <span className={cn('text-[10px] font-black uppercase', selected.destructive && r.k === 'Destructive' ? 'text-danger' : 'text-ink')}>{r.v}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-[10px] font-black text-ink-3 uppercase tracking-widest">Live Metrics</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { label: 'Requests / Min', value: fmtNum(selected.metrics?.requestsPerMinute) },
+                  { label: 'Total Requests', value: fmtNum(selected.metrics?.totalRequests) },
+                  { label: 'Avg Latency', value: `${Math.round(selected.metrics?.avgMs || 0)}ms` },
+                  { label: 'P95 Latency', value: `${Math.round(selected.metrics?.p95Ms || 0)}ms` },
+                  { label: 'Error Rate', value: pct(selected.metrics?.errorRate) },
+                  { label: 'Timeout Rate', value: pct(selected.metrics?.timeoutRate) },
+                ].map(m => (
+                  <div key={m.label} className="rounded-xl border border-line px-3 py-2.5 text-center">
+                    <p className="text-[9px] font-bold text-ink-3 uppercase tracking-widest">{m.label}</p>
+                    <p className="mt-0.5 text-sm font-black text-ink">{m.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-[10px] font-black text-ink-3 uppercase tracking-widest">Security Signals</p>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between rounded-xl border border-line bg-surface-2/50 px-3 py-2">
+                  <span className="text-[10px] font-bold text-ink-2 uppercase tracking-widest">Risk Level</span>
+                  <AdminBadge status={selected.security?.risk === 'HIGH' ? 'error' : selected.security?.risk === 'MEDIUM' ? 'warning' : 'success'} label={selected.security?.risk || 'LOW'} />
+                </div>
+                <div className="flex items-center justify-between rounded-xl border border-line bg-surface-2/50 px-3 py-2">
+                  <span className="text-[10px] font-bold text-ink-2 uppercase tracking-widest">Security Events</span>
+                  <span className="text-xs font-black text-ink">{selected.security?.eventCount || 0}</span>
+                </div>
+                <div className="flex items-center justify-between rounded-xl border border-line bg-surface-2/50 px-3 py-2">
+                  <span className="text-[10px] font-bold text-ink-2 uppercase tracking-widest">Blocked Requests</span>
+                  <span className="text-xs font-black text-ink">{selected.security?.blockedRequests || 0}</span>
+                </div>
+                {selected.security?.lastEvent && (
+                  <div className="rounded-xl border border-line bg-surface-2/50 px-3 py-2">
+                    <p className="text-[9px] font-bold text-ink-3 uppercase tracking-widest">Last Event</p>
+                    <p className="mt-1 text-[11px] font-semibold text-ink">{String(selected.security.lastEvent.type || 'event').replace(/_/g, ' ')}</p>
+                    <p className="text-[9px] text-ink-3 font-mono">{timeAgo(selected.security.lastEvent.timestamp, Date.now())} · {selected.security.lastEvent.severity}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-[10px] font-black text-ink-3 uppercase tracking-widest">Recent Admin Activity</p>
+              {(selected.audit || []).length === 0 ? (
+                <p className="rounded-xl border border-line bg-surface-2/50 px-3 py-3 text-center text-[10px] font-bold text-ink-3 uppercase tracking-widest">No admin activity recorded</p>
+              ) : (
+                <div className="divide-y divide-line rounded-xl border border-line">
+                  {(selected.audit || []).map((a: any, i: number) => (
+                    <div key={i} className="px-3 py-2 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-semibold text-ink truncate">{String(a.action || 'action').replace(/_/g, ' ')}</p>
+                        <p className="text-[9px] text-ink-3 font-mono truncate">{a.actorName || 'admin'} · {timeAgo(a.timestamp, Date.now())}</p>
+                      </div>
+                      <span className={cn('text-[9px] font-black uppercase', a.result === 'success' ? 'text-ok' : 'text-danger')}>{a.result || '—'}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </AdminDrawer>
+
+      <AdminModal
+        open={!!toggleTarget}
+        onClose={() => { if (!authBusy) { setToggleTarget(null); setAuthPassword(''); setAuthError(null); } }}
+        icon={Power}
+        title={toggleTarget?.disabled ? 'Enable Endpoint?' : 'Disable Endpoint?'}
+        subtitle={toggleTarget ? `${toggleTarget.method} ${toggleTarget.path}` : ''}
+        danger={!toggleTarget?.disabled}
+        footer={
+          <div className="flex w-full items-center justify-end gap-3">
+            <Button variant="ghost" size="sm" disabled={authBusy} onClick={() => setToggleTarget(null)}>Cancel</Button>
+            <Button variant={toggleTarget?.disabled ? 'default' : 'destructive'} size="sm" disabled={authBusy} onClick={doToggle}>
+              {authBusy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              {toggleTarget?.disabled ? 'Enable Endpoint' : 'Disable Endpoint'}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-ink-3">
+            {toggleTarget?.disabled
+              ? 'Re-enabling will restore traffic to this route immediately.'
+              : 'Disabling this route will block traffic to it across the platform. Existing in-flight requests may still complete.'}
+          </p>
+          <div>
+            <Label className="text-[10px] font-black text-ink-3 uppercase tracking-widest">Confirm password</Label>
+            <Input type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} placeholder="Enter your password" className="mt-1.5" />
+          </div>
+          {authError && <p className="text-xs text-danger">{authError}</p>}
+        </div>
+      </AdminModal>
     </div>
   );
 }
@@ -1445,6 +1680,9 @@ export function SuperAdminAuditPage() {
   const [category, setCategory] = useState('all');
   const [severity, setSeverity] = useState('all');
   const [result, setResult] = useState('all');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [sort, setSort] = useState('newest');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [applied, setApplied] = useState(0);
@@ -1461,7 +1699,11 @@ export function SuperAdminAuditPage() {
   const load = useCallback((p = page, ps = pageSize, asRefresh = false) => {
     if (asRefresh) setRefreshing(true); else setLoading(true);
     setError(false);
-    AdminService.getAudit({ page: p, pageSize: ps, search, action, role, entity: resource, category, severity, result })
+    AdminService.getAudit({
+      page: p, pageSize: ps, search, action, role, entity: resource === 'all' ? '' : resource,
+      category: category === 'all' ? '' : category, severity: severity === 'all' ? '' : severity,
+      result: result === 'all' ? '' : result, from: from || undefined, to: to || undefined, sort
+    })
       .then(r => {
         setAudit(Array.isArray(r?.items) ? r.items : []);
         setTotal(r?.total ?? 0);
@@ -1469,7 +1711,7 @@ export function SuperAdminAuditPage() {
       })
       .catch(() => setError(true))
       .finally(() => { setLoading(false); setRefreshing(false); });
-  }, [search, action, role, resource, category, severity, result, page, pageSize]);
+  }, [search, action, role, resource, category, severity, result, from, to, sort, page, pageSize]);
 
   useEffect(() => { load(page, pageSize); }, [page, applied, load]);
 
@@ -1484,34 +1726,79 @@ export function SuperAdminAuditPage() {
         description="Immutable record of all administrative actions and security-relevant platform events."
         stats={<AdminBadge status="info" label={`${total} Events`} />}
         actions={
-<Button variant="outline" className="h-9 px-4 rounded-xl text-sm font-semibold" onClick={() => load(page, pageSize, true)}>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" className="h-9 px-4 rounded-xl text-sm font-semibold" onClick={() => AdminService.exportAudit({ search, action: action === 'all' ? '' : action, role: role === 'all' ? '' : role, entity: resource === 'all' ? '' : resource, category: category === 'all' ? '' : category, severity: severity === 'all' ? '' : severity, result: result === 'all' ? '' : result, from: from || undefined, to: to || undefined, sort }).catch(() => {})}>
+              <Download className="w-3.5 h-3.5 mr-2" /> Export
+            </Button>
+            <Button variant="outline" className="h-9 px-4 rounded-xl text-sm font-semibold" onClick={() => load(page, pageSize, true)}>
               <RefreshCw className={cn('w-3.5 h-3.5 mr-2', refreshing && 'animate-spin')} /> Refresh
-           </Button>
+            </Button>
+          </div>
         }
       />
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
          <AdminStatCard label="Total Audit" value={summary?.total || 0} icon={ScrollText} status="info" />
-         <AdminStatCard label="Critical Risk" value={summary?.critical || 0} icon={ShieldAlert} status="error" />
-         <AdminStatCard label="Failed Actions" value={summary?.failed || 0} icon={XCircle} status="warning" />
-         <AdminStatCard label="Security" value={summary?.security || 0} icon={Shield} status="info" />
-         <AdminStatCard label="Operations" value={summary?.total ? summary.total - (summary.security || 0) : 0} icon={Activity} status="success" />
-         <AdminStatCard label="Today" value={summary?.today || 0} icon={Clock} status="info" />
+         <AdminStatCard label="Critical Risk" value={summary?.criticalRisk ?? 0} icon={ShieldAlert} status="error" />
+         <AdminStatCard label="Failed Actions" value={summary?.failed ?? 0} icon={XCircle} status="warning" />
+         <AdminStatCard label="Security" value={summary?.security ?? 0} icon={Shield} status="info" />
+         <AdminStatCard label="Operations" value={summary?.operations ?? 0} icon={Activity} status="success" />
+         <AdminStatCard label="Today" value={summary?.today ?? 0} icon={Clock} status="info" />
       </div>
 
       <AdminCard title="Log Explorer" icon={Search} noPadding>
-         <div className="p-4 border-b border-line grid grid-cols-1 md:grid-cols-4 gap-3 bg-surface-2/30">
+         <div className="p-4 border-b border-line grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 bg-surface-2/30">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-3" />
               <Input placeholder="Filter by event..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-10 text-xs rounded-xl" />
             </div>
             <Select value={action} onValueChange={setAction}>
-              <SelectTrigger className="h-10 text-xs rounded-xl"><SelectValue placeholder="Action" /></SelectTrigger>
+              <SelectTrigger className="h-10 text-xs rounded-xl"><SelectValue placeholder="Event Type" /></SelectTrigger>
               <SelectContent>{facets.actions.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
             </Select>
+            <Select value={resource} onValueChange={setResource}>
+              <SelectTrigger className="h-10 text-xs rounded-xl"><SelectValue placeholder="Resource" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Resources</SelectItem>
+                {facets.entities.map(e => <SelectItem key={e} value={e}>{facets.entityLabels[e] || e}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={result} onValueChange={setResult}>
+              <SelectTrigger className="h-10 text-xs rounded-xl"><SelectValue placeholder="Result" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Results</SelectItem>
+                {['success', 'failed', 'blocked', 'denied'].map(r => <SelectItem key={r} value={r}>{r.toUpperCase()}</SelectItem>)}
+              </SelectContent>
+            </Select>
             <Select value={severity} onValueChange={setSeverity}>
-              <SelectTrigger className="h-10 text-xs rounded-xl"><SelectValue placeholder="Severity" /></SelectTrigger>
-              <SelectContent>{['all', 'low', 'medium', 'high', 'critical'].map(s => <SelectItem key={s} value={s}>{s.toUpperCase()}</SelectItem>)}</SelectContent>
+              <SelectTrigger className="h-10 text-xs rounded-xl"><SelectValue placeholder="Risk" /></SelectTrigger>
+              <SelectContent>{['all', 'low', 'medium', 'high', 'critical'].map(s => <SelectItem key={s} value={s}>{s === 'all' ? 'All Risk Levels' : s.toUpperCase()}</SelectItem>)}</SelectContent>
+            </Select>
+            <Select value={role} onValueChange={setRole}>
+              <SelectTrigger className="h-10 text-xs rounded-xl"><SelectValue placeholder="Actor" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Actors</SelectItem>
+                {facets.roles.map(r => <SelectItem key={r} value={r}>{facets.roleLabels[r] || r}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <div className="relative">
+              <CalendarClock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-3" />
+              <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="pl-9 h-10 text-xs rounded-xl" aria-label="From date" />
+            </div>
+            <div className="relative">
+              <CalendarClock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-3" />
+              <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="pl-9 h-10 text-xs rounded-xl" aria-label="To date" />
+            </div>
+            <Select value={sort} onValueChange={setSort}>
+              <SelectTrigger className="h-10 text-xs rounded-xl"><SelectValue placeholder="Sort" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="newest">Newest First</SelectItem>
+                <SelectItem value="oldest">Oldest First</SelectItem>
+                <SelectItem value="action">By Action</SelectItem>
+                <SelectItem value="actor">By Actor</SelectItem>
+                <SelectItem value="entity">By Resource</SelectItem>
+                <SelectItem value="severity">By Risk</SelectItem>
+              </SelectContent>
             </Select>
             <Button onClick={() => setApplied(x => x + 1)} className="h-10 rounded-xl text-xs font-semibold">Apply Filter</Button>
          </div>
@@ -1542,6 +1829,19 @@ export function SuperAdminAuditPage() {
               </tr>
             ))}
          </AdminTable>
+         {total > 0 && (
+           <div className="p-4 border-t border-line">
+             <AdminPagination
+               page={page}
+               totalPages={totalPages}
+               showingFrom={(page - 1) * pageSize + 1}
+               showingTo={Math.min(page * pageSize, total)}
+               total={total}
+               onPrev={() => setPage(p => Math.max(1, p - 1))}
+               onNext={() => setPage(p => Math.min(totalPages, p + 1))}
+             />
+           </div>
+         )}
       </AdminCard>
 
       {detail && <AuditDetailDrawer t={t} e={detail} roleLabel={r => r} entityLabel={e => e} onClose={() => setDetail(null)} />}
@@ -1560,9 +1860,14 @@ function AuditDetailDrawer({ t, e, roleLabel, entityLabel, onClose }: { t: (k: s
     }
   })(e.meta);
 
+  // Records carry explicit before/after snapshots (pricing/config changes).
+  if (beforeAfter.before === undefined && e.previousValue !== undefined && e.previousValue !== null) beforeAfter.before = e.previousValue;
+  if (beforeAfter.after === undefined && e.newValue !== undefined && e.newValue !== null) beforeAfter.after = e.newValue;
+
+  const riskLevel = e.riskLevel || e.severity || 'low';
   const rows: { label: string; value: any }[] = [];
+  if (e.description !== undefined && e.description !== null) rows.push({ label: t('audit.description'), value: e.description });
   if (e.category !== undefined) rows.push({ label: t('audit.category'), value: String(e.category || '—') });
-  if (e.severity !== undefined) rows.push({ label: t('audit.severity'), value: String(e.severity || 'low').toUpperCase() });
   if (e.actorName !== undefined) rows.push({ label: t('audit.actor'), value: e.actorEmail ? `${e.actorName} (${e.actorEmail})` : e.actorName });
   if (e.actorRole !== undefined) rows.push({ label: t('audit.role'), value: roleLabel(e.actorRole) });
   if (e.entity !== undefined) rows.push({ label: t('audit.resource'), value: entityLabel(e.entity) });
@@ -1589,7 +1894,7 @@ function AuditDetailDrawer({ t, e, roleLabel, entityLabel, onClose }: { t: (k: s
       <div className="space-y-5">
         <div className="flex flex-wrap gap-2">
           <AdminBadge status={e.result === 'success' ? 'success' : e.result === 'failed' ? 'failed' : e.result === 'denied' ? 'warning' : 'info'} label={String(e.result || 'UNKNOWN').toUpperCase()} />
-          <AdminBadge status={(e.severity === 'critical' || e.severity === 'high') ? 'error' : e.severity === 'medium' ? 'warning' : 'info'} label={String(e.severity || 'low').toUpperCase()} />
+          <AdminBadge status={(riskLevel === 'critical' || riskLevel === 'high') ? 'error' : riskLevel === 'medium' ? 'warning' : 'info'} label={String(riskLevel || 'low').toUpperCase()} />
           <span className="rounded-full border border-line-strong px-2 py-0.5 font-mono text-[11px] text-ink-3">{e.id}</span>
         </div>
 
@@ -1811,17 +2116,41 @@ export function SuperAdminNotificationsPage() {
   const [preview, setPreview] = useState<{ recipients: number; channels: string[] } | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
 
+  const [msgSearch, setMsgSearch] = useState('');
+  const [msgType, setMsgType] = useState('all');
+  const [msgPriority, setMsgPriority] = useState('all');
+  const [msgStatus, setMsgStatus] = useState('all');
+  const [delChannel, setDelChannel] = useState('all');
+  const [delStatus, setDelStatus] = useState('all');
+  const [delQ, setDelQ] = useState('');
+  const [detail, setDetail] = useState<any>(null);
+  const [detailSummary, setDetailSummary] = useState<any>(null);
+  const [resendTarget, setResendTarget] = useState<any>(null);
+  const [resendPassword, setResendPassword] = useState('');
+  const [resendBusy, setResendBusy] = useState(false);
+  const [resendError, setResendError] = useState<string | null>(null);
+
+  const loadDeliveries = useCallback(async () => {
+    try {
+      const del = await AdminService.getNotificationDeliveries({
+        limit: 20,
+        ...(delChannel !== 'all' ? { channel: delChannel } : {}),
+        ...(delStatus !== 'all' ? { status: delStatus } : {}),
+        ...(delQ.trim() ? { q: delQ.trim() } : {}),
+      });
+      setDeliveries(Array.isArray(del?.items) ? del.items : []);
+    } catch { /* non-fatal */ }
+  }, [delChannel, delStatus, delQ]);
+
   const load = useCallback(async (quiet = false) => {
     if (!quiet) { setLoading(true); setError(null); }
     try {
-      const [s, msgs, del] = await Promise.all([
+      const [s, msgs] = await Promise.all([
         AdminService.getNotificationSummary(),
         AdminService.getPlatformMessages(),
-        AdminService.getNotificationDeliveries({ limit: 20 }),
       ]);
       setData(s);
       setMessages(Array.isArray(msgs?.items) ? msgs.items : (Array.isArray(msgs) ? msgs : []));
-      setDeliveries(Array.isArray(del?.items) ? del.items : []);
       setUpdatedAt(Date.now());
       setError(null);
     } catch (e: any) {
@@ -1832,7 +2161,15 @@ export function SuperAdminNotificationsPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadDeliveries(); }, [loadDeliveries]);
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
+
+  useEffect(() => {
+    if (!detail?.id) return;
+    AdminService.getPlatformMessageStatus(detail.id)
+      .then((r: any) => setDetailSummary(r?.summary || null))
+      .catch(() => setDetailSummary(null));
+  }, [detail?.id]);
 
   useEffect(() => {
     if (!composing) { setPreview(null); return; }
@@ -1845,6 +2182,36 @@ export function SuperAdminNotificationsPage() {
 
   const summary = data?.summary || {};
   const providers = data?.providers || {};
+
+  const filteredMessages = useMemo(() => {
+    const q = msgSearch.trim().toLowerCase();
+    return messages.filter(m => {
+      if (msgType !== 'all' && String(m.messageType || 'general-announcement') !== msgType) return false;
+      if (msgPriority !== 'all' && String(m.priority || 'NORMAL') !== msgPriority) return false;
+      if (msgStatus !== 'all' && String(m.status || 'sent') !== msgStatus) return false;
+      if (q && !String(m.subject || '').toLowerCase().includes(q) && !String(m.message || '').toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [messages, msgType, msgPriority, msgStatus, msgSearch]);
+
+  const doResend = async () => {
+    if (!resendTarget) return;
+    setResendBusy(true);
+    setResendError(null);
+    try {
+      const res = await AdminService.resendPlatformMessage(resendTarget.id, resendPassword);
+      showToast('Retry Started', res?.retried ? `Retrying ${res.retried} failed deliveries.` : 'No failed deliveries to retry.', 'success');
+      setResendTarget(null);
+      setResendPassword('');
+      load(true);
+      loadDeliveries();
+      if (detail?.id) AdminService.getPlatformMessageStatus(detail.id).then((r: any) => setDetailSummary(r?.summary || null)).catch(() => null);
+    } catch (e: any) {
+      setResendError(e?.message || 'Retry failed.');
+    } finally {
+      setResendBusy(false);
+    }
+  };
 
   const providerStatus = (code?: string): AdminStatus => {
     const c = code || 'disabled';
@@ -1899,49 +2266,117 @@ export function SuperAdminNotificationsPage() {
       <div className="grid lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
            <AdminCard title="Broadcast History" icon={Send} noPadding>
+              <div className="border-b border-line px-5 py-3 space-y-3">
+                 <div className="flex flex-wrap items-center gap-3">
+                    <div className="relative">
+                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-3" />
+                       <Input placeholder="Search broadcasts…" value={msgSearch} onChange={e => setMsgSearch(e.target.value)} className="pl-9 h-9 text-xs rounded-xl w-60" />
+                    </div>
+                    <Select value={msgType} onValueChange={setMsgType}>
+                       <SelectTrigger className="h-9 text-xs rounded-xl w-40"><SelectValue /></SelectTrigger>
+                       <SelectContent>
+                          <SelectItem value="all">All Types</SelectItem>
+                          <SelectItem value="general-announcement">Announcement</SelectItem>
+                          <SelectItem value="maintenance">Maintenance</SelectItem>
+                          <SelectItem value="promotion">Promotion</SelectItem>
+                          <SelectItem value="alert">Alert</SelectItem>
+                       </SelectContent>
+                    </Select>
+                    <Select value={msgPriority} onValueChange={setMsgPriority}>
+                       <SelectTrigger className="h-9 text-xs rounded-xl w-32"><SelectValue /></SelectTrigger>
+                       <SelectContent>
+                          <SelectItem value="all">All Priority</SelectItem>
+                          <SelectItem value="NORMAL">Normal</SelectItem>
+                          <SelectItem value="IMPORTANT">Important</SelectItem>
+                          <SelectItem value="CRITICAL">Critical</SelectItem>
+                       </SelectContent>
+                    </Select>
+                    <Select value={msgStatus} onValueChange={setMsgStatus}>
+                       <SelectTrigger className="h-9 text-xs rounded-xl w-32"><SelectValue /></SelectTrigger>
+                       <SelectContent>
+                          <SelectItem value="all">All Status</SelectItem>
+                          <SelectItem value="sent">Sent</SelectItem>
+                          <SelectItem value="scheduled">Scheduled</SelectItem>
+                          <SelectItem value="processing">Processing</SelectItem>
+                          <SelectItem value="failed">Failed</SelectItem>
+                       </SelectContent>
+                    </Select>
+                    <span className="ml-auto text-[10px] font-bold text-ink-3 uppercase tracking-widest">{filteredMessages.length} of {messages.length}</span>
+                 </div>
+              </div>
               <div className="divide-y divide-line">
-                 {messages.length === 0 ? (
-                    <AdminEmptyState icon={Inbox} title="No broadcasts" description="No platform-wide messages recorded." />
+                 {filteredMessages.length === 0 ? (
+                    <AdminEmptyState icon={Inbox} title="No broadcasts" description="No platform-wide messages match the current filters." />
                  ) : (
-                    messages.map((m: any) => (
-                      <div key={m.id} className="p-5 flex items-center justify-between hover:bg-surface-2/30 transition-colors">
-                         <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded-xl bg-surface-2 border border-line flex items-center justify-center text-ink-3">
+                    filteredMessages.map((m: any) => (
+                      <button key={m.id} onClick={() => { setDetail(m); setDetailSummary(null); }} className="w-full text-left p-5 flex items-center justify-between hover:bg-surface-2/30 transition-colors">
+                         <div className="flex items-center gap-4 min-w-0">
+                            <div className="w-10 h-10 rounded-xl bg-surface-2 border border-line flex items-center justify-center text-ink-3 flex-shrink-0">
                                <Megaphone className="w-5 h-5" />
                             </div>
-                            <div>
-                               <p className="text-xs font-black text-ink uppercase tracking-tight">{m.subject}</p>
-                               <p className="text-[10px] text-ink-3 font-bold uppercase tracking-widest mt-1">To {m.recipientGroup} · {Array.isArray(m.deliveryChannels) ? m.deliveryChannels.join(' + ') : 'In-app'}</p>
+                            <div className="min-w-0">
+                               <p className="text-xs font-black text-ink uppercase tracking-tight truncate">{m.subject}</p>
+                               <p className="text-[10px] text-ink-3 font-bold uppercase tracking-widest mt-1 truncate">To {m.recipientGroup} · {Array.isArray(m.deliveryChannels) ? m.deliveryChannels.join(' + ') : 'In-app'} · {m.priority || 'NORMAL'}</p>
                             </div>
                          </div>
-                         <div className="flex items-center gap-4">
+                         <div className="flex items-center gap-4 flex-shrink-0">
                             <span className="text-[10px] text-ink-3 font-bold uppercase hidden sm:block">{timeAgo(m.createdAt, now)}</span>
-                            <AdminBadge status={m.status === 'sent' ? 'success' : 'warning'} label={m.status} />
+                            <AdminBadge status={m.priority === 'CRITICAL' ? 'error' : m.priority === 'IMPORTANT' ? 'warning' : 'info'} label={m.priority || 'NORMAL'} />
+                            <AdminBadge status={m.status === 'sent' ? 'success' : m.status === 'failed' ? 'error' : 'warning'} label={m.status} />
+                            <ChevronRight className="w-4 h-4 text-ink-3" />
                          </div>
-                      </div>
+                      </button>
                     ))
                  )}
               </div>
            </AdminCard>
 
            <AdminCard title="Real-time Delivery Log" icon={Activity} noPadding>
+              <div className="border-b border-line px-5 py-3 flex flex-wrap items-center gap-3">
+                 <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-3" />
+                    <Input placeholder="Search recipient…" value={delQ} onChange={e => setDelQ(e.target.value)} className="pl-9 h-9 text-xs rounded-xl w-56" />
+                 </div>
+                 <Select value={delChannel} onValueChange={setDelChannel}>
+                    <SelectTrigger className="h-9 text-xs rounded-xl w-32"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                       <SelectItem value="all">All Channels</SelectItem>
+                       <SelectItem value="In-app">In-app</SelectItem>
+                       <SelectItem value="Email">Email</SelectItem>
+                       <SelectItem value="SMS">SMS</SelectItem>
+                    </SelectContent>
+                 </Select>
+                 <Select value={delStatus} onValueChange={setDelStatus}>
+                    <SelectTrigger className="h-9 text-xs rounded-xl w-32"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                       <SelectItem value="all">All Status</SelectItem>
+                       <SelectItem value="sent">Sent</SelectItem>
+                       <SelectItem value="queued">Queued</SelectItem>
+                       <SelectItem value="failed">Failed</SelectItem>
+                       <SelectItem value="skipped">Skipped</SelectItem>
+                    </SelectContent>
+                 </Select>
+                 <span className="ml-auto text-[10px] font-bold text-ink-3 uppercase tracking-widest">{deliveries.length} shown</span>
+              </div>
               <AdminTable headers={['Recipient', 'Channel', 'Status', 'Timestamp']}>
-                 {deliveries.map((d: any) => (
-                   <tr key={d.id} className="group hover:bg-surface-2/40 transition-colors">
-                      <td className="px-6 py-4">
-                         <p className="text-xs font-black text-ink uppercase tracking-tight">{d.name || d.email}</p>
-                         <p className="text-[10px] text-ink-3 font-bold uppercase tracking-widest mt-0.5">{d.refTitle}</p>
-                      </td>
-                      <td className="px-6 py-4">
-                         <AdminBadge status="info" label={d.channel} />
-                      </td>
-                      <td className="px-6 py-4">
-                         <AdminBadge status={d.status === 'delivered' || d.status === 'sent' ? 'success' : 'error'} label={d.status} />
-                      </td>
-                      <td className="px-6 py-4 text-[10px] text-ink-3 font-bold uppercase">
-                         {new Date(d.sentAt).toLocaleTimeString()}
-                      </td>
-                   </tr>
+                 {deliveries.length === 0 ? (
+                    <tr><td colSpan={4}><AdminEmptyState icon={Inbox} title="No deliveries" description="No notification deliveries match the current filters." /></td></tr>
+                 ) : deliveries.map((d: any) => (
+                    <tr key={d.id} className="group hover:bg-surface-2/40 transition-colors">
+                       <td className="px-6 py-4">
+                          <p className="text-xs font-black text-ink uppercase tracking-tight">{d.name || d.email}</p>
+                          <p className="text-[10px] text-ink-3 font-bold uppercase tracking-widest mt-0.5">{d.refTitle}</p>
+                       </td>
+                       <td className="px-6 py-4">
+                          <AdminBadge status="info" label={d.channel} />
+                       </td>
+                       <td className="px-6 py-4">
+                          <AdminBadge status={d.status === 'delivered' || d.status === 'sent' ? 'success' : 'error'} label={d.status} />
+                       </td>
+                       <td className="px-6 py-4 text-[10px] text-ink-3 font-bold uppercase">
+                          {new Date(d.sentAt).toLocaleTimeString()}
+                       </td>
+                    </tr>
                  ))}
               </AdminTable>
            </AdminCard>
@@ -2031,6 +2466,121 @@ export function SuperAdminNotificationsPage() {
           {sendError && <p className="text-xs font-medium text-danger">{sendError}</p>}
         </div>
       </AdminDrawer>
+
+      <AdminDrawer
+        open={!!detail}
+        onClose={() => { setDetail(null); setDetailSummary(null); }}
+        icon={Megaphone}
+        title={detail?.subject || 'Broadcast'}
+        subtitle={detail ? `${detail.recipientGroup} · ${Array.isArray(detail.deliveryChannels) ? detail.deliveryChannels.join(' + ') : 'In-app'}` : ''}
+        footer={detail && (
+          <div className="flex w-full items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black text-ink-3 uppercase tracking-widest">{detailSummary?.totalRecipients ?? detail.totalRecipients ?? 0} recipients</p>
+              <p className="text-[10px] text-ink-3">{detailSummary?.delivered ?? 0} delivered · {detailSummary?.skipped ?? 0} skipped · {detailSummary?.failed ?? 0} failed</p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 rounded-xl"
+              disabled={!isSuper || resendBusy}
+              onClick={() => { setResendError(null); setResendPassword(''); setResendTarget(detail); }}
+            >
+              <RefreshCw className={cn('w-3.5 h-3.5', resendBusy && 'animate-spin')} /> Retry Failed
+            </Button>
+          </div>
+        )}
+      >
+        {detail && (
+          <div className="space-y-5">
+            <div className="rounded-xl border border-line bg-surface-2/50 px-4 py-3">
+              <p className="text-[10px] font-black text-ink-3 uppercase tracking-widest">Message</p>
+              <p className="mt-1.5 text-sm font-medium text-ink leading-relaxed">{detail.message || '—'}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { label: 'Status', value: detail.status, tone: detail.status === 'sent' ? 'text-ok' : detail.status === 'failed' ? 'text-danger' : 'text-warn' },
+                { label: 'Priority', value: detail.priority || 'NORMAL', tone: detail.priority === 'CRITICAL' ? 'text-danger' : detail.priority === 'IMPORTANT' ? 'text-warn' : 'text-ink' },
+                { label: 'Type', value: detail.messageType || 'general-announcement', tone: 'text-ink' },
+                { label: 'Created', value: new Date(detail.createdAt).toLocaleString(), tone: 'text-ink' },
+              ].map(r => (
+                <div key={r.label} className="rounded-xl border border-line px-3 py-2.5">
+                  <p className="text-[9px] font-bold text-ink-3 uppercase tracking-widest">{r.label}</p>
+                  <p className={cn('mt-0.5 text-xs font-black capitalize', r.tone)}>{r.value}</p>
+                </div>
+              ))}
+            </div>
+            <div>
+              <p className="mb-2 text-[10px] font-black text-ink-3 uppercase tracking-widest">Delivery Breakdown</p>
+              <div className="space-y-2">
+                {[
+                  { label: 'In-app Delivered', value: detailSummary?.channels?.inApp?.delivered ?? 0, tone: 'bg-ok' },
+                  { label: 'In-app Skipped', value: detailSummary?.channels?.inApp?.skipped ?? 0, tone: 'bg-ink-3' },
+                  { label: 'Email Delivered', value: detailSummary?.channels?.email?.delivered ?? 0, tone: 'bg-primary' },
+                  { label: 'Email Failed', value: detailSummary?.channels?.email?.failed ?? 0, tone: 'bg-danger' },
+                  { label: 'Email Not Configured', value: detailSummary?.channels?.email?.notConfigured ?? 0, tone: 'bg-warn' },
+                ].map(row => {
+                  const max = Math.max(detailSummary?.totalRecipients ?? 1, 1);
+                  return (
+                    <div key={row.label} className="flex items-center gap-3">
+                      <span className="w-36 text-[10px] font-bold text-ink-2 uppercase tracking-widest">{row.label}</span>
+                      <div className="flex-1 h-1.5 bg-line rounded-full overflow-hidden">
+                        <div className={cn('h-full rounded-full', row.tone)} style={{ width: `${(row.value / max) * 100}%` }} />
+                      </div>
+                      <span className="w-6 text-right text-xs font-black text-ink">{row.value}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            {Array.isArray(detailSummary?.failedRecipients) && detailSummary.failedRecipients.length > 0 && (
+              <div>
+                <p className="mb-2 text-[10px] font-black text-ink-3 uppercase tracking-widest">Failed Recipients</p>
+                <div className="divide-y divide-line rounded-xl border border-line">
+                  {detailSummary.failedRecipients.slice(0, 8).map((r: any, i: number) => (
+                    <div key={i} className="px-3 py-2 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-semibold text-ink truncate">{r.name || r.email}</p>
+                        <p className="text-[9px] text-ink-3 font-mono truncate">{r.email} · {r.reason}</p>
+                      </div>
+                      <AdminBadge status="error" label="Failed" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </AdminDrawer>
+
+      <AdminModal
+        open={!!resendTarget}
+        onClose={() => { if (!resendBusy) { setResendTarget(null); setResendPassword(''); setResendError(null); } }}
+        icon={RefreshCw}
+        title="Retry Failed Deliveries?"
+        subtitle={resendTarget?.subject}
+        danger
+        footer={
+          <div className="flex w-full items-center justify-end gap-3">
+            <Button variant="ghost" size="sm" disabled={resendBusy} onClick={() => setResendTarget(null)}>Cancel</Button>
+            <Button variant="destructive" size="sm" disabled={resendBusy} onClick={doResend}>
+              {resendBusy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              Retry Failed
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-ink-3">
+            This will re-attempt delivery only to recipients whose prior delivery failed or could not be configured. Delivered recipients are never re-sent to.
+          </p>
+          <div>
+            <Label className="text-[10px] font-black text-ink-3 uppercase tracking-widest">Confirm password</Label>
+            <Input type="password" value={resendPassword} onChange={e => setResendPassword(e.target.value)} placeholder="Enter your password" className="mt-1.5" />
+          </div>
+          {resendError && <p className="text-xs text-danger">{resendError}</p>}
+        </div>
+      </AdminModal>
     </div>
   );
 }
@@ -2529,6 +3079,7 @@ export function SuperAdminSessionsPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [pending, setPending] = useState<any | null>(null);
 
   const load = useCallback(() => {
@@ -2547,13 +3098,17 @@ export function SuperAdminSessionsPage() {
       .catch((e: any) => showToast('Error', e?.message || 'Could not revoke sessions.', 'warning'));
   };
 
-  const filtered = sessions.filter(s =>
-    !search ||
-    (s.name || '').toLowerCase().includes(search.toLowerCase()) ||
-    (s.email || '').toLowerCase().includes(search.toLowerCase()) ||
-    (s.deviceName || '').toLowerCase().includes(search.toLowerCase()) ||
-    (s.ipAddress || '').toLowerCase().includes(search.toLowerCase())
-  );
+  const sessionState = (s: any): 'active' | 'revoked' | 'expired' =>
+    s.revoked ? 'revoked' : s.expired ? 'expired' : 'active';
+
+  const filtered = sessions.filter(s => {
+    if (statusFilter !== 'all' && sessionState(s) !== statusFilter) return false;
+    return !search ||
+      (s.name || '').toLowerCase().includes(search.toLowerCase()) ||
+      (s.email || '').toLowerCase().includes(search.toLowerCase()) ||
+      (s.deviceName || '').toLowerCase().includes(search.toLowerCase()) ||
+      (s.ipAddress || '').toLowerCase().includes(search.toLowerCase());
+  });
 
   const active = sessions.filter(s => !s.revoked && !s.expired).length;
 
@@ -2598,9 +3153,20 @@ export function SuperAdminSessionsPage() {
             icon={Monitor}
             noPadding
             actions={
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ink-3" />
-                <Input placeholder="Search user, device, IP…" value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-48 rounded-xl pl-9 text-xs lg:w-64" />
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ink-3" />
+                  <Input placeholder="Search user, device, IP…" value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-48 rounded-xl pl-9 text-xs lg:w-56" />
+                </div>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="h-9 w-36 rounded-xl text-xs"><SelectValue placeholder="State" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All States</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="revoked">Revoked</SelectItem>
+                    <SelectItem value="expired">Expired</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             }
           >
@@ -2609,7 +3175,7 @@ export function SuperAdminSessionsPage() {
                 icon={Monitor}
                 title={sessions.length === 0 ? 'No sessions recorded' : 'No matching sessions'}
                 description={sessions.length === 0 ? 'Active platform sessions will appear here once users sign in.' : 'No sessions match your current search criteria.'}
-                action={<Button variant="outline" size="sm" onClick={() => setSearch('')}>Clear Search</Button>}
+                action={<Button variant="outline" size="sm" onClick={() => { setSearch(''); setStatusFilter('all'); }}>Clear Filters</Button>}
               />
             ) : (
               <AdminTable headers={['User', 'Device', 'Network', 'Issued', 'Last Activity', 'State', 'Action']}>
@@ -2627,9 +3193,9 @@ export function SuperAdminSessionsPage() {
                     <td className="px-5 py-3.5 text-xs text-ink-3">{s.issuedAt ? new Date(s.issuedAt).toLocaleString() : '—'}</td>
                     <td className="px-5 py-3.5 text-xs text-ink-3">{s.lastActivityAt ? new Date(s.lastActivityAt).toLocaleString() : '—'}</td>
                     <td className="px-5 py-3.5">
-                      {s.revoked
+                      {sessionState(s) === 'revoked'
                         ? <AdminBadge status="suspended" label="Revoked" />
-                        : s.expired ? <AdminBadge status="disabled" label="Expired" /> : <AdminBadge status="active" label="Active" />}
+                        : sessionState(s) === 'expired' ? <AdminBadge status="disabled" label="Expired" /> : <AdminBadge status="active" label="Active" />}
                     </td>
                     <td className="px-5 py-3.5 text-right">
                       {!s.revoked && (
