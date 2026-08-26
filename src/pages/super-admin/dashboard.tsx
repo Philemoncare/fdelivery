@@ -10,6 +10,7 @@ import { Button } from '@/src/components/ui/button';
 import { useApp } from '@/src/context/AppContext';
 import { useAuth } from '@/src/lib/auth/auth-store';
 import { AdminService } from '@/src/services/api';
+import { AnimatedTooltip } from '@/src/components/ui/animated-tooltip';
 import { AdminPageHeader, AdminStatCard, AdminCard, AdminBadge, AdminSectionHeading, AdminStatus } from '@/src/components/super-admin/AdminDesignSystem';
 import { cn } from '@/src/lib/utils';
 
@@ -84,12 +85,12 @@ export function SuperAdminDashboardPage() {
   if (pendingCount > 0) alerts.push({ level: 'info', title: `${pendingCount} Orders Awaiting Action`, desc: 'Pending orders require restaurant or dispatch action.' });
 
   const kpis = [
-    { label: 'Platform Revenue', value: formatPrice(stats?.revenue ?? 0), icon: DollarSign, status: 'success' as AdminStatus },
-    { label: "Today's Revenue", value: formatPrice(stats?.todayRevenue ?? 0), icon: TrendingUp, status: 'info' as AdminStatus },
-    { label: 'Restaurants', value: String(stats?.vendors ?? vendors.length), icon: Store, status: 'info' as AdminStatus },
-    { label: 'Riders', value: String(stats?.riders ?? riders.length), icon: Bike, status: 'warning' as AdminStatus },
-    { label: 'Customers', value: String(stats?.customers ?? 0), icon: Users, status: 'info' as AdminStatus },
-    { label: 'Active Orders', value: String(stats?.activeOrders ?? 0), icon: ShoppingCart, status: 'info' as AdminStatus },
+    { label: 'Platform Revenue', hint: 'Gross revenue across all completed orders', value: formatPrice(stats?.revenue ?? 0), icon: DollarSign, status: 'success' as AdminStatus },
+    { label: "Today's Revenue", hint: 'Revenue generated so far today', value: formatPrice(stats?.todayRevenue ?? 0), icon: TrendingUp, status: 'info' as AdminStatus },
+    { label: 'Restaurants', hint: 'Registered restaurant vendors', value: String(stats?.vendors ?? vendors.length), icon: Store, status: 'info' as AdminStatus },
+    { label: 'Riders', hint: 'Registered delivery partners', value: String(stats?.riders ?? riders.length), icon: Bike, status: 'warning' as AdminStatus },
+    { label: 'Customers', hint: 'Registered customer accounts', value: String(stats?.customers ?? 0), icon: Users, status: 'info' as AdminStatus },
+    { label: 'Active Orders', hint: 'Orders currently in flight across the platform', value: String(stats?.activeOrders ?? 0), icon: ShoppingCart, status: 'info' as AdminStatus },
   ];
 
   return (
@@ -241,15 +242,17 @@ export function SuperAdminDashboardPage() {
                 </div>
                 <div className="space-y-2.5">
                   {[
-                    { label: 'Pending', value: pendingCount, tone: 'bg-warn' },
-                    { label: 'In Progress', value: activeOrders.length, tone: 'bg-primary' },
-                    { label: 'Delivered', value: deliveredCount, tone: 'bg-ok' },
-                    { label: 'Cancelled', value: cancelledCount, tone: 'bg-danger' },
+                    { label: 'Pending', hint: 'Orders awaiting restaurant or dispatch action', value: pendingCount, tone: 'bg-warn' },
+                    { label: 'In Progress', hint: 'Orders being prepared, assigned, or en route', value: activeOrders.length, tone: 'bg-primary' },
+                    { label: 'Delivered', hint: 'Orders completed and delivered to customers', value: deliveredCount, tone: 'bg-ok' },
+                    { label: 'Cancelled', hint: 'Orders cancelled before completion', value: cancelledCount, tone: 'bg-danger' },
                   ].map(row => {
                     const max = Math.max(ordersList.length, 1);
                     return (
                       <div key={row.label} className="flex items-center gap-3">
-                        <span className="w-20 text-[10px] font-bold text-ink-2 uppercase tracking-widest">{row.label}</span>
+                        <AnimatedTooltip variant="sadoc" content={row.hint} triggerClassName="px-1 py-0.5">
+                          <span className="w-20 text-[10px] font-bold text-ink-2 uppercase tracking-widest">{row.label}</span>
+                        </AnimatedTooltip>
                         <div className="flex-1 h-1.5 bg-line rounded-full overflow-hidden">
                           <div className={cn('h-full rounded-full', row.tone)} style={{ width: `${(row.value / max) * 100}%` }} />
                         </div>

@@ -11,11 +11,17 @@ import { ScrollToTop } from '@/src/components/common/ScrollToTop';
 import { LandingPage } from '@/src/pages/auth/landing';
 import { PublicLoginPage } from '@/src/pages/auth/public-login';
 import { AdminLoginPage } from '@/src/pages/auth/admin-login';
-import { RegisterPage } from '@/src/pages/auth/register';
+import { JoinOmniMarketPage } from '@/src/pages/auth/join';
+import { CustomerRegisterPage, CustomerWelcomePage } from '@/src/pages/auth/register-customer';
+import { RiderRegisterPage } from '@/src/pages/auth/register-rider';
+import { VendorRegisterPage } from '@/src/pages/auth/register-vendor';
+import { FleetRegisterPage } from '@/src/pages/auth/register-fleet';
+import { BusinessRegisterPage } from '@/src/pages/auth/register-business';
 import { ForgotPasswordPage } from '@/src/pages/auth/forgot-password';
 import { ChangePasswordPage } from '@/src/pages/auth/change-password';
 import { AuthCallbackPage } from '@/src/pages/auth/callback';
 
+import { FoodMarketplacePage } from '@/src/pages/marketplace/FoodMarketplacePage';
 import { HomePage } from '@/src/components/marketplace/HomePage';
 import { ProductListingPage } from '@/src/components/marketplace/ProductListingPage';
 import { ProductDetailPage } from '@/src/components/marketplace/ProductDetailPage';
@@ -121,8 +127,56 @@ export const router = createBrowserRouter([
     path: '/register',
     element: (
       <PublicOnlyRoute>
-        <RegisterPage />
+        <JoinOmniMarketPage />
       </PublicOnlyRoute>
+    ),
+  },
+  {
+    path: '/register/customer',
+    element: (
+      <PublicOnlyRoute>
+        <CustomerRegisterPage />
+      </PublicOnlyRoute>
+    ),
+  },
+  {
+    path: '/register/rider',
+    element: (
+      <PublicOnlyRoute>
+        <RiderRegisterPage />
+      </PublicOnlyRoute>
+    ),
+  },
+  {
+    path: '/register/vendor',
+    element: (
+      <PublicOnlyRoute>
+        <VendorRegisterPage />
+      </PublicOnlyRoute>
+    ),
+  },
+  {
+    path: '/register/fleet',
+    element: (
+      <PublicOnlyRoute>
+        <FleetRegisterPage />
+      </PublicOnlyRoute>
+    ),
+  },
+  {
+    path: '/register/business',
+    element: (
+      <PublicOnlyRoute>
+        <BusinessRegisterPage />
+      </PublicOnlyRoute>
+    ),
+  },
+  {
+    path: '/onboarding/customer',
+    element: (
+      <AuthGuard roles={['customer']}>
+        <CustomerWelcomePage />
+      </AuthGuard>
     ),
   },
   {
@@ -167,6 +221,7 @@ export const router = createBrowserRouter([
     element: <MarketplaceShell />,
     children: [
       { index: true, element: <HomePage /> },
+      { path: 'food', element: <FoodMarketplacePage /> },
       { path: 'products', element: <ProductListingPage /> },
       { path: 'categories', element: <Navigate to="/products" replace /> },
       { path: 'vendors', element: <VendorListingPage /> },

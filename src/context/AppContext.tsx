@@ -1260,7 +1260,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const unreadNotifications = useMemo(() => Array.isArray(notifications) ? notifications.filter(n => !n.read).length : 0, [notifications]);
+  const unreadNotifications = useMemo(() => Array.isArray(notifications) ? notifications.filter(n => n && !n.read).length : 0, [notifications]);
 
   const value: AppContextType = useMemo(() => ({
     isLoading, theme, themeKey, setThemeKey, cycleNextTheme, themeMode, setThemeMode, toggleTheme, accent, setAccent, currency, setCurrency, formatPrice, language, setLanguage, t,

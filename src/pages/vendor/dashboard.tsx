@@ -17,6 +17,7 @@ import { cn, getInitials } from '@/src/lib/utils';
 import { getVendorOperationalStatus } from '@/src/lib/vendor-utils';
 import { VendorSubscriptionStatus } from '@/src/components/vendor/VendorSubscriptionStatus';
 import { APP_VERSION_LABEL } from '@/src/lib/app-version';
+import { AnimatedTooltip } from '@/src/components/ui/animated-tooltip';
 
 export function VendorDashboardPage() {
   const navigate = useNavigate();
@@ -75,10 +76,10 @@ export function VendorDashboardPage() {
     const avgRating = vendorDashboard?.reviews?.rating ?? currentVendor.rating ?? 0;
 
     return [
-      { label: "Today's Sales", value: formatPrice(todaySales), change: vendorDashboard?.revenue?.todayChange ?? `${todayCompleted} delivered today`, icon: DollarSign, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-950/40' },
-      { label: 'Active Orders', value: activeOrdersCount.toString(), change: 'Live Tracking', icon: ShoppingCart, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-950/40' },
-      { label: 'Total Revenue', value: formatPrice(totalRevenue), change: vendorDashboard?.revenue?.totalChange ?? `${totalRevenue > 0 ? 'Live' : 'No sales yet'}`, icon: TrendingUp, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-950/40' },
-      { label: 'Avg. Rating', value: avgRating.toString(), change: `${vendorDashboard?.reviews?.count ?? currentVendor.totalReviews ?? 0} reviews`, icon: Star, color: 'text-violet-500', bg: 'bg-violet-50 dark:bg-violet-950/40' },
+      { label: "Today's Sales", value: formatPrice(todaySales), change: vendorDashboard?.revenue?.todayChange ?? `${todayCompleted} delivered today`, hint: 'Total recorded sales for the selected period.', icon: DollarSign, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-950/40' },
+      { label: 'Active Orders', value: activeOrdersCount.toString(), change: 'Live Tracking', hint: 'Number of orders currently being prepared or awaiting pickup.', icon: ShoppingCart, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-950/40' },
+      { label: 'Total Revenue', value: formatPrice(totalRevenue), change: vendorDashboard?.revenue?.totalChange ?? `${totalRevenue > 0 ? 'Live' : 'No sales yet'}`, hint: 'Cumulative sales revenue across all completed orders.', icon: TrendingUp, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-950/40' },
+      { label: 'Avg. Rating', value: avgRating.toString(), change: `${vendorDashboard?.reviews?.count ?? currentVendor.totalReviews ?? 0} reviews`, hint: 'Average customer rating based on verified reviews.', icon: Star, color: 'text-violet-500', bg: 'bg-violet-50 dark:bg-violet-950/40' },
     ];
   }, [vendorOrders, currentVendor, formatPrice, vendorDashboard, todayCompleted]);
 
@@ -204,7 +205,16 @@ export function VendorDashboardPage() {
 
         <div className="relative z-10 flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-purple-100/80">Restaurant Wallet</p>
+            <AnimatedTooltip
+              variant="gram"
+              placement="right"
+              accentColor="#c4b5fd"
+              triggerColor="rgba(237,232,254,0.85)"
+              content="Your available wallet balance, calculated after the platform commission applied to sales."
+              triggerClassName="text-[10px] font-black uppercase tracking-[0.3em] px-0 py-0"
+            >
+              Restaurant Wallet
+            </AnimatedTooltip>
             <p className="text-4xl sm:text-5xl font-black tracking-tight mt-1">{formatPrice(walletAvailable)}</p>
             <p className="text-xs text-purple-100/80 mt-1.5 font-medium">Available for withdrawal after 10% platform commission</p>
           </div>
@@ -218,7 +228,16 @@ export function VendorDashboardPage() {
             <div key={s.label} className="px-4 py-4 flex flex-col items-center gap-1.5">
               <s.icon className="w-4 h-4 text-amber-300" />
               <p className="text-lg sm:text-xl font-black leading-none">{s.value}</p>
-              <p className="text-[8px] font-black uppercase tracking-widest text-purple-100/80 text-center">{s.label}</p>
+              <AnimatedTooltip
+                variant="gram"
+                placement="top"
+                accentColor="#a78bfa"
+                triggerColor="rgba(233,213,255,0.85)"
+                content={s.hint}
+                triggerClassName="text-[8px] font-black uppercase tracking-widest text-center px-0 py-0"
+              >
+                {s.label}
+              </AnimatedTooltip>
             </div>
           ))}
         </div>
@@ -336,9 +355,15 @@ export function VendorDashboardPage() {
           <Card className="rounded-[2rem] border-gray-100 dark:border-slate-800 shadow-lg overflow-hidden">
             <CardHeader>
               <CardTitle>
-                <span className="flex items-center gap-2">
+                <AnimatedTooltip
+                  variant="indis"
+                  placement="right"
+                  accentColor="#f59e0b"
+                  content="Items approaching the configured inventory threshold and needing a restock."
+                  triggerClassName="flex items-center gap-2 px-0 py-0"
+                >
                   <AlertTriangle className="w-5 h-5 text-amber-500" /> Low Stock
-                </span>
+                </AnimatedTooltip>
               </CardTitle>
               <Badge variant={lowStockItems.length > 0 ? 'danger' : 'success'}>{lowStockItems.length} alert{lowStockItems.length === 1 ? '' : 's'}</Badge>
             </CardHeader>

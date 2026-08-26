@@ -5,6 +5,7 @@ import { Store, ShieldCheck, Clock, MapPin, Search, ChevronRight, Star } from 'l
 import { getVendorOperationalStatus } from '../../lib/vendor-utils';
 import { Badge } from '../ui/badge';
 import { cn } from '../../lib/utils';
+import { AnimatedTooltip } from '../ui/animated-tooltip';
 
 export const VendorListingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -115,10 +116,15 @@ export const VendorListingPage: React.FC = () => {
               <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-transparent" />
 
               <div className="absolute top-3 right-3 flex flex-col items-end gap-2">
-                <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-md px-2.5 py-1 rounded-xl shadow-lg border border-white/20 dark:border-white/5 flex items-center gap-1">
+                <AnimatedTooltip
+                  variant="cora"
+                  placement="bottom"
+                  content="Rating based on customer reviews and completed orders."
+                  triggerClassName="bg-white/70 dark:bg-slate-900/70 backdrop-blur-md px-2.5 py-1 rounded-xl shadow-lg border border-white/20 dark:border-white/5 flex items-center gap-1"
+                >
                   <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
                   <span className="text-[11px] font-black text-slate-900 dark:text-white">{(vendor.rating || 0).toFixed(1)}</span>
-                </div>
+                </AnimatedTooltip>
               </div>
 
               <div className="absolute bottom-4 left-4 right-4 flex items-end gap-3">
@@ -131,7 +137,15 @@ export const VendorListingPage: React.FC = () => {
                 )}
                 <div className="min-w-0 pb-0.5">
                   <h3 className="text-base font-black text-white flex items-center gap-1 group-hover:text-emerald-400 transition truncate tracking-tight">
-                    {vendor.name} <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                    {vendor.name}
+                    <AnimatedTooltip
+                      variant="dori"
+                      placement="bottom"
+                      content="This restaurant has completed the platform's vendor verification process."
+                      triggerClassName="inline-flex px-0 py-0"
+                    >
+                      <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                    </AnimatedTooltip>
                   </h3>
                   <p className="text-[9px] text-slate-200 font-bold uppercase tracking-[0.15em] opacity-90">
                     {(vendor.category || '').split(',').slice(0, 2).join(' • ')}
@@ -149,20 +163,37 @@ export const VendorListingPage: React.FC = () => {
                 <div className="flex items-center gap-4">
                   <div className="flex flex-col">
                     <span className="text-[8px] uppercase font-black text-gray-400 tracking-widest mb-0.5">{t('common.delivery')}</span>
-                    <span className="text-[11px] font-bold text-gray-700 dark:text-slate-300 flex items-center gap-1">
+                    <AnimatedTooltip
+                      variant="dori"
+                      placement="top"
+                      content="Estimated delivery time based on restaurant preparation and rider availability."
+                      triggerClassName="text-[11px] font-bold text-gray-700 dark:text-slate-300 flex items-center gap-1 px-0 py-0"
+                    >
                       <Clock className="w-3 h-3 text-emerald-500" /> {vendor.deliveryTime || '30 min'}
-                    </span>
+                    </AnimatedTooltip>
                   </div>
                   <div className="flex flex-col border-l border-gray-100 dark:border-slate-800 pl-4">
                     <span className="text-[8px] uppercase font-black text-gray-400 tracking-widest mb-0.5">{t('common.distance')}</span>
-                    <span className="text-[11px] font-bold text-gray-700 dark:text-slate-300 flex items-center gap-1">
+                    <AnimatedTooltip
+                      variant="cora"
+                      placement="top"
+                      content="Approximate distance between you and this restaurant."
+                      triggerClassName="text-[11px] font-bold text-gray-700 dark:text-slate-300 flex items-center gap-1 px-0 py-0"
+                    >
                       <MapPin className="w-3 h-3 text-emerald-500" /> {vendor.distanceKm || 0.8} km
-                    </span>
+                    </AnimatedTooltip>
                   </div>
                 </div>
                 <div className="text-right">
                   <span className="block text-[8px] uppercase font-black text-gray-400 tracking-widest mb-0.5">{t('common.minOrder')}</span>
-                  <span className="text-xs font-black text-emerald-600">{formatPrice(vendor.minOrder || 0)}</span>
+                  <AnimatedTooltip
+                    variant="cora"
+                    placement="top"
+                    content="Minimum order value required before you can proceed with checkout."
+                    triggerClassName="text-xs font-black text-emerald-600 px-0 py-0"
+                  >
+                    {formatPrice(vendor.minOrder || 0)}
+                  </AnimatedTooltip>
                 </div>
               </div>
             </div>

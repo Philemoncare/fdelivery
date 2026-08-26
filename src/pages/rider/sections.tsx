@@ -30,6 +30,7 @@ import { DestinationSearch, SuggestedPlace } from '@/src/components/rider/Destin
 import { RiderSubscriptionStatus, RIDER_PLANS, getRiderPlan } from '@/src/components/rider/RiderSubscriptionStatus';
 import { ReceiptModal, type ReceiptOrder } from '@/src/components/common/ReceiptModal';
 import { NotificationCenter } from '@/src/components/common/NotificationCenter';
+import { AnimatedTooltip } from '@/src/components/ui/animated-tooltip';
 import { APP_VERSION_LABEL } from '@/src/lib/app-version';
 
 const ACCENT = 'from-amber-400 to-orange-600';
@@ -587,9 +588,10 @@ export function RiderNavigationPage() {
       label: 'GPS Status',
       value: currentRiderLocation ? 'Live' : geoActive ? 'Waiting' : riderLocationError ? 'Off' : 'Not active',
       note: currentRiderLocation ? `Lat ${currentRiderLocation.latitude.toFixed(4)} · Lng ${currentRiderLocation.longitude.toFixed(4)}` : geoActive ? 'Waiting for a position fix' : riderLocationError ? 'Tap "Allow GPS" to retry' : 'Tap "Allow GPS" to enable',
+      hint: 'Shows whether the application is currently receiving your location for delivery tracking.',
       icon: Radio, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
-    { label: 'Rider Status', value: online ? 'Online' : riderStatus.replace('_', ' '), note: online ? 'Accepting jobs' : 'Click to go online from Settings', icon: Radio, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
-    { label: 'Speed', value: currentRiderLocation?.speed ? `${Math.round(currentRiderLocation.speed * 3.6)} km/h` : '—', note: currentRiderLocation?.speed ? 'From live GPS' : 'Not reported by device', icon: TrendingUp, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20' },
+    { label: 'Rider Status', value: online ? 'Online' : riderStatus.replace('_', ' '), note: online ? 'Accepting jobs' : 'Click to go online from Settings', hint: 'When online, you may receive eligible delivery requests.', icon: Radio, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
+    { label: 'Speed', value: currentRiderLocation?.speed ? `${Math.round(currentRiderLocation.speed * 3.6)} km/h` : '—', note: currentRiderLocation?.speed ? 'From live GPS' : 'Not reported by device', hint: 'Current speed reported by your device GPS.', icon: TrendingUp, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20' },
   ];
 
   return (
@@ -655,7 +657,14 @@ export function RiderNavigationPage() {
           <Card key={s.label} className="rounded-2xl">
             <CardContent className="p-5 flex items-start justify-between">
               <div>
-                <p className="text-sm text-gray-500 dark:text-slate-400">{s.label}</p>
+                <AnimatedTooltip
+                  variant="indis"
+                  placement="top"
+                  content={s.hint}
+                  triggerClassName="text-sm text-gray-500 dark:text-slate-400 px-0 py-0"
+                >
+                  {s.label}
+                </AnimatedTooltip>
                 <p className="text-lg font-bold text-gray-900 dark:text-white mt-1">{s.value}</p>
                 <p className="text-xs text-gray-400 mt-1">{s.note}</p>
               </div>
@@ -1798,7 +1807,15 @@ export function RiderSettingsPage() {
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Profile Setup &amp; Trust</p>
-              <p className="text-3xl font-black text-gray-900 dark:text-white mt-2">{setupPct}%</p>
+              <div className="mt-2 w-fit">
+                <AnimatedTooltip
+                  variant="sadoc"
+                  content="Your trust score rises as you complete your profile, verify your email, and complete deliveries reliably. Higher trust unlocks more job opportunities."
+                  triggerClassName="px-1 py-0.5"
+                >
+                  <p className="text-3xl font-black text-gray-900 dark:text-white">{setupPct}%</p>
+                </AnimatedTooltip>
+              </div>
               <p className="text-xs font-bold text-amber-600 mt-1">{setupLabel}</p>
             </div>
             <div className="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center text-amber-500">
@@ -1908,9 +1925,9 @@ export function RiderRatingsPage() {
   const deliveredCount = orders.filter(o => o.riderId === user?.riderId && ['delivered', 'completed'].includes(o.status)).length;
 
   const cards = [
-    { label: 'Overall Rating', value: rider?.rating !== undefined ? `${rider.rating.toFixed(1)}★` : '—', note: `${deliveredCount} deliveries`, icon: Star, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
-    { label: 'Acceptance Rate', value: rider?.acceptanceRate !== undefined ? `${Math.round(rider.acceptanceRate)}%` : '—', note: 'From dispatch records', icon: CheckCircle, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
-    { label: 'Completion Rate', value: rider?.completionRate !== undefined ? `${Math.round(rider.completionRate)}%` : '—', note: 'Completed vs accepted', icon: PackageCheck, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20' },
+    { label: 'Overall Rating', value: rider?.rating !== undefined ? `${rider.rating.toFixed(1)}★` : '—', note: `${deliveredCount} deliveries`, hint: 'Average rating from customers across your completed deliveries.', icon: Star, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
+    { label: 'Acceptance Rate', value: rider?.acceptanceRate !== undefined ? `${Math.round(rider.acceptanceRate)}%` : '—', note: 'From dispatch records', hint: 'Percentage of delivery requests you have accepted during the selected period.', icon: CheckCircle, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+    { label: 'Completion Rate', value: rider?.completionRate !== undefined ? `${Math.round(rider.completionRate)}%` : '—', note: 'Completed vs accepted', hint: 'Percentage of accepted deliveries you successfully completed.', icon: PackageCheck, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20' },
   ];
 
   return (
@@ -1921,7 +1938,14 @@ export function RiderRatingsPage() {
           <Card key={s.label} className="rounded-2xl">
             <CardContent className="p-5 flex items-start justify-between">
               <div>
-                <p className="text-sm text-gray-500 dark:text-slate-400">{s.label}</p>
+                <AnimatedTooltip
+                  variant="gram"
+                  placement="top"
+                  content={s.hint}
+                  triggerClassName="text-sm text-gray-500 dark:text-slate-400 px-0 py-0"
+                >
+                  {s.label}
+                </AnimatedTooltip>
                 <p className="text-xl font-bold text-gray-900 dark:text-white mt-1">{s.value}</p>
                 <p className="text-xs text-gray-400 mt-1">{s.note}</p>
               </div>

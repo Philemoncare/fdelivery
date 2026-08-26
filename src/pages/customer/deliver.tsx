@@ -11,6 +11,7 @@ import { useAuth } from '@/src/lib/auth/auth-store';
 import { LocationSearch } from '@/src/components/common/LocationSearch';
 import { OrderService, PaymentService, RiderService } from '@/src/services/api';
 import { cn } from '@/src/lib/utils';
+import { AnimatedTooltip } from '@/src/components/ui/animated-tooltip';
 import type { DispatchRider, Order, DeliveryLocation, PackageQuote, Address } from '@/src/types';
 import { useNavigate } from 'react-router-dom';
 
@@ -876,7 +877,15 @@ export function DeliverSomethingPage() {
                   {quote && (
                     <div className="flex justify-between gap-3">
                       <span className="text-slate-400">{t('common.eta')}</span>
-                      <span className="font-bold text-white">{quote.estimatedDeliveryTime}</span>
+                      <AnimatedTooltip
+                        variant="dori"
+                        placement="top"
+                        triggerColor="#ffffff"
+                        content="Estimated time until your rider reaches the delivery destination."
+                        triggerClassName="font-bold text-white px-0 py-0"
+                      >
+                        {quote.estimatedDeliveryTime}
+                      </AnimatedTooltip>
                     </div>
                   )}
                 </div>

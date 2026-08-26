@@ -4,6 +4,7 @@ import { useApp } from '../../context/AppContext';
 import { useAuth } from '@/src/lib/auth/auth-store';
 import { getVendorOperationalStatus } from '../../lib/vendor-utils';
 import { cn } from '@/src/lib/utils';
+import { AnimatedTooltip } from '@/src/components/ui/animated-tooltip';
 import {
   ShieldCheck,
   Bike,
@@ -621,7 +622,13 @@ export const CheckoutPage: React.FC = () => {
                 <span className="text-gray-900 dark:text-white">{formatPrice(estimatedTax)}</span>
               </div>
               <div className="flex justify-between text-xs font-bold text-gray-500 uppercase tracking-widest">
-                <span>{t('cart.deliveryFee')}</span>
+                <AnimatedTooltip
+                  variant="sadoc"
+                  content="Estimated delivery fee for this route. The final fee is recalculated at order confirmation using the platform pricing engine, which adjusts for current fuel prices when fuel data is available."
+                  triggerClassName="px-1 py-0.5"
+                >
+                  <span>{t('cart.deliveryFee')}</span>
+                </AnimatedTooltip>
                 <span className="text-emerald-600">{formatPrice(deliveryFee)}</span>
               </div>
               {discountAmount > 0 && (

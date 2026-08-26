@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
   Bike, Wallet, Navigation, CheckCircle, X, Phone, MessageSquare,
-  Crown, Star, Coins, TrendingUp, PackageCheck, Fingerprint, Zap
+  Crown, Star, Coins, TrendingUp, PackageCheck, Fingerprint, Zap, Info
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/src/components/ui/card';
 import { Badge } from '@/src/components/ui/badge';
@@ -16,6 +16,7 @@ import { useAuth } from '@/src/lib/auth/auth-store';
 import { geolocationEnvironment } from '@/src/lib/location/geolocation';
 import { Order } from '@/src/types';
 import { RiderSubscriptionStatus } from '@/src/components/rider/RiderSubscriptionStatus';
+import { AnimatedTooltip } from '@/src/components/ui/animated-tooltip';
 
 export function RiderDashboardPage() {
   const { user } = useAuth();
@@ -159,6 +160,17 @@ export function RiderDashboardPage() {
               <div className={cn("w-2 h-2 rounded-full animate-pulse", online ? "bg-white" : "bg-emerald-400")} />
               {online ? 'Online' : 'Go Online'}
             </button>
+            <AnimatedTooltip
+              variant="smaug"
+              placement="bottom"
+              accentColor="#10b981"
+              content="When you're online, you may receive eligible delivery requests."
+              triggerClassName="px-0 py-0"
+            >
+              <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">
+                <Info className="w-3.5 h-3.5" />
+              </span>
+            </AnimatedTooltip>
           </div>
         </div>
       </motion.div>
@@ -199,7 +211,15 @@ export function RiderDashboardPage() {
           <CardContent className="p-4 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <p className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Live GPS Active</p>
+              <AnimatedTooltip
+                variant="gram"
+                placement="right"
+                accentColor="#059669"
+                content="The application is currently receiving your location for delivery tracking."
+                triggerClassName="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider px-0 py-0"
+              >
+                Live GPS Active
+              </AnimatedTooltip>
             </div>
             <p className="text-[10px] text-gray-500 font-mono">
               {currentRiderLocation.latitude.toFixed(4)}, {currentRiderLocation.longitude.toFixed(4)}
@@ -217,7 +237,16 @@ export function RiderDashboardPage() {
 
         <div className="relative z-10 flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-amber-300">Today's Earnings</p>
+            <AnimatedTooltip
+              variant="gram"
+              placement="right"
+              accentColor="#fbbf24"
+              triggerColor="#fcd34d"
+              content="Total rider earnings recorded today before any applicable adjustments."
+              triggerClassName="text-[10px] font-black uppercase tracking-[0.3em] px-0 py-0"
+            >
+              Today's Earnings
+            </AnimatedTooltip>
             <p className="text-4xl sm:text-5xl font-black tracking-tight mt-1">{formatPrice(earningsToday)}</p>
             <p className="text-xs text-slate-300 mt-1.5 font-medium">{deliveredToday} delivery{deliveredToday === 1 ? '' : 's'} completed today</p>
           </div>
@@ -262,9 +291,14 @@ export function RiderDashboardPage() {
       <Card className="rounded-[2rem] border-gray-100 dark:border-slate-800 shadow-lg overflow-hidden">
         <CardHeader>
           <CardTitle>
-            <span className="flex items-center gap-2">
+            <AnimatedTooltip
+              variant="indis"
+              placement="right"
+              content="The order currently assigned to you and requiring delivery action."
+              triggerClassName="flex items-center gap-2 px-0 py-0"
+            >
               <Navigation className="w-5 h-5 text-emerald-500" /> Active Delivery
-            </span>
+            </AnimatedTooltip>
           </CardTitle>
           {activeDelivery && <Badge variant="success" dot>In Progress</Badge>}
         </CardHeader>

@@ -17,6 +17,7 @@ import { useApp } from '@/src/context/AppContext';
 import { useAuth } from '@/src/lib/auth/auth-store';
 import { AdminService, MessagingService } from '@/src/services/api';
 import { NotificationCenter } from '@/src/components/common/NotificationCenter';
+import { AnimatedTooltip } from '@/src/components/ui/animated-tooltip';
 import { cn } from '@/src/lib/utils';
 
 const ACCENT = 'from-blue-500 to-indigo-600';
@@ -180,10 +181,10 @@ export function AdminPaymentsPage() {
     <div className="space-y-6 pb-10">
       <PageHeader icon={CreditCard} title="Payments" description="Payment records derived from every real order on the platform." count={`${rows.length} transactions`} />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card><CardContent className="p-4"><p className="text-sm text-gray-500">Gross Volume</p><p className="text-2xl font-bold text-emerald-600">{formatPrice(totalVolume)}</p></CardContent></Card>
-        <Card><CardContent className="p-4"><p className="text-sm text-gray-500">Commission</p><p className="text-2xl font-bold text-blue-600">{formatPrice(commission)}</p></CardContent></Card>
-        <Card><CardContent className="p-4"><p className="text-sm text-gray-500">Paid</p><p className="text-2xl font-bold text-gray-900 dark:text-white">{paid}</p></CardContent></Card>
-        <Card><CardContent className="p-4"><p className="text-sm text-gray-500">Pending</p><p className="text-2xl font-bold text-amber-600">{pending}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><AnimatedTooltip variant="gram" content="Total volume of all payment records tied to real orders." triggerClassName="px-1 py-0.5"><p className="text-sm text-gray-500">Gross Volume</p></AnimatedTooltip><p className="text-2xl font-bold text-emerald-600">{formatPrice(totalVolume)}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><AnimatedTooltip variant="gram" content="Total platform commission earned across all orders." triggerClassName="px-1 py-0.5"><p className="text-sm text-gray-500">Commission</p></AnimatedTooltip><p className="text-2xl font-bold text-blue-600">{formatPrice(commission)}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><AnimatedTooltip variant="gram" content="Payments settled and completed for customers." triggerClassName="px-1 py-0.5"><p className="text-sm text-gray-500">Paid</p></AnimatedTooltip><p className="text-2xl font-bold text-gray-900 dark:text-white">{paid}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><AnimatedTooltip variant="gram" content="Payments awaiting settlement or confirmation." triggerClassName="px-1 py-0.5"><p className="text-sm text-gray-500">Pending</p></AnimatedTooltip><p className="text-2xl font-bold text-amber-600">{pending}</p></CardContent></Card>
       </div>
       <div className="grid lg:grid-cols-3 gap-6">
         <Card className="rounded-2xl">
@@ -268,7 +269,12 @@ export function AdminReportsPage() {
             <Card><CardContent className="p-4"><p className="text-sm text-gray-500">Orders</p><p className="text-2xl font-bold text-gray-900 dark:text-white">{totals.orders}</p></CardContent></Card>
             <Card><CardContent className="p-4"><p className="text-sm text-gray-500">Gross Volume</p><p className="text-2xl font-bold text-emerald-600">{formatPrice(totals.revenue)}</p></CardContent></Card>
             <Card><CardContent className="p-4"><p className="text-sm text-gray-500">Commission</p><p className="text-2xl font-bold text-blue-600">{formatPrice(totals.commission)}</p></CardContent></Card>
-            <Card><CardContent className="p-4"><p className="text-sm text-gray-500">Completion Rate</p><p className="text-2xl font-bold text-violet-600">{totals.completionRate}%</p></CardContent></Card>
+            <Card><CardContent className="p-4">
+              <AnimatedTooltip variant="gram" content="Share of orders that completed successfully in this period (excludes cancellations)." triggerClassName="px-1 py-0.5">
+                <p className="text-sm text-gray-500">Completion Rate</p>
+              </AnimatedTooltip>
+              <p className="text-2xl font-bold text-violet-600">{totals.completionRate}%</p>
+            </CardContent></Card>
           </div>
           <Card className="rounded-2xl">
             <CardHeader><CardTitle className="text-base flex items-center gap-2"><DollarSign className="w-5 h-5 text-indigo-500" /> Revenue over time ({range} days)</CardTitle></CardHeader>
@@ -474,7 +480,9 @@ export function AdminSettingsPage() {
           </div>
           <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-slate-800/50">
             <div>
-              <p className="text-sm font-medium text-gray-900 dark:text-white">Commission Rate</p>
+              <AnimatedTooltip variant="indis" content="The percentage of each order subtotal kept by the platform as commission before vendor payouts are settled." triggerClassName="px-1 py-0.5">
+                <p className="text-sm font-medium text-gray-900 dark:text-white">Commission Rate</p>
+              </AnimatedTooltip>
               <p className="text-xs text-gray-400 mt-0.5">Platform commission applied per subtotal</p>
             </div>
             <Badge variant="default">{settings?.defaultCommissionRate || 10}%</Badge>

@@ -3,6 +3,7 @@ import { BarChart3, TrendingUp, Users, Package, ArrowUpRight, ArrowDownRight, Re
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/src/components/ui/select';
 import { Button } from '@/src/components/ui/button';
 import { AdminService } from '@/src/services/api';
+import { AnimatedTooltip } from '@/src/components/ui/animated-tooltip';
 import {
   AdminPageHeader, AdminCard, AdminBadge, AdminTable, AdminStatCard,
   AdminStatus, AdminEmptyState, AdminLoading, AdminError
@@ -83,10 +84,10 @@ export function SuperAdminReportsPage() {
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <AdminStatCard label="Revenue" value={`$${fmt(totalRevenue)}`} icon={TrendingUp} status="success" />
-        <AdminStatCard label="Orders" value={fmtN(ordersCount)} icon={Package} status="info" />
-        <AdminStatCard label="Commission" value={`$${fmt(commission)}`} icon={ArrowUpRight} status="warning" />
-        <AdminStatCard label="Payouts" value={`$${fmt(payouts)}`} icon={ArrowDownRight} status="info" />
+        <AdminStatCard label="Revenue" hint="Gross revenue generated across all completed orders in this period" value={`$${fmt(totalRevenue)}`} icon={TrendingUp} status="success" />
+        <AdminStatCard label="Orders" hint="Total orders placed across every vendor in this period" value={fmtN(ordersCount)} icon={Package} status="info" />
+        <AdminStatCard label="Commission" hint="Platform commission earned on completed orders in this period" value={`$${fmt(commission)}`} icon={ArrowUpRight} status="warning" />
+        <AdminStatCard label="Payouts" hint="Payouts made to vendors and riders in this period" value={`$${fmt(payouts)}`} icon={ArrowDownRight} status="info" />
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
@@ -118,10 +119,12 @@ export function SuperAdminReportsPage() {
         <AdminCard title="Highlights" subtitle={`${range}-day performance summary`} icon={Users} noPadding>
           <div className="space-y-3 px-5 py-4">
             <div className="flex items-center justify-between rounded-xl border border-line bg-surface-2/50 px-4 py-3">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-3">Average Order Value</p>
-                <p className="text-sm font-black text-ink">${fmt(avgOrder)}</p>
-              </div>
+              <AnimatedTooltip variant="gram" content="Average spend per order across this period" triggerClassName="px-1 py-0.5">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-3">Average Order Value</p>
+                  <p className="text-sm font-black text-ink">${fmt(avgOrder)}</p>
+                </div>
+              </AnimatedTooltip>
               <TrendingUp className="h-5 w-5 text-emerald-500" />
             </div>
             <div className="flex items-center justify-between rounded-xl border border-line bg-surface-2/50 px-4 py-3">

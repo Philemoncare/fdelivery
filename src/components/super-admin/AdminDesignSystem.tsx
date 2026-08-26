@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { Button } from '@/src/components/ui/button';
+import { AnimatedTooltip } from '@/src/components/ui/animated-tooltip';
 
 // ---------------------------------------------------------------------------
 // OmniMarket Super Admin — shared design system
@@ -161,6 +162,7 @@ export const AdminStatCard = ({
   trend,
   icon: Icon,
   status = 'info',
+  hint,
   ...rest
 }: {
   label: string;
@@ -168,6 +170,7 @@ export const AdminStatCard = ({
   trend?: { value: string; positive: boolean };
   icon: LucideIcon;
   status?: AdminStatus;
+  hint?: string;
   key?: React.Key;
 }) => {
   const meta = STATUS_META[status] || STATUS_META.info;
@@ -175,7 +178,13 @@ export const AdminStatCard = ({
     <div {...rest} className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-1.5">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-ink-3">{label}</p>
+          {hint ? (
+            <AnimatedTooltip variant="gram" content={hint} triggerClassName="px-1 py-0.5">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-ink-3">{label}</p>
+            </AnimatedTooltip>
+          ) : (
+            <p className="text-[11px] font-medium uppercase tracking-wider text-ink-3">{label}</p>
+          )}
           <p className="truncate text-2xl font-bold tracking-tight text-ink">{value}</p>
           {trend && (
             <p className={cn('text-[11px] font-semibold', trend.positive ? 'text-ok' : 'text-danger')}>

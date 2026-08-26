@@ -156,10 +156,10 @@
     --om-info-strong: var(--om-info);
     --om-info-strong-soft: var(--om-info-soft);
 
-    /* ---- Primary accent scale (default: OmniMarket magenta) ---- */
-    --om-primary: hsl(330 84% 56%);
-    --om-primary-hover: hsl(330 84% 47%);
-    --om-primary-strong: hsl(330 90% 64%);
+    /* ---- Primary accent scale (default: OmniMarket brand green) ---- */
+    --om-primary: hsl(158 82% 40%);
+    --om-primary-hover: hsl(158 82% 32%);
+    --om-primary-strong: hsl(158 78% 48%);
     --om-primary-soft: color-mix(in srgb, var(--om-primary) 11%, var(--om-surface));
     --om-primary-border: color-mix(in srgb, var(--om-primary) 32%, var(--om-border));
     --om-primary-glow: color-mix(in srgb, var(--om-primary) 22%, transparent);
@@ -261,11 +261,11 @@
     --color-slate-950: #111318;
   }
 
-  /* ---- Accent theme: OmniMarket (pink / magenta) ---- */
+  /* ---- Accent theme: OmniMarket (brand green) ---- */
   [data-accent="omnimarket"] {
-    --om-primary: hsl(330 84% 56%);
-    --om-primary-hover: hsl(330 84% 47%);
-    --om-primary-strong: hsl(330 90% 64%);
+    --om-primary: hsl(158 82% 40%);
+    --om-primary-hover: hsl(158 82% 32%);
+    --om-primary-strong: hsl(158 78% 48%);
   }
 
   /* ---- Accent theme: Ocean (electric blue) ---- */
@@ -298,21 +298,21 @@
      class (above). They override the `:root` light base.
      ============================================================ */
 
-  /* ---- OmniMarket (pink / magenta) ---- */
+  /* ---- OmniMarket (brand green) ---- */
   [data-theme="omnimarket"] {
-    --om-app-bg: #faf3f8;
+    --om-app-bg: #f2faf5;
     --om-surface: #ffffff;
-    --om-surface-2: #f9f1f6;
-    --om-surface-3: #f2e3ee;
-    --om-sidebar-bg: #fdf7fb;
-    --om-header-bg: rgba(255, 255, 255, 0.85);
-    --om-border: #ecd8e6;
-    --om-border-strong: #d9b8d0;
-    --om-ink-1: #2a1421;
-    --om-ink-2: #5c4a55;
-    --om-ink-3: #8e7a87;
+    --om-surface-2: #f0f8f3;
+    --om-surface-3: #e0efe6;
+    --om-sidebar-bg: #f5fbf7;
+    --om-header-bg: rgba(255, 255, 255, 0.88);
+    --om-border: #d7eadd;
+    --om-border-strong: #b4d2c1;
+    --om-ink-1: #0f2018;
+    --om-ink-2: #3f5c4d;
+    --om-ink-3: #6f8a7d;
     --om-surface-elevated: #ffffff;
-    --om-surface-muted: #f7eaf4;
+    --om-surface-muted: #e7f5ee;
     --om-primary-soft: color-mix(in srgb, var(--om-primary) 12%, var(--om-surface));
     --om-primary-border: color-mix(in srgb, var(--om-primary) 34%, var(--om-border));
   }

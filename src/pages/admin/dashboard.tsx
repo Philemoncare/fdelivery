@@ -10,6 +10,7 @@ import { Button } from '@/src/components/ui/button';
 import { useApp } from '@/src/context/AppContext';
 import { AdminService } from '@/src/services/api';
 import { useNavigate } from 'react-router-dom';
+import { AnimatedTooltip } from '@/src/components/ui/animated-tooltip';
 
 export function AdminDashboardPage() {
   const { vendors, riders, orders, formatPrice, showToast, updateVendorProfile, updateRiderProfile } = useApp();
@@ -31,10 +32,10 @@ export function AdminDashboardPage() {
   const statCards = useMemo(() => {
     const s = stats || {};
     return [
-      { label: 'Total Revenue', value: formatPrice(s.revenue || 0), change: `${s.completedOrders ?? 0} completed`, icon: DollarSign, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
-      { label: 'Total Orders', value: String(s.orders ?? orders.length), change: `${s.activeOrders ?? orders.filter(o => !['completed', 'delivered', 'cancelled', 'refunded', 'failed'].includes(o.status)).length} active`, icon: ShoppingCart, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20' },
-      { label: 'Restaurants', value: String(s.vendors ?? vendors.length), change: `${s.pendingVendors ?? 0} pending approval`, icon: Store, color: 'text-violet-500', bg: 'bg-violet-50 dark:bg-violet-900/20' },
-      { label: 'Riders', value: String(s.riders ?? riders.length), change: `${s.pendingRiders ?? 0} unverified`, icon: Bike, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
+      { label: 'Total Revenue', hint: 'Gross revenue from all completed orders on the platform', value: formatPrice(s.revenue || 0), change: `${s.completedOrders ?? 0} completed`, icon: DollarSign, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+      { label: 'Total Orders', hint: 'All orders placed across every restaurant', value: String(s.orders ?? orders.length), change: `${s.activeOrders ?? orders.filter(o => !['completed', 'delivered', 'cancelled', 'refunded', 'failed'].includes(o.status)).length} active`, icon: ShoppingCart, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20' },
+      { label: 'Restaurants', hint: 'Registered vendor stores on the platform', value: String(s.vendors ?? vendors.length), change: `${s.pendingVendors ?? 0} pending approval`, icon: Store, color: 'text-violet-500', bg: 'bg-violet-50 dark:bg-violet-900/20' },
+      { label: 'Riders', hint: 'Registered delivery partners available to fulfil orders', value: String(s.riders ?? riders.length), change: `${s.pendingRiders ?? 0} unverified`, icon: Bike, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
     ];
   }, [stats, vendors.length, riders.length, orders]);
 
@@ -88,12 +89,18 @@ export function AdminDashboardPage() {
           <motion.div key={s.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
             <Card>
               <CardContent className="p-6">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500 dark:text-slate-400 font-medium uppercase tracking-wider">{s.label}</p>
-                    <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{s.value}</p>
-                    <p className="text-xs text-emerald-500 mt-1 font-bold">{s.change}</p>
-                  </div>
+<div className="flex items-start justify-between">
+                    <div>
+                      <AnimatedTooltip
+                        variant="gram"
+                        content={s.hint}
+                        triggerClassName="px-1 py-0.5"
+                      >
+                        <p className="text-sm text-gray-500 dark:text-slate-400 font-medium uppercase tracking-wider">{s.label}</p>
+                      </AnimatedTooltip>
+                      <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{s.value}</p>
+                      <p className="text-xs text-emerald-500 mt-1 font-bold">{s.change}</p>
+                    </div>
                   <div className={`p-3 rounded-xl ${s.bg}`}>
                     <s.icon className={`w-5 h-5 ${s.color}`} />
                   </div>

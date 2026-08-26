@@ -275,7 +275,7 @@ export const ProductListingPage: React.FC = () => {
               "grid gap-6",
               viewMode === 'grid' ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" : "grid-cols-1"
             )}>
-              {filtered.map((product) => (
+              {filtered.map((product) => product && (
                 <FoodCard key={product.id} product={product} variant={viewMode === 'grid' ? 'grid' : 'list'} />
               ))}
             </div>

@@ -28,6 +28,7 @@ import { LiveMap } from '@/src/components/common/LiveMap';
 import { NotificationCenter } from '@/src/components/common/NotificationCenter';
 import { AdminService, MessagingService, WalletService } from '@/src/services/api';
 import { AuthApiService } from '@/src/services/auth-api';
+import { AnimatedTooltip } from '@/src/components/ui/animated-tooltip';
 
 // ============================================================
 // ORDERS MANAGER
@@ -116,15 +117,21 @@ export function VendorOrdersPage() {
 
           <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 divide-x divide-white/10 rounded-2xl bg-white/5 border border-white/10 overflow-hidden backdrop-blur">
             {[
-              { label: 'New Orders', value: orderStats.pending, icon: Bell, cls: 'text-amber-300' },
-              { label: 'In Kitchen', value: orderStats.preparing, icon: ChefHat, cls: 'text-blue-300' },
-              { label: 'Ready for Pickup', value: orderStats.ready, icon: Package, cls: 'text-emerald-300' },
-              { label: 'Delivered Today', value: orderStats.delivered, icon: CheckCircle2, cls: 'text-violet-300' },
+              { label: 'New Orders', hint: 'Orders waiting for you to accept or reject', value: orderStats.pending, icon: Bell, cls: 'text-amber-300' },
+              { label: 'In Kitchen', hint: 'Orders currently being prepared', value: orderStats.preparing, icon: ChefHat, cls: 'text-blue-300' },
+              { label: 'Ready for Pickup', hint: 'Prepared orders waiting for a rider', value: orderStats.ready, icon: Package, cls: 'text-emerald-300' },
+              { label: 'Delivered Today', hint: 'Orders completed and out for delivery today', value: orderStats.delivered, icon: CheckCircle2, cls: 'text-violet-300' },
             ].map(s => (
               <div key={s.label} className="px-4 py-4 flex flex-col items-center gap-1.5">
                 <s.icon className={`w-4 h-4 ${s.cls}`} />
                 <p className="text-xl font-black leading-none">{s.value}</p>
-                <p className="text-[8px] font-black uppercase tracking-widest text-slate-300/80 text-center">{s.label}</p>
+                <AnimatedTooltip
+                  variant="gram"
+                  content={s.hint}
+                  triggerClassName="px-1.5 py-0.5"
+                >
+                  <p className="text-[8px] font-black uppercase tracking-widest text-slate-300/80 text-center">{s.label}</p>
+                </AnimatedTooltip>
               </div>
             ))}
           </div>
@@ -178,7 +185,14 @@ export function VendorOrdersPage() {
                       <div className="space-y-1">
                         <div className="flex items-center gap-3">
                           <h3 className="text-lg font-black text-gray-900 dark:text-white">{order.customerName}</h3>
-                          <Badge variant={order.status === 'cancelled' ? 'danger' : 'default'} className="text-[10px] font-black py-0.5 px-2.5 uppercase tracking-widest">{order.status.replace('_', ' ')}</Badge>
+                          <AnimatedTooltip
+                            variant="sadoc"
+                            content={`Current order stage: ${order.status.replace('_', ' ')}`}
+                            placement="right"
+                            triggerClassName="px-0.5 py-0.5"
+                          >
+                            <Badge variant={order.status === 'cancelled' ? 'danger' : 'default'} className="text-[10px] font-black py-0.5 px-2.5 uppercase tracking-widest">{order.status.replace('_', ' ')}</Badge>
+                          </AnimatedTooltip>
                         </div>
                         <p className="text-sm text-gray-600 dark:text-gray-400 font-bold line-clamp-1">
                           {order.items.map(i => `${i.quantity}x ${i.productName || 'Meal'}`).join(', ')}
@@ -391,14 +405,20 @@ export function VendorKitchenStatusPage() {
 
           <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 divide-x divide-white/10 rounded-2xl bg-white/5 border border-white/10 overflow-hidden backdrop-blur">
             {[
-              { label: 'In Kitchen', value: inKitchen.length, icon: ChefHat, cls: 'text-blue-300' },
-              { label: 'Incoming Queue', value: queue.length, icon: Clock, cls: 'text-amber-300' },
-              { label: 'Avg Prep Time', value: '18', suffix: 'min', icon: Timer, cls: 'text-emerald-300' },
+              { label: 'In Kitchen', hint: 'Orders confirmed and being prepared right now', value: inKitchen.length, icon: ChefHat, cls: 'text-blue-300' },
+              { label: 'Incoming Queue', hint: 'New orders waiting for your acceptance', value: queue.length, icon: Clock, cls: 'text-amber-300' },
+              { label: 'Avg Prep Time', hint: 'Typical kitchen prep time per order', value: '18', suffix: 'min', icon: Timer, cls: 'text-emerald-300' },
             ].map(s => (
               <div key={s.label} className="px-4 py-4 flex flex-col items-center gap-1.5">
                 <s.icon className={`w-4 h-4 ${s.cls}`} />
                 <p className="text-xl font-black leading-none">{s.value}<span className="text-xs text-slate-300/80 ml-0.5">{s.suffix || ''}</span></p>
-                <p className="text-[8px] font-black uppercase tracking-widest text-slate-300/80 text-center">{s.label}</p>
+                <AnimatedTooltip
+                  variant="gram"
+                  content={s.hint}
+                  triggerClassName="px-1.5 py-0.5"
+                >
+                  <p className="text-[8px] font-black uppercase tracking-widest text-slate-300/80 text-center">{s.label}</p>
+                </AnimatedTooltip>
               </div>
             ))}
           </div>
@@ -679,7 +699,13 @@ export function VendorWalletPage() {
           <div className="space-y-2 relative z-10">
             <p className="text-purple-100 text-xs font-black uppercase tracking-[0.2em] opacity-80">Withdrawal Balance</p>
             <p className="text-5xl font-black tracking-tighter">{formatPrice(balance)}</p>
-            <p className="text-[10px] text-purple-200/70 font-bold uppercase tracking-widest">After 10% platform commission</p>
+            <AnimatedTooltip
+              variant="indis"
+              content="A 10% platform commission is deducted from each completed order before it lands in your withdrawal balance."
+              triggerClassName="px-1 py-0.5"
+            >
+              <p className="text-[10px] text-purple-200/70 font-bold uppercase tracking-widest">After 10% platform commission</p>
+            </AnimatedTooltip>
           </div>
 
           <div className="space-y-5 relative z-10 mt-8">

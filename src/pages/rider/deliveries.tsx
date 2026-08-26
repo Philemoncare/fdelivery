@@ -9,6 +9,7 @@ import { Input } from '@/src/components/ui/input';
 import { useApp } from '@/src/context/AppContext';
 import { useAuth } from '@/src/lib/auth/auth-store';
 import { ReceiptModal, type ReceiptOrder } from '@/src/components/common/ReceiptModal';
+import { AnimatedTooltip } from '@/src/components/ui/animated-tooltip';
 import { Order } from '@/src/types';
 import {
   deliveryRef, deliveryKindLabel, deliveryKindBadge, deliveryKindTitle, deliveryKindOf, isPackageLike, pickupLabel, dropoffLabel, dropoffContact,
@@ -124,17 +125,24 @@ export function RiderDeliveriesPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {[
-          { label: 'Active', value: activeCount, icon: Truck, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20' },
-          { label: 'Completed', value: riderOrders.filter(d => COMPLETED_DELIVERY_STATUSES.includes(d.status)).length, icon: CheckCircle, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
-          { label: 'Total Earnings', value: formatPrice(riderOrders.filter(d => COMPLETED_DELIVERY_STATUSES.includes(d.status)).reduce((a, d) => a + (d.deliveryFee || 0), 0)), icon: DollarSign, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
-          { label: 'Avg Rating', value: avgRating, icon: Star, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
+          { label: 'Active', value: activeCount, icon: Truck, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20', hint: 'Deliveries currently assigned to you and awaiting action.' },
+          { label: 'Completed', value: riderOrders.filter(d => COMPLETED_DELIVERY_STATUSES.includes(d.status)).length, icon: CheckCircle, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20', hint: 'Deliveries you have successfully completed.' },
+          { label: 'Total Earnings', value: formatPrice(riderOrders.filter(d => COMPLETED_DELIVERY_STATUSES.includes(d.status)).reduce((a, d) => a + (d.deliveryFee || 0), 0)), icon: DollarSign, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20', hint: 'Total delivery fees earned across completed deliveries.' },
+          { label: 'Avg Rating', value: avgRating, icon: Star, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20', hint: 'Average rating from customers on completed deliveries.' },
         ].map((s, i) => (
           <motion.div key={s.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
             <Card>
               <CardContent className="flex items-center gap-4">
                 <div className={`p-3 rounded-xl ${s.bg}`}><s.icon className={`w-5 h-5 ${s.color}`} /></div>
                 <div>
-                  <p className="text-sm text-gray-500 dark:text-slate-400">{s.label}</p>
+                  <AnimatedTooltip
+                    variant="gram"
+                    placement="top"
+                    content={s.hint}
+                    triggerClassName="text-sm text-gray-500 dark:text-slate-400 px-0 py-0"
+                  >
+                    {s.label}
+                  </AnimatedTooltip>
                   <p className="text-xl font-bold text-gray-900 dark:text-white">{s.value}</p>
                 </div>
               </CardContent>

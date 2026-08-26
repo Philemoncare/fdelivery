@@ -25,6 +25,7 @@ import { AuthApiService } from '@/src/services/auth-api';
 import { ImageCropModal } from '@/src/components/common/ImageCropModal';
 import { ReceiptModal, ReceiptOrder } from '@/src/components/common/ReceiptModal';
 import { NotificationCenter } from '@/src/components/common/NotificationCenter';
+import { AnimatedTooltip } from '@/src/components/ui/animated-tooltip';
 
 // ============================================================
 // ORDER DETAILS
@@ -97,7 +98,14 @@ export function CustomerOrderDetailsPage() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className={cn("text-xs font-black uppercase tracking-widest mb-1", statusColor)}>{t(`status.${order.status}`) || order.status.replace('_', ' ')}</p>
+                  <AnimatedTooltip
+                    variant="sadoc"
+                    placement="bottom"
+                    content={`${t(`status.${order.status}`) || order.status.replace('_', ' ')} — ${order.status === 'pending' ? 'The restaurant has not confirmed your order yet.' : order.status === 'delivered' ? 'Your order has been successfully delivered.' : order.status === 'cancelled' ? 'This order was cancelled.' : 'Your order is being processed and prepared.'}`}
+                    triggerClassName={cn('text-xs font-black uppercase tracking-widest mb-1 px-0 py-0', statusColor)}
+                  >
+                    {t(`status.${order.status}`) || order.status.replace('_', ' ')}
+                  </AnimatedTooltip>
                   <p className="text-[10px] text-gray-400 font-bold uppercase">{new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                 </div>
               </div>
@@ -280,7 +288,14 @@ export function CustomerOrdersPage() {
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <h3 className="text-lg font-bold text-gray-900 dark:text-white group-hover:text-emerald-500 transition-colors">{order.vendorName || t('msg.restaurant')}</h3>
-                          <Badge variant={order.status === 'Cancelled' ? 'danger' : 'default'} className="text-[9px] font-black py-0.5 px-2 uppercase tracking-widest">{t(`status.${order.status.toLowerCase()}`) || order.status}</Badge>
+                          <AnimatedTooltip
+                            variant="sadoc"
+                            placement="bottom"
+                            content={`${t(`status.${order.status.toLowerCase()}`) || order.status} — ${order.status.includes('cancel') ? 'This order was cancelled and a refund is processed where applicable.' : order.status.includes('deliver') || order.status.includes('complete') ? 'Your order has been successfully delivered.' : 'Your order is being processed and prepared by the restaurant.'}`}
+                            triggerClassName="px-0 py-0"
+                          >
+                            <Badge variant={order.status === 'Cancelled' ? 'danger' : 'default'} className="text-[9px] font-black py-0.5 px-2 uppercase tracking-widest">{t(`status.${order.status.toLowerCase()}`) || order.status}</Badge>
+                          </AnimatedTooltip>
                         </div>
                         <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">
                           {order.items?.map(i => `${i.quantity}x ${i.productName || t('nav.products')}`).join(', ') || t('common.noResults')}
@@ -1801,7 +1816,16 @@ export function CustomerSettingsPage() {
             <>
               <Card className="rounded-[2.5rem] p-8 sm:p-10 bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-xl space-y-5 overflow-hidden">
                 <div className="flex items-center justify-between">
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-80">Wallet Balance</p>
+                  <AnimatedTooltip
+                    variant="gram"
+                    placement="bottom"
+                    accentColor="#ffffff"
+                    triggerColor="rgba(255,255,255,0.92)"
+                    content="Available balance you can use for eligible orders and platform transactions."
+                    triggerClassName="text-[10px] font-black uppercase tracking-[0.2em] opacity-80 px-0 py-0"
+                  >
+                    Wallet Balance
+                  </AnimatedTooltip>
                   <Coins className="w-6 h-6 opacity-80" />
                 </div>
                 <p className="text-4xl font-black">{formatPrice(customerProfile.walletBalance)}</p>

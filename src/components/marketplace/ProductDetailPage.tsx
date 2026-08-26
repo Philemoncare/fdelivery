@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import {
@@ -40,30 +40,71 @@ export const ProductDetailPage: React.FC = () => {
   const [activeImgIndex, setActiveImgIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({});
+  const [specialInstructions, setSpecialInstructions] = useState('');
   const [activeTab, setActiveTab] = useState<'specs' | 'reviews' | 'qa'>('specs');
   const [fetched, setFetched] = useState<any>(null);
 
   const product = fetched || products.find((p) => p.id === id) || selectedProduct;
 
-  // Fallback fetch for deep links / hard refreshes where the catalog may not
-  // be loaded yet (e.g. sharing a meal link directly).
-  React.useEffect(() => {
-    if (!id || fetched) return;
-    ProductService.getById(id).then(setFetched).catch(() => setFetched(null));
-  }, [id, fetched]);
-
-  const isSaved = product ? isInWishlist(product.id) : false;
-
   const handleAddToCart = () => {
-    if (product) addToCart(product, quantity, selectedVariants);
+    if (product) addToCart(product, quantity, { ...selectedVariants, instructions: specialInstructions });
   };
 
   const handleBuyNow = () => {
     if (product) {
-      addToCart(product, quantity, selectedVariants);
+      addToCart(product, quantity, { ...selectedVariants, instructions: specialInstructions });
       navigate('/checkout');
     }
   };
+
+  const customizeOptions = useMemo(() => {
+    // If product has real addons from backend, use them.
+    // Otherwise use some demo data for common meals like Waakye/Jollof.
+    if (product?.addons && product.addons.length > 0) return product.addons;
+
+    if (product?.title?.toLowerCase().includes('waakye') || product?.title?.toLowerCase().includes('rice')) {
+      return [
+        {
+          id: 'protein',
+          name: 'Choose Protein',
+          required: true,
+          options: [
+            { id: 'egg', name: 'Boiled Egg', price: 2 },
+            { id: 'chicken', name: 'Fried Chicken', price: 12 },
+            { id: 'beef', name: 'Fried Beef', price: 15 },
+            { id: 'fish', name: 'Fried Fish', price: 10 },
+          ]
+        },
+        {
+          id: 'extras',
+          name: 'Add Extras',
+          required: false,
+          multiple: true,
+          options: [
+            { id: 'salad', name: 'Salad', price: 5 },
+            { id: 'plantain', name: 'Fried Plantain', price: 5 },
+            { id: 'gari', name: 'Gari Fotoh', price: 3 },
+          ]
+        }
+      ];
+    }
+    return [];
+  }, [product]);
+
+  const totalWithAddons = useMemo(() => {
+    if (!product) return 0;
+    let total = product.price;
+
+    customizeOptions.forEach(group => {
+      const selected = (selectedVariants[group.id] || '').split(',').filter(Boolean);
+      selected.forEach(optId => {
+        const opt = group.options.find(o => o.id === optId);
+        if (opt) total += opt.price;
+      });
+    });
+
+    return total * quantity;
+  }, [product, selectedVariants, quantity, customizeOptions]);
 
   if (isLoading) {
     return <div className="min-h-screen flex items-center justify-center">
@@ -109,10 +150,10 @@ export const ProductDetailPage: React.FC = () => {
               onClick={() => toggleWishlist(product)}
               className={cn(
                 "absolute top-6 right-6 p-3.5 rounded-2xl shadow-xl backdrop-blur-md transition-all active:scale-90",
-                isSaved ? "bg-rose-500 text-white" : "bg-white/90 text-gray-500"
+                isInWishlist(product.id) ? "bg-rose-500 text-white" : "bg-white/90 text-gray-500"
               )}
             >
-              <Heart className={cn("w-5 h-5", isSaved && "fill-current")} />
+              <Heart className={cn("w-5 h-5", isInWishlist(product.id) && "fill-current")} />
             </button>
           </div>
 
@@ -182,6 +223,66 @@ export const ProductDetailPage: React.FC = () => {
              </p>
           </div>
 
+          {/* Customization Options */}
+          {customizeOptions.length > 0 && (
+            <div className="space-y-6 pt-4">
+               {customizeOptions.map(group => (
+                 <div key={group.id} className="space-y-4">
+                    <div className="flex items-center justify-between">
+                       <h4 className="text-xs font-black uppercase tracking-widest text-slate-900 dark:text-white">
+                          {group.name} {group.required && <span className="text-rose-500">*</span>}
+                       </h4>
+                       {group.required && <span className="text-[10px] font-bold text-slate-400 uppercase bg-slate-50 dark:bg-slate-800 px-2 py-0.5 rounded">Required</span>}
+                    </div>
+                    <div className="grid grid-cols-1 gap-2">
+                       {group.options.map(opt => (
+                         <button
+                           key={opt.id}
+                           onClick={() => {
+                             if (group.multiple) {
+                               const cur = (selectedVariants[group.id] || '').split(',').filter(Boolean);
+                               const next = cur.includes(opt.id) ? cur.filter(c => c !== opt.id) : [...cur, opt.id];
+                               setSelectedVariants(p => ({ ...p, [group.id]: next.join(',') }));
+                             } else {
+                               setSelectedVariants(p => ({ ...p, [group.id]: opt.id }));
+                             }
+                           }}
+                           className={cn(
+                             "flex items-center justify-between p-4 rounded-2xl border-2 transition-all text-left",
+                             (selectedVariants[group.id] || '').split(',').includes(opt.id)
+                              ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/20 shadow-md"
+                              : "border-slate-50 dark:border-slate-800 hover:border-emerald-200"
+                           )}
+                         >
+                            <div className="flex items-center gap-3">
+                               <div className={cn(
+                                 "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
+                                 (selectedVariants[group.id] || '').split(',').includes(opt.id) ? "bg-emerald-500 border-emerald-500" : "border-slate-200"
+                               )}>
+                                  {(selectedVariants[group.id] || '').split(',').includes(opt.id) && <Plus className="w-3 h-3 text-white" />}
+                               </div>
+                               <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{opt.name}</span>
+                            </div>
+                            {opt.price > 0 && <span className="text-xs font-black text-emerald-600">+ {formatPrice(opt.price)}</span>}
+                         </button>
+                       ))}
+                    </div>
+                 </div>
+               ))}
+            </div>
+          )}
+
+          {/* Special Instructions */}
+          <div className="space-y-3 pt-4">
+             <h4 className="text-xs font-black uppercase tracking-widest text-slate-900 dark:text-white">Special Instructions</h4>
+             <textarea
+               placeholder="Add a note (e.g. no onions, extra spicy...)"
+               value={specialInstructions}
+               onChange={(e) => setSpecialInstructions(e.target.value)}
+               className="w-full h-24 bg-gray-50 dark:bg-slate-900 border-2 border-transparent rounded-2xl p-4 text-sm font-medium focus:border-emerald-500/30 transition-all outline-none resize-none"
+             />
+          </div>
+
           {/* Riders Section */}
           <div className="space-y-4">
             <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">{t('common.preferredRider')}</h4>
@@ -217,7 +318,8 @@ export const ProductDetailPage: React.FC = () => {
 
               <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Button className="h-14 sm:h-16 rounded-[1.5rem] bg-emerald-500 hover:bg-emerald-600 font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-500/20 gap-2" onClick={handleAddToCart}>
-                  <ShoppingCart className="w-4 h-4" /> {t('common.addToCart').toUpperCase()}
+                  <ShoppingCart className="w-4 h-4" />
+                  <span>{t('common.addToCart').toUpperCase()} — {formatPrice(totalWithAddons)}</span>
                 </Button>
                 <Button className="hidden sm:flex h-16 rounded-[1.5rem] bg-gray-900 text-white font-black text-xs uppercase tracking-widest shadow-xl gap-2" onClick={handleBuyNow}>
                    {t('checkout.placeOrder').toUpperCase()} <ArrowRight className="w-4 h-4" />

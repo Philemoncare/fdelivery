@@ -69,10 +69,10 @@ export function SearchAutocomplete({ className, inputClassName, onNavigate }: Se
   return (
     <div ref={containerRef} className={cn('relative', className)}>
       <div className={cn(
-        'flex w-full rounded-2xl bg-gray-50 dark:bg-slate-800/80 border transition-all',
-        focused ? 'border-emerald-500/50 ring-2 ring-emerald-500/20' : 'border-transparent'
+        'flex w-full rounded-2xl bg-white dark:bg-slate-800/80 border transition-all',
+        focused ? 'border-emerald-500/50 ring-2 ring-emerald-500/20 shadow-sm' : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600'
       )}>
-        <div className="relative flex-1 flex items-center h-12">
+        <div className="relative flex-1 flex items-center h-[50px]">
           <Search className="w-4 h-4 text-gray-400 ms-4 shrink-0" />
           <input
             type="search"
@@ -82,7 +82,7 @@ export function SearchAutocomplete({ className, inputClassName, onNavigate }: Se
             onFocus={() => setFocused(true)}
             onKeyDown={(e) => { if (e.key === 'Enter') goAll(); }}
             className={cn(
-              'w-full bg-transparent px-3 py-2 text-xs font-bold text-gray-900 dark:text-white outline-none',
+              'w-full bg-transparent px-3 py-2 text-sm font-medium text-gray-900 dark:text-white outline-none placeholder:text-gray-400',
               inputClassName
             )}
             aria-label="Search marketplace"

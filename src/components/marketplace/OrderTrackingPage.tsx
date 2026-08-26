@@ -31,6 +31,24 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { LiveMap } from '../common/LiveMap';
 import { OrderService, InteractionService } from '@/src/services/api';
 import { cn } from '@/src/lib/utils';
+import { AnimatedTooltip } from '../ui/animated-tooltip';
+
+const STATUS_EXPLANATIONS: Record<string, string> = {
+  pending: 'The order has been placed and is waiting for the restaurant to confirm it.',
+  confirmed: 'The restaurant has received and accepted your order.',
+  preparing: 'The restaurant is currently preparing your order.',
+  ready_for_pickup: 'Your order is ready and waiting for the rider.',
+  rider_assigned: 'A rider has been assigned and is heading to collect your order.',
+  picked_up: 'Your rider has collected the order.',
+  in_transit: 'Your rider is currently travelling to your delivery location.',
+  arriving: 'Your rider is almost at your delivery location.',
+  awaiting_confirmation: 'Your rider has arrived — confirm you received the delivery.',
+  delivered: 'Your order has been successfully delivered.',
+  completed: 'The delivery is complete and your rating window is now open.',
+  cancelled: 'The order was cancelled; a refund is processed where applicable.',
+  failed: 'The delivery could not be completed.',
+  refunded: 'The order was cancelled and the payment has been refunded.'
+};
 
 type DeliveryKind = 'food' | 'package';
 
@@ -649,10 +667,15 @@ export const OrderTrackingPage: React.FC = () => {
               </div>
               {order.currentRiderLocation && (
                 <div className="absolute bottom-4 left-4 bg-white dark:bg-slate-900 p-3 rounded-xl shadow-lg border border-gray-100 dark:border-slate-800 text-[10px] z-10">
-                  <div className="flex items-center gap-2 mb-1">
+                  <AnimatedTooltip
+                    variant="smaug"
+                    placement="right"
+                    content="Follow your rider's current location in real time."
+                    triggerClassName="flex items-center gap-2 mb-1 px-0 py-0"
+                  >
                     <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                     <span className="font-bold text-gray-900 dark:text-white uppercase tracking-wider">{t('deliver.trackHistory')}</span>
-                  </div>
+                  </AnimatedTooltip>
                   <p className="text-gray-500">{t('deliver.fastestRider')}</p>
                 </div>
               )}
@@ -738,9 +761,14 @@ export const OrderTrackingPage: React.FC = () => {
                         {!isLast && <div className="w-px flex-1 bg-emerald-200 dark:bg-slate-700 my-1" />}
                       </div>
                       <div className={cn('pb-5', !isLast && 'pt-0.5')}>
-                        <p className={cn('text-xs font-black', ev.terminal ? 'text-rose-600 dark:text-rose-400' : 'text-gray-900 dark:text-white')}>
+                        <AnimatedTooltip
+                          variant="sadoc"
+                          placement="right"
+                          content={STATUS_EXPLANATIONS[ev.key] || STATUS_EXPLANATIONS[order.status] || 'Progress update for your delivery.'}
+                          triggerClassName={cn('text-xs font-black px-0 py-0', ev.terminal ? 'text-rose-600 dark:text-rose-400' : 'text-gray-900 dark:text-white')}
+                        >
                           {ev.label}
-                        </p>
+                        </AnimatedTooltip>
                         <p className="text-[10px] text-gray-400 mt-0.5">{new Date(ev.time).toLocaleString()}</p>
                       </div>
                     </div>

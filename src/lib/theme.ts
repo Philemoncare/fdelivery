@@ -65,8 +65,8 @@ export const THEMES: Record<ThemeKey, ThemeDefinition> = {
     label: 'OmniMarket',
     dark: false,
     accent: 'omnimarket',
-    tagline: 'Pink / Magenta',
-    swatch: ['#ec4899', '#c026d3'],
+    tagline: 'Brand Green',
+    swatch: ['#10b981', '#047857'],
   },
   ocean: {
     key: 'ocean',
@@ -227,7 +227,7 @@ export interface AccentTheme {
 }
 
 export const ACCENTS: AccentTheme[] = [
-  { id: 'omnimarket', label: 'OmniMarket', tagline: 'Pink / Magenta', swatch: ['#ec4899', '#c026d3'] },
+  { id: 'omnimarket', label: 'OmniMarket', tagline: 'Brand Green', swatch: ['#10b981', '#047857'] },
   { id: 'ocean', label: 'Ocean', tagline: 'Electric Blue', swatch: ['#0ea5e9', '#2563eb'] },
   { id: 'emerald', label: 'Emerald', tagline: 'Emerald Green', swatch: ['#10b981', '#059669'] },
   { id: 'amber', label: 'Amber', tagline: 'Amber / Gold', swatch: ['#f59e0b', '#f97316'] },

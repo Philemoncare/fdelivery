@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bike, Mail, Phone, MapPin, ArrowRight, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Mail, Phone, MapPin, ArrowRight, CheckCircle2, AlertCircle } from 'lucide-react';
 import { NewsletterService } from '@/src/services/api';
 import { useApp } from '@/src/context/AppContext';
+import omniLogo from '@/assets/omni-logo.png';
 
 export const Footer: React.FC = () => {
   const navigate = useNavigate();
@@ -63,12 +64,13 @@ export const Footer: React.FC = () => {
           
           <div className="col-span-2 space-y-4">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center text-white">
-                <Bike className="w-5 h-5" />
-              </div>
-              <span className="font-heading font-extrabold text-lg text-white">
-                OmniMarket<span className="text-emerald-400">.</span>
-              </span>
+              <button onClick={() => navigate('/')} className="flex items-center gap-2 group" aria-label="OmniMarket">
+                <img
+                  src={omniLogo}
+                  alt="OmniMarket"
+                  className="object-contain w-auto h-9 sm:h-10 transition-transform group-hover:scale-105"
+                />
+              </button>
             </div>
             <p className="text-slate-400 leading-relaxed max-w-sm">
               {t('footer.brandDesc')}

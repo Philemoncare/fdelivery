@@ -776,7 +776,7 @@ function notifyUser(userId: string, title: string, message: string, typeOrOpts: 
   } else {
     opts = typeOrOpts || {};
   }
-  if (db.platformSettings.notificationsEnabled === false && !opts.critical) return;
+  if (db.platformSettings.notificationsEnabled === false && !opts.critical) return false;
 
   const type = opts.type || 'system';
   const category = opts.category || (notifCategory(type) as any);
@@ -787,7 +787,7 @@ function notifyUser(userId: string, title: string, message: string, typeOrOpts: 
   // Idempotency: a still-unread notification carrying the same event key means
   // the event already fired (retries/refresh/reconnect) — skip the duplicate.
   if (opts.dedupeKey && db.notifications.some(n => n.userId === userId && n.dedupeKey === opts.dedupeKey && !n.read)) {
-    return;
+    return false;
   }
 
   const now = new Date().toISOString();
@@ -815,6 +815,7 @@ function notifyUser(userId: string, title: string, message: string, typeOrOpts: 
   };
   db.notifications.push(record);
   broadcast('notification', record, userId);
+  return true;
 }
 
 // ============================================================
@@ -8459,14 +8460,20 @@ function deliverInApp(u: any, title: string, message: string, ref: { id: string 
   const dedupeKey = opts.dedupeKey || null;
   if (dedupeKey && (db.notifications || []).some((nn: any) => nn.userId === u.id && nn.dedupeKey === dedupeKey && !nn.read)) {
     recordDelivery(u, 'In-app', ref.id, opts.referenceType || 'maintenance', title, 'skipped', 'Duplicate (already delivered)');
-    return false;
+    return 'skipped';
   }
-  notifyUser(u.id, title, message, {
+  // "Delivery record created" is not the same as "actually delivered". Only
+  // report sent when the notification really landed in the user's inbox.
+  const delivered = notifyUser(u.id, title, message, {
     type: opts.type || 'MAINTENANCE', category: opts.category || 'system', priority: opts.priority || 'IMPORTANT',
     referenceId: ref.id, referenceType: opts.referenceType || 'maintenance', action: opts.action || '/', dedupeKey, critical: !!opts.critical
   });
+  if (!delivered) {
+    recordDelivery(u, 'In-app', ref.id, opts.referenceType || 'maintenance', title, 'skipped', 'Notifications disabled');
+    return 'skipped';
+  }
   recordDelivery(u, 'In-app', ref.id, opts.referenceType || 'maintenance', title, 'sent');
-  return true;
+  return 'sent';
 }
 
 async function deliverEmailAsync(u: any, subject: string, template: any, data: any, eventKey: string, ref: { id: string; refType: string; refTitle: string }): Promise<string> {
@@ -8821,12 +8828,13 @@ function platformMessageProgress(msg: any) {
 
 function platformMessageSummary(msg: any) {
   const items = (db.notificationDeliveries || []).filter((x: any) => x.refId === msg.id);
-  let inAppSent = 0, inAppSkipped = 0, emailSent = 0, emailFailed = 0, emailNotConfigured = 0, emailSkipped = 0, failures = 0;
+  let inAppSent = 0, inAppSkipped = 0, inAppFailed = 0, emailSent = 0, emailFailed = 0, emailNotConfigured = 0, emailSkipped = 0, failures = 0;
   const failedRecipients: any[] = [];
   for (const d of items) {
     if (d.channel === 'In-app') {
       if (d.status === 'sent') inAppSent++;
       else if (d.status === 'skipped') inAppSkipped++;
+      else if (d.status === 'failed') { inAppFailed++; failures++; failedRecipients.push({ name: d.name, email: d.email, reason: d.error }); }
     } else if (d.channel === 'Email') {
       if (d.status === 'sent' || d.status === 'queued') emailSent++;
       else if (d.status === 'failed') { emailFailed++; failures++; failedRecipients.push({ name: d.name, email: d.email, reason: d.error }); }
@@ -8840,7 +8848,7 @@ function platformMessageSummary(msg: any) {
     totalRecipients: msg.totalRecipients || 0,
     delivered, skipped, failed: failures,
     channels: {
-      inApp: { delivered: inAppSent, skipped: inAppSkipped },
+      inApp: { delivered: inAppSent, skipped: inAppSkipped, failed: inAppFailed },
       email: { delivered: emailSent, failed: emailFailed, notConfigured: emailNotConfigured, skipped: emailSkipped },
     },
     failedRecipients: failedRecipients.slice(0, 50),

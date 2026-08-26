@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { ShoppingBag, X, Plus, Minus, Trash2, Tag, ArrowRight, ShieldCheck, Bike } from 'lucide-react';
+import { AnimatedTooltip } from '@/src/components/ui/animated-tooltip';
 
 export const CartDrawer: React.FC = () => {
   const navigate = useNavigate();
@@ -210,7 +211,13 @@ export const CartDrawer: React.FC = () => {
                   </div>
                 )}
                 <div className="flex justify-between">
-                  <span className="uppercase tracking-widest">{t('cartDrawer.taxAndFee')}</span>
+                  <AnimatedTooltip
+                    variant="sadoc"
+                    content="Delivery estimate plus estimated tax. Final delivery fee is re-calculated at checkout using the platform pricing engine (includes fuel-price adjustments when fuel data is available)."
+                    triggerClassName="px-1 py-0.5"
+                  >
+                    <span className="uppercase tracking-widest">{t('cartDrawer.taxAndFee')}</span>
+                  </AnimatedTooltip>
                   <span className="text-gray-900 dark:text-white">{formatPrice(deliveryFee + estimatedTax)}</span>
                 </div>
                 <div className="flex justify-between text-lg font-black text-gray-900 dark:text-white pt-3 border-t border-gray-200 dark:border-slate-800">

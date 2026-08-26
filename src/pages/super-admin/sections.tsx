@@ -24,6 +24,7 @@ import { AuthApiService } from '@/src/services/auth-api';
 import { ROLE_PERMISSIONS, ROLE_LABELS, isSuperAdminRole, type Role, type Permission } from '@/src/lib/auth/types';
 import { ConfirmDialog } from '@/src/components/common/ConfirmDialog';
 import { cn } from '@/src/lib/utils';
+import { AnimatedTooltip } from '@/src/components/ui/animated-tooltip';
 import {
   AdminPageHeader, AdminCard, AdminBadge, AdminTable,
   AdminStatCard, AdminSectionHeading, AdminStatus, AdminLoading, AdminError, AdminEmptyState,
@@ -2220,6 +2221,11 @@ export function SuperAdminNotificationsPage() {
     return 'disabled';
   };
 
+  // Truthful retry affordance: only surface "Retry Failed" when a delivery
+  // actually failed. The drawer summary is authoritative (fall back to the
+  // stored deliverySummary on the message record while status is loading).
+  const detailFailed = detailSummary?.failed ?? detail?.deliverySummary?.failed ?? 0;
+
   const send = async () => {
     if (!form.subject.trim() || !form.message.trim()) { setSendError('Title and message are required.'); return; }
     setSending(true); setSendError(null);
@@ -2257,10 +2263,10 @@ export function SuperAdminNotificationsPage() {
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <AdminStatCard label="Delivered" value={fmtNum(summary.delivered)} icon={CheckCircle2} status="success" />
-        <AdminStatCard label="Pending Flow" value={fmtNum(summary.pending)} icon={Clock} status="warning" />
-        <AdminStatCard label="Failed" value={fmtNum(summary.failed)} icon={XCircle} status="error" />
-        <AdminStatCard label="In-App Read" value={fmtNum(summary.read)} icon={Eye} status="info" />
+        <AdminStatCard label="Delivered" hint="Notifications successfully delivered to their targets" value={fmtNum(summary.delivered)} icon={CheckCircle2} status="success" />
+        <AdminStatCard label="Pending Flow" hint="Notifications still in the delivery pipeline" value={fmtNum(summary.pending)} icon={Clock} status="warning" />
+        <AdminStatCard label="Failed" hint="Deliveries that failed and may be retried" value={fmtNum(summary.failed)} icon={XCircle} status="error" />
+        <AdminStatCard label="In-App Read" hint="In-app notifications opened by recipients" value={fmtNum(summary.read)} icon={Eye} status="info" />
       </div>
 
       <div className="grid lg:grid-cols-3 gap-8">
@@ -2385,19 +2391,31 @@ export function SuperAdminNotificationsPage() {
         <div className="space-y-8">
            <AdminCard title="Provider Status" icon={Server}>
               <div className="space-y-4">
-                 {[
-                   { label: 'In-App Engine', icon: Bell, status: providers?.inApp?.code },
-                   { label: 'Mail Transfer', icon: Mail, status: providers?.email?.code },
-                   { label: 'SMS Gateway', icon: Smartphone, status: providers?.sms?.code },
-                 ].map(p => (
-                   <div key={p.label} className="flex items-center justify-between p-3 rounded-2xl bg-surface-2 border border-line">
+{[
+                    { label: 'In-App Engine', icon: Bell, status: providers?.inApp?.code },
+                    { label: 'Mail Transfer', icon: Mail, status: providers?.email?.code },
+                    { label: 'SMS Gateway', icon: Smartphone, status: providers?.sms?.code },
+                  ].map(p => (
+                    <div key={p.label} className="flex items-center justify-between p-3 rounded-2xl bg-surface-2 border border-line">
                       <div className="flex items-center gap-3">
-                         <p.icon className="w-4 h-4 text-ink-3" />
-                         <span className="text-[10px] font-black text-ink uppercase tracking-widest">{p.label}</span>
+                        <p.icon className="w-4 h-4 text-ink-3" />
+                        <AnimatedTooltip
+                          variant="sadoc"
+                          content={
+                            p.status === 'available' || p.status === 'configured'
+                              ? `${p.label} is operational and accepting deliveries.`
+                              : p.status === 'degraded'
+                                ? `${p.label} is degraded — deliveries may be delayed.`
+                                : `${p.label} is not configured — deliveries via this channel are skipped.`
+                          }
+                          triggerClassName="px-1 py-0.5"
+                        >
+                          <span className="text-[10px] font-black text-ink uppercase tracking-widest">{p.label}</span>
+                        </AnimatedTooltip>
                       </div>
                       <AdminBadge status={providerStatus(p.status)} label={p.status === 'available' || p.status === 'configured' ? 'Operational' : p.status === 'degraded' ? 'Degraded' : 'Not Configured'} />
-                   </div>
-                 ))}
+                    </div>
+                  ))}
               </div>
            </AdminCard>
         </div>
@@ -2477,17 +2495,30 @@ export function SuperAdminNotificationsPage() {
           <div className="flex w-full items-center justify-between gap-3">
             <div>
               <p className="text-[10px] font-black text-ink-3 uppercase tracking-widest">{detailSummary?.totalRecipients ?? detail.totalRecipients ?? 0} recipients</p>
-              <p className="text-[10px] text-ink-3">{detailSummary?.delivered ?? 0} delivered · {detailSummary?.skipped ?? 0} skipped · {detailSummary?.failed ?? 0} failed</p>
+              <p className="text-[10px] text-ink-3">{detailSummary?.delivered ?? 0} delivered · {detailSummary?.skipped ?? 0} skipped · {detailFailed} failed</p>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2 rounded-xl"
-              disabled={!isSuper || resendBusy}
-              onClick={() => { setResendError(null); setResendPassword(''); setResendTarget(detail); }}
-            >
-              <RefreshCw className={cn('w-3.5 h-3.5', resendBusy && 'animate-spin')} /> Retry Failed
-            </Button>
+            {detailFailed > 0 ? (
+              <AnimatedTooltip
+                variant="malva"
+                content="Re-attempts delivery only to recipients whose delivery failed or could not be configured. Delivered recipients are never re-sent to."
+                placement="left"
+                triggerClassName="px-0.5 py-0.5"
+              >
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 rounded-xl"
+                  disabled={!isSuper || resendBusy}
+                  onClick={() => { setResendError(null); setResendPassword(''); setResendTarget(detail); }}
+                >
+                  <RefreshCw className={cn('w-3.5 h-3.5', resendBusy && 'animate-spin')} /> Retry Failed ({detailFailed})
+                </Button>
+              </AnimatedTooltip>
+            ) : (
+              <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-ok">
+                <CheckCircle2 className="w-3.5 h-3.5" /> All delivered
+              </span>
+            )}
           </div>
         )}
       >

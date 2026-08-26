@@ -1,8 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { cn } from '@/src/lib/utils';
 import { ScrollToTop } from '@/src/components/common/ScrollToTop';
-import { PortalAccessBar } from '@/src/components/common/PortalAccessBar';
 import { ContextualHeader } from '@/src/components/common/ContextualHeader';
 import { ContextualFooter } from '@/src/components/common/ContextualFooter';
 import { MegaMenu } from '@/src/components/common/MegaMenu';
@@ -12,16 +11,31 @@ import { ToastNotification } from '@/src/components/common/ToastNotification';
 import { CookieConsent } from '@/src/components/common/CookieConsent';
 import { MobileBottomNav } from '@/src/components/common/MobileBottomNav';
 import { getFooterMode, getHeaderMode } from '@/src/lib/header-modes';
+import { useApp } from '@/src/context/AppContext';
+import { applyTheme } from '@/src/lib/theme';
 
 export function MarketplaceShell() {
   const [megaMenuOpen, setMegaMenuOpen] = useState(false);
   const location = useLocation();
+  const { themeKey } = useApp();
   const mode = getHeaderMode(location.pathname);
   const footerMode = getFooterMode(location.pathname, mode);
 
   const isMarketplaceMode = mode === 'marketplace';
   // Transaction-focused flows should not be interrupted by marketplace chrome.
   const showMobileNav = mode !== 'checkout' && mode !== 'payment';
+
+  // The consumer marketplace is a white/green experience. Fix the accent to
+  // the brand green while this shell is mounted, and restore the user's chosen
+  // theme on leave so their preference is never lost.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.accent = 'emerald';
+    return () => {
+      applyTheme(themeKey);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className={cn(
@@ -30,7 +44,6 @@ export function MarketplaceShell() {
     )}>
       <ScrollToTop />
       <div className="sticky top-0 z-40">
-        {isMarketplaceMode && <PortalAccessBar />}
         <ContextualHeader
           mode={mode}
           onToggleMegaMenu={() => setMegaMenuOpen(!megaMenuOpen)}

@@ -16,6 +16,7 @@ import {
   AdminStatus, AdminLoading, AdminError, AdminModal
 } from '@/src/components/super-admin/AdminDesignSystem';
 import { cn } from '@/src/lib/utils';
+import { AnimatedTooltip } from '@/src/components/ui/animated-tooltip';
 
 const GATE_ITEMS = [
   { label: 'Maintenance Mode', key: 'maintenanceMode', risk: 'error' as AdminStatus },
@@ -521,28 +522,36 @@ export function SuperAdminSettingsPage() {
                }
              >
                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                 <div className="rounded-xl border border-line bg-surface-2/50 px-4 py-3">
-                   <p className="text-[10px] font-bold uppercase tracking-widest text-ink-3">Current Price</p>
-                   <p className="text-xl font-black text-ink mt-1">GH₵{Number(fuel?.info?.current ?? 0).toFixed(2)}</p>
-                   <p className="text-[10px] text-ink-3 mt-0.5">Source: {(fuel?.info?.source || 'manual').toUpperCase()}</p>
-                 </div>
-                 <div className="rounded-xl border border-line bg-surface-2/50 px-4 py-3">
-                   <p className="text-[10px] font-bold uppercase tracking-widest text-ink-3">Reference</p>
-                   <p className="text-xl font-black text-ink mt-1">GH₵{Number(fuel?.info?.reference ?? 0).toFixed(2)}</p>
-                   <p className="text-[10px] text-ink-3 mt-0.5">Cost weight: {Number(fuel?.info?.weight ?? 0)}%</p>
-                 </div>
-                 <div className="rounded-xl border border-line bg-surface-2/50 px-4 py-3">
-                   <p className="text-[10px] font-bold uppercase tracking-widest text-ink-3">Fuel Change</p>
-                   <p className={cn('text-xl font-black mt-1', fuelChangePct > 0 ? 'text-ink' : fuelChangePct < 0 ? 'text-ink' : 'text-ink-3')}>{fuelChangePct === 0 ? '0%' : `${fuelChangePct >= 0 ? '+' : ''}${fuelChangePct}%`}</p>
-                   <p className="text-[10px] text-ink-3 mt-0.5">Fee adjustment: {fuelAdjustPct === 0 ? '0%' : `${fuelAdjustPct >= 0 ? '+' : ''}${fuelAdjustPct}%`}</p>
-                 </div>
-                 <div className="rounded-xl border border-line bg-surface-2/50 px-4 py-3">
-                   <p className="text-[10px] font-bold uppercase tracking-widest text-ink-3">Multiplier</p>
-                   <p className="text-xl font-black text-ink mt-1">×{fuelMultiplier.toFixed(3)}</p>
-                   <p className="text-[10px] text-ink-3 mt-0.5">
-                     {fuelPaused ? `Beyond ±${Math.max(Number(fuel?.maxAutoIncreasePct ?? 10), Number(fuel?.maxAutoDecreasePct ?? 10))}% auto limit` : fuelApplied ? 'Auto-applying within limits' : 'Awaiting fuel data'}
-                   </p>
-                 </div>
+<div className="rounded-xl border border-line bg-surface-2/50 px-4 py-3">
+                     <AnimatedTooltip variant="indis" content="Latest verified fuel price used by the delivery-pricing engine. A value of 0 means no fuel data is available and the fuel component stays at 1×." triggerClassName="px-1 py-0.5">
+                       <p className="text-[10px] font-bold uppercase tracking-widest text-ink-3">Current Price</p>
+                     </AnimatedTooltip>
+                     <p className="text-xl font-black text-ink mt-1">GH₵{Number(fuel?.info?.current ?? 0).toFixed(2)}</p>
+                     <p className="text-[10px] text-ink-3 mt-0.5">Source: {(fuel?.info?.source || 'manual').toUpperCase()}</p>
+                  </div>
+                  <div className="rounded-xl border border-line bg-surface-2/50 px-4 py-3">
+                     <AnimatedTooltip variant="indis" content="The baseline fuel price that all change percentages are measured against. The reference is captured when fuel data is first committed." triggerClassName="px-1 py-0.5">
+                       <p className="text-[10px] font-bold uppercase tracking-widest text-ink-3">Reference</p>
+                     </AnimatedTooltip>
+                     <p className="text-xl font-black text-ink mt-1">GH₵{Number(fuel?.info?.reference ?? 0).toFixed(2)}</p>
+                     <p className="text-[10px] text-ink-3 mt-0.5">Cost weight: {Number(fuel?.info?.weight ?? 0)}%</p>
+                  </div>
+                  <div className="rounded-xl border border-line bg-surface-2/50 px-4 py-3">
+                     <AnimatedTooltip variant="indis" content="The percent change from the reference price. The fee adjustment = change% × cost weight, clamped to the automatic increase/decrease limits unless a Super Admin approves a larger move." triggerClassName="px-1 py-0.5">
+                       <p className="text-[10px] font-bold uppercase tracking-widest text-ink-3">Fuel Change</p>
+                     </AnimatedTooltip>
+                     <p className={cn('text-xl font-black mt-1', fuelChangePct > 0 ? 'text-ink' : fuelChangePct < 0 ? 'text-ink' : 'text-ink-3')}>{fuelChangePct === 0 ? '0%' : `${fuelChangePct >= 0 ? '+' : ''}${fuelChangePct}%`}</p>
+                     <p className="text-[10px] text-ink-3 mt-0.5">Fee adjustment: {fuelAdjustPct === 0 ? '0%' : `${fuelAdjustPct >= 0 ? '+' : ''}${fuelAdjustPct}%`}</p>
+                  </div>
+<div className="rounded-xl border border-line bg-surface-2/50 px-4 py-3">
+                    <AnimatedTooltip variant="indis" content="The factor applied to the base delivery fee. 1× means no adjustment; larger changes pause automatically until a Super Admin approves them." triggerClassName="px-1 py-0.5">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-ink-3">Multiplier</p>
+                    </AnimatedTooltip>
+                    <p className="text-xl font-black text-ink mt-1">×{fuelMultiplier.toFixed(3)}</p>
+                    <p className="text-[10px] text-ink-3 mt-0.5">
+                      {fuelPaused ? `Beyond ±${Math.max(Number(fuel?.maxAutoIncreasePct ?? 10), Number(fuel?.maxAutoDecreasePct ?? 10))}% auto limit` : fuelApplied ? 'Auto-applying within limits' : 'Awaiting fuel data'}
+                    </p>
+                  </div>
                </div>
                <p className="text-[10px] text-ink-3 mt-3">
                  Last verified: {fuel?.fuelPriceLastVerifiedAt ? new Date(fuel.fuelPriceLastVerifiedAt).toLocaleString() : 'never'} · Status: {(fuel?.fuelPriceStatus || 'unavailable').toUpperCase()}
