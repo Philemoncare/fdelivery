@@ -19,9 +19,9 @@ import { useState, type FormEvent, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
-  User, Bike, Calendar, MapPin, ShieldCheck, FileText,
-  CreditCard, Eye, EyeOff, Camera, Loader2, CheckCircle2,
-  AlertCircle, X, Trash2, RefreshCw, ArrowRight,
+User, Bike, Calendar, MapPin, ShieldCheck, FileText,
+CreditCard, Eye, EyeOff, Camera, Loader2, CheckCircle2,
+AlertCircle, X, Trash2, RefreshCw, ArrowRight,
 } from 'lucide-react';
 import { useAuth } from '@/src/lib/auth/auth-store';
 import { useApp } from '@/src/context/AppContext';
@@ -31,7 +31,8 @@ import {
   OptionCards, DocumentUploadCard, ReviewRow, ReviewSection,
   StepHeader, Stepper, ResumeBanner, ErrorBanner,
   formatGhanaPhone, toFullPhone, loadDraft, saveDraft,
-  clearDraft, saveDraftStep, loadDraftStep,
+  clearDraft, saveDraftStep, loadDraftStep, Field,
+  TextField, TextArea, SelectField, PasswordField, PhoneField,
 } from '@/src/components/auth/onboarding-ui';
 import { RIDER_VEHICLE_OPTIONS, PAYOUT_METHODS } from '@/src/lib/partner-roles';
 import { TAKORADI_LOCATIONS } from '@/src/lib/locations';
@@ -78,7 +79,7 @@ export function RiderRegisterPage() {
     setErrors(prev => { const n = { ...prev }; delete n[key]; return n });
   };
 
-  const phoneToE164 = (v: string) => toFullPhone(v.replace(/\D/g, '').slice(0, 9));
+  const phoneToE164 = (v: string) => v.replace(/\D/g, '').slice(0, 9);
   const updatePhone = (v: string) => update('phone', phoneToE164(v));
 
   /* ---------- form state - fields that compose the final register payload - */
@@ -127,6 +128,7 @@ export function RiderRegisterPage() {
 
   // ---------- validation ----------
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
   const validate = (): boolean => {
     setErrors({});
     const e: Record<string, string> = {};
@@ -178,13 +180,13 @@ export function RiderRegisterPage() {
       try {
         const payload: Record<string, any> = {
           firstName: form.firstName, lastName: form.lastName,
-          email: form.email, phone: form.phone,
+          email: form.email, phone: toFullPhone(form.phone),
           password: form.password, role: 'rider',
           dateOfBirth: form.dateOfBirth,
           residenceAddress: form.residenceAddress,
           city: form.city,
           emergencyName: form.emergencyName,
-          emergencyPhone: form.emergencyPhone,
+          emergencyPhone: toFullPhone(form.emergencyPhone),
           vehicleType: form.vehicleType,
           vehicleNumber: form.vehicleNumber,
           driverLicense: form.driverLicense,
@@ -199,19 +201,10 @@ export function RiderRegisterPage() {
         };
         const result = await register(payload, 'rider');
         if (result.success) {
-          // no tokens returned — show application submitted screen
           clearDraft(draftKey);
           saveDraftStep(draftKey, 1);
-          navigate('/rider/application-status', { replace: true });
-          // Actually we want to stay in-flow and show the status page inline.
-          // Instead we redirect and let the existing ApplicationStatusPage (which reads
-          // auth user role rider) show pending. Since we created a rider record with
-          // isApproved:false and verificationStatus:'pending', that page will show.
-          // TODO: Instead of navigating out, render inline status. But per backend
-          // design register returns no tokens, so auth guard redirects to /login. We'll
-          // redirect to a new inline page rider-application-status that mirrors the
-          // existing one but stays within this flow. For brevity here we navigate.
-          showToast('success', 'Application submitted', 'Your rider application is under review. Reference: OM-R-' + Math.floor(10000 + Math.random() * 89999));
+          setDraftStep(steps.length + 1); // Success state
+          showToast('success', 'Application submitted', 'Your rider application is under review.');
         } else {
           showToast('error', 'Registration error', result.error || 'Check your details.');
         }
@@ -471,26 +464,20 @@ export function RiderRegisterPage() {
               {step === 5 && renderPayment()}
               {step === 6 && renderReview()}
 
-              {step < steps.length && (
+              {step <= steps.length && (
                 <div className="flex flex-col sm:flex-row gap-3 pt-8">
                   {step > 1 && (
                     <Button type="button" variant="outline" onClick={() => setDraftStep(s => Math.max(s - 1, 1))} className="flex-1 h-12 rounded-2xl font-black text-xs tracking-widest">
                       BACK
                     </Button>
                   )}
-                  {isLast ? (
-                    <Button type="submit" className="flex-1 h-12 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-lg shadow-emerald-600/20 transition-all active:scale-[0.98] disabled:opacity-60">
-                      {draftStep === steps.length ? "SUBMIT APPLICATION" : "CONTINUE TO NEXT STEP"}
-                    </Button>
-                  ) : (
-                    <Button type="button" className="flex-1 h-12 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-lg shadow-emerald-600/20 transition-all active:scale-[0.98] disabled:opacity-60">
-                      {draftStep === steps.length ? "SUBMIT APPLICATION" : "CONTINUE TO NEXT STEP"}
-                    </Button>
-                  )}
+                  <Button type="submit" loading={loading} className="flex-1 h-12 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-lg shadow-emerald-600/20 transition-all active:scale-[0.98] disabled:opacity-60">
+                    {isLast ? "SUBMIT APPLICATION" : "CONTINUE TO NEXT STEP"}
+                  </Button>
                 </div>
               )}
 
-              {step === steps.length && (
+              {step > steps.length && (
                 <div className="mt-8 space-y-4">
                   <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center">
                     <div className="w-24 h-24 rounded-full bg-emerald-500 text-white flex items-center justify-center mx-auto shadow-2xl shadow-emerald-500/40">
