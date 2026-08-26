@@ -12,7 +12,7 @@ import { LandingPage } from '@/src/pages/auth/landing';
 import { PublicLoginPage } from '@/src/pages/auth/public-login';
 import { AdminLoginPage } from '@/src/pages/auth/admin-login';
 import { JoinOmniMarketPage } from '@/src/pages/auth/join';
-import { CustomerRegisterPage, CustomerWelcomePage } from '@/src/pages/auth/register-customer';
+import { CustomerRegisterPage } from '@/src/pages/auth/register-customer';
 import { RiderRegisterPage } from '@/src/pages/auth/register-rider';
 import { VendorRegisterPage } from '@/src/pages/auth/register-vendor';
 import { FleetRegisterPage } from '@/src/pages/auth/register-fleet';
@@ -173,11 +173,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/onboarding/customer',
-    element: (
-      <AuthGuard roles={['customer']}>
-        <CustomerWelcomePage />
-      </AuthGuard>
-    ),
+    element: <Navigate to="/" replace />,
   },
   {
     path: '/forgot-password',

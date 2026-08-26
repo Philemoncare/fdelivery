@@ -251,6 +251,31 @@
       "lockedUntil": 0,
       "loginIps": [],
       "lastReauthAt": "2026-08-18T03:45:36.291Z"
+    },
+    {
+      "id": "4bd2738b-ed58-49e3-a27e-ff631f1bf868",
+      "email": "philemonmelabah@gmail.com",
+      "phone": "+233055468846",
+      "password": "scrypt$18a2f8a942b119a6d746f6ef7bc65fae$b37aa8754e8bb4a0f1cf438e3608118c9c1e865c969d7a1e81c095858c211da64ed6da529d8c15dad00da9c55562aa6497eb6228c02fc3ee0cc4e25cdf3622be",
+      "firstName": "adfds",
+      "lastName": "ENUKYI",
+      "displayName": "adfds",
+      "avatarUrl": "https://api.dicebear.com/7.x/avataaars/svg?seed=4bd2738b-ed58-49e3-a27e-ff631f1bf868",
+      "role": "fleet",
+      "createdAt": "2026-08-26T02:14:49.894Z",
+      "lastLoginAt": "2026-08-26T02:15:13.130Z",
+      "isVerified": false,
+      "isEmailVerified": false,
+      "isPhoneVerified": false,
+      "isApproved": false,
+      "isActive": true,
+      "isSuspended": false,
+      "twoFactorEnabled": false,
+      "referralCode": "OM-4BD2-738B",
+      "loginAttempts": 0,
+      "lockedUntil": 0,
+      "loginIps": [],
+      "lastReauthAt": "2026-08-26T02:15:13.130Z"
     }
   ],
   "categories": [
@@ -7928,6 +7953,28 @@
       "relatedUserId": null,
       "action": "/super-admin/security-events",
       "dedupeKey": null
+    },
+    {
+      "id": "n-8b46a977",
+      "userId": "5a3a48af-7b43-45a0-a899-0f1ea29027df",
+      "title": "MEDIUM — New Device Login",
+      "message": "Sign-in from a device not previously used by this account. Account: philemonmelabah@gmail.com. Endpoint: /api/auth/login. Action: Requiring OTP; flagged for review.",
+      "time": "2026-08-26T02:15:07.776Z",
+      "createdAt": "2026-08-26T02:15:07.776Z",
+      "read": false,
+      "readAt": null,
+      "type": "SECURITY_EVENT",
+      "category": "account",
+      "priority": "IMPORTANT",
+      "referenceId": "se-a5055334-0",
+      "referenceType": "security_event",
+      "relatedOrderId": null,
+      "relatedDeliveryId": null,
+      "relatedConversationId": null,
+      "relatedRestaurantId": null,
+      "relatedUserId": null,
+      "action": "/super-admin/security-events",
+      "dedupeKey": null
     }
   ],
   "wallets": [
@@ -7983,6 +8030,11 @@
     },
     {
       "userId": "e1770933-8d34-4ce3-9cce-0a9ce20da43b",
+      "balance": 0,
+      "currency": "GHS"
+    },
+    {
+      "userId": "4bd2738b-ed58-49e3-a27e-ff631f1bf868",
       "balance": 0,
       "currency": "GHS"
     }
@@ -9224,6 +9276,19 @@
       "expiresAt": "2026-08-29T00:42:44.698Z",
       "revokedAt": "2026-08-22T00:43:20.368Z",
       "refreshTokenHash": "c45e7b57ee92a71470cf0e8801571e2f7228d916dbd1576001afc3fd5f592375"
+    },
+    {
+      "id": "s-b9427df6",
+      "userId": "4bd2738b-ed58-49e3-a27e-ff631f1bf868",
+      "deviceId": "dev-8e05fd9ed1d7",
+      "deviceName": "Chrome on Desktop",
+      "platform": "Desktop",
+      "ipAddress": "127.0.0.1",
+      "issuedAt": "2026-08-26T02:15:13.088Z",
+      "lastActivityAt": "2026-08-26T02:15:13.088Z",
+      "expiresAt": "2026-09-02T02:15:13.088Z",
+      "revokedAt": null,
+      "refreshTokenHash": "e2a2ceab2b63cee275ab2685ec9af3cc123e6e8d690f66b0164956ff2d56535c"
     }
   ],
   "backups": [
@@ -84445,10 +84510,130 @@
       "requestId": null,
       "sessionId": null,
       "timestamp": "2026-08-22T00:43:20.370Z"
+    },
+    {
+      "id": "AUD-000397",
+      "actorId": "4bd2738b-ed58-49e3-a27e-ff631f1bf868",
+      "actorName": "adfds ENUKYI",
+      "actorEmail": "philemonmelabah@gmail.com",
+      "actorRole": "fleet",
+      "action": "Account registered",
+      "entity": "user",
+      "entityId": "4bd2738b-ed58-49e3-a27e-ff631f1bf868",
+      "resourceType": "user",
+      "resourceId": "4bd2738b-ed58-49e3-a27e-ff631f1bf868",
+      "category": "Accounts",
+      "severity": "low",
+      "riskLevel": "low",
+      "description": "Account registered on user (4bd2738b-ed58-49e3-a27e-ff631f1bf868)",
+      "result": "success",
+      "previousValue": null,
+      "newValue": null,
+      "meta": {
+        "role": "fleet",
+        "autoApproved": false
+      },
+      "ipAddress": "127.0.0.1",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+      "requestId": null,
+      "sessionId": null,
+      "timestamp": "2026-08-26T02:14:49.904Z"
+    },
+    {
+      "id": "AUD-000398",
+      "actorId": "system",
+      "actorName": "System",
+      "actorEmail": null,
+      "actorRole": "system",
+      "action": "Security event recorded",
+      "entity": "security",
+      "entityId": "se-a5055334-0",
+      "resourceType": "security",
+      "resourceId": "se-a5055334-0",
+      "category": "System",
+      "severity": "low",
+      "riskLevel": "low",
+      "description": "Security event recorded on security (se-a5055334-0)",
+      "result": "success",
+      "previousValue": null,
+      "newValue": null,
+      "meta": {
+        "type": "NEW_DEVICE_LOGIN",
+        "severity": "MEDIUM",
+        "endpoint": "/api/auth/login",
+        "action": "Requiring OTP; flagged for review",
+        "attempt": 1
+      },
+      "ipAddress": "127.0.0.1",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+      "requestId": null,
+      "sessionId": null,
+      "timestamp": "2026-08-26T02:15:07.776Z"
+    },
+    {
+      "id": "AUD-000399",
+      "actorId": "system",
+      "actorName": "System",
+      "actorEmail": null,
+      "actorRole": "system",
+      "action": "Security event recorded",
+      "entity": "security",
+      "entityId": "se-edbbd4b0-8",
+      "resourceType": "security",
+      "resourceId": "se-edbbd4b0-8",
+      "category": "System",
+      "severity": "low",
+      "riskLevel": "low",
+      "description": "Security event recorded on security (se-edbbd4b0-8)",
+      "result": "success",
+      "previousValue": null,
+      "newValue": null,
+      "meta": {
+        "type": "LOGIN_SUCCESS",
+        "severity": "INFO",
+        "endpoint": "/api/auth/verify-otp",
+        "action": "Session issued",
+        "attempt": 1
+      },
+      "ipAddress": "127.0.0.1",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+      "requestId": null,
+      "sessionId": null,
+      "timestamp": "2026-08-26T02:15:13.131Z"
+    },
+    {
+      "id": "AUD-000400",
+      "actorId": "4bd2738b-ed58-49e3-a27e-ff631f1bf868",
+      "actorName": "adfds ENUKYI",
+      "actorEmail": "philemonmelabah@gmail.com",
+      "actorRole": "fleet",
+      "action": "Login",
+      "entity": "auth",
+      "entityId": "4bd2738b-ed58-49e3-a27e-ff631f1bf868",
+      "resourceType": "auth",
+      "resourceId": "4bd2738b-ed58-49e3-a27e-ff631f1bf868",
+      "category": "Security",
+      "severity": "low",
+      "riskLevel": "low",
+      "description": "Login on auth (4bd2738b-ed58-49e3-a27e-ff631f1bf868)",
+      "result": "success",
+      "previousValue": null,
+      "newValue": null,
+      "meta": {
+        "portal": "public",
+        "method": "password+otp",
+        "device": "Chrome on Desktop",
+        "ip": "127.0.0.1"
+      },
+      "ipAddress": null,
+      "userAgent": null,
+      "requestId": null,
+      "sessionId": null,
+      "timestamp": "2026-08-26T02:15:13.131Z"
     }
   ],
   "auditSequence": {
-    "value": 396
+    "value": 400
   },
   "announcements": [],
   "referrals": [],
@@ -88711,6 +88896,25 @@
       "status": "failed",
       "createdAt": "2026-08-22T00:42:40.165Z",
       "error": "Unexpected socket close"
+    },
+    {
+      "id": "em-1787710489895-t2x3aa",
+      "recipient": "philemonmelabah@gmail.com",
+      "template": "registration_pending",
+      "subject": "Application received — join OmniMarket as a fleet",
+      "eventKey": "registration-pending:4bd2738b-ed58-49e3-a27e-ff631f1bf868",
+      "status": "sent",
+      "createdAt": "2026-08-26T02:14:49.895Z",
+      "messageId": "<637f1577-2654-16e0-b150-644835fb8222@gmail.com>"
+    },
+    {
+      "id": "em-1787710507785-0d1xcx",
+      "recipient": "philemonmelabah@gmail.com",
+      "template": "otp",
+      "subject": "•••••• is your OmniMarket verification code",
+      "status": "failed",
+      "createdAt": "2026-08-26T02:15:07.785Z",
+      "error": "rate-limit: send again shortly"
     }
   ],
   "payments": [
@@ -99501,6 +99705,55 @@
       },
       "resolvedAt": null,
       "resolutionNote": null
+    },
+    {
+      "id": "se-a5055334-0",
+      "type": "NEW_DEVICE_LOGIN",
+      "severity": "MEDIUM",
+      "timestamp": "2026-08-26T02:15:07.776Z",
+      "endpoint": "/api/auth/login",
+      "source": {
+        "ip": "127.0.0.1",
+        "maskedIp": "127.0.•.•"
+      },
+      "account": "philemonmelabah@gmail.com",
+      "userId": "4bd2738b-ed58-49e3-a27e-ff631f1bf868",
+      "requestId": "req-2607cf93",
+      "detection": "Sign-in from a device not previously used by this account.",
+      "actionTaken": "Requiring OTP; flagged for review",
+      "status": "monitoring",
+      "frequency": 1,
+      "lastSeenAt": "2026-08-26T02:15:07.776Z",
+      "details": {
+        "device": "Chrome on Desktop"
+      },
+      "resolvedAt": null,
+      "resolutionNote": null
+    },
+    {
+      "id": "se-edbbd4b0-8",
+      "type": "LOGIN_SUCCESS",
+      "severity": "INFO",
+      "timestamp": "2026-08-26T02:15:13.130Z",
+      "endpoint": "/api/auth/verify-otp",
+      "source": {
+        "ip": "127.0.0.1",
+        "maskedIp": "127.0.•.•"
+      },
+      "account": "philemonmelabah@gmail.com",
+      "userId": "4bd2738b-ed58-49e3-a27e-ff631f1bf868",
+      "requestId": "req-db9072f3",
+      "detection": "Successful sign-in after password + one-time code.",
+      "actionTaken": "Session issued",
+      "status": "monitoring",
+      "frequency": 1,
+      "lastSeenAt": "2026-08-26T02:15:13.130Z",
+      "details": {
+        "device": "Chrome on Desktop",
+        "portal": "public"
+      },
+      "resolvedAt": null,
+      "resolutionNote": null
     }
   ],
   "fuelPriceHistory": [
@@ -99983,6 +100236,28 @@
     {
       "id": "sys-a096f2b9",
       "timestamp": "2026-08-26T01:19:47.680Z",
+      "level": "info",
+      "source": "system",
+      "event": "service_startup",
+      "message": "OmniMarket server starting. Version 1.0.0.",
+      "meta": null,
+      "ipAddress": null,
+      "userAgent": null
+    },
+    {
+      "id": "sys-d23eaf47",
+      "timestamp": "2026-08-26T01:38:20.080Z",
+      "level": "info",
+      "source": "system",
+      "event": "service_startup",
+      "message": "OmniMarket server starting. Version 1.0.0.",
+      "meta": null,
+      "ipAddress": null,
+      "userAgent": null
+    },
+    {
+      "id": "sys-1d378c61",
+      "timestamp": "2026-08-26T02:08:16.395Z",
       "level": "info",
       "source": "system",
       "event": "service_startup",

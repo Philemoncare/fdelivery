@@ -307,11 +307,11 @@ function CustomerLocationStep({ onComplete }: { onComplete: () => void }) {
       <StepHeader title="Delivery location" subtitle="Choose how you'd like to set your delivery location." />
 
       <div className="space-y-5">
-        <LocationSearch
+<LocationSearch
           label="Delivery location"
           placeholder="Search Takoradi areas, e.g. Market Circle…"
           value={loc}
-          onChange={(l) => { setLoc(l); setSaveError(''); }}
+          onChange={(l) => setLoc(l)}
           allowCurrentLocation
           savedOptions={savedOptions}
           hint="Use GPS, search the map, or enter the address manually."
