@@ -3257,7 +3257,237 @@ app.get('/api/geocoding/search', async (req, res) => {
   }
 });
 
-app.get('/api/vendors/nearby', (req, res) => {
+// HERE Location Platform routes
+// All HERE API calls go through this backend to keep the API key secure.
+// The frontend never accesses the HERE API key directly.
+
+// Geocoding: address → coordinates
+app.get('/api/location/geocode', async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (!q) return res.status(422).json({ error: 'Query parameter q is required.' });
+  try {
+    const results = await geocodeAddress({ query: q });
+    if (results.length === 0) return res.status(404).json({ error: 'No results found.' });
+    res.json({ success: true, results });
+  } catch (error: any) {
+    console.error('[HERE] Geocoding error:', error);
+    res.status(503).json({ error: 'Geocoding service unavailable.' });
+  }
+});
+
+// Reverse geocoding: coordinates → address
+app.get('/api/location/reverse-geocode', async (req, res) => {
+  const lat = Number(req.query.lat);
+  const lng = Number(req.query.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return res.status(422).json({ error: 'Valid lat/lng required.' });
+  try {
+    const result = await reverseGeocodeCoords({ latitude: lat, longitude: lng });
+    res.json({ success: true, result });
+  } catch (error: any) {
+    console.error('[HERE] Reverse geocoding error:', error);
+    res.status(503).json({ error: 'Reverse geocoding service unavailable.' });
+  }
+});
+
+// Place search: businesses, restaurants, stores, etc.
+app.get('/api/location/search', async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  const lat = Number(req.query.lat);
+  const lng = Number(req.query.lng);
+  if (!q) return res.status(422).json({ error: 'Query parameter q is required.' });
+  try {
+    const results = await searchPlacesHandler({ query: q, latitude: lat, longitude: lng });
+    res.json({ success: true, results });
+  } catch (error: any) {
+    console.error('[HERE] Search error:', error);
+    res.status(503).json({ error: 'Search service unavailable.' });
+  }
+});
+
+// Routing: calculate route between two points
+app.get('/api/location/route', async (req, res) => {
+  const transportMode = (req.query.transportMode || 'car') as 'car' | 'truck' | 'bus' | 'bicycle' | 'pedestrian';
+  const originLat = Number(req.query.originLat);
+  const originLng = Number(req.query.originLng);
+  const destLat = Number(req.query.destLat);
+  const destLng = Number(req.query.destLng);
+
+  if (!Number.isFinite(originLat) || !Number.isFinite(originLng) || !Number.isFinite(destLat) || !Number.isFinite(destLng)) {
+    return res.status(422).json({ error: 'Valid origin and destination coordinates required.' });
+  }
+
+  try {
+    const result = await calculateDeliveryRoute(
+      { lat: originLat, lng: originLng },
+      { lat: destLat, lng: destLng }
+    );
+    res.json({ success: true, result });
+  } catch (error: any) {
+    console.error('[HERE] Routing error:', error);
+    res.status(503).json({ error: 'Routing service unavailable.' });
+  }
+});
+
+// Traffic information
+app.get('/api/location/traffic', async (req, res) => {
+  const lat = Number(req.query.lat);
+  const lng = Number(req.query.lng);
+  const refLat = Number(req.query.refLat);
+  const refLng = Number(req.query.refLng);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return res.status(422).json({ error: 'Valid lat/lng required.' });
+
+  try {
+    const snapshot = await getTrafficSnapshot(lat, lng, refLat || lat, refLng || lng);
+    res.json({ success: true, snapshot });
+  } catch (error: any) {
+    console.error('[HERE] Traffic error:', error);
+    res.status(503).json({ error: 'Traffic service unavailable.' });
+  }
+});
+
+// Traffic incidents
+app.get('/api/location/incidents', async (req, res) => {
+  const lat = Number(req.query.lat);
+  const lng = Number(req.query.lng);
+  const radius = Number(req.query.radius || 5000);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return res.status(422).json({ error: 'Valid lat/lng required.' });
+
+  try {
+    const { incidents, hasSignificantImpact } = await checkRouteIncidents(
+      { lat, lng },
+      { lat: (req.query.refLat ? Number(req.query.refLat) : lat), lng: (req.query.refLng ? Number(req.query.refLng) : lng) }
+    );
+    res.json({ success: true, incidents, hasSignificantImpact });
+  } catch (error: any) {
+    console.error('[HERE] Incidents error:', error);
+    res.status(503).json({ error: 'Traffic incidents service unavailable.' });
+  }
+});
+
+// EV routing and charging stations
+app.get('/api/location/ev/route', async (req, res) => {
+  const originLat = Number(req.query.originLat);
+  const originLng = Number(req.query.originLng);
+  const destLat = Number(req.query.destLat);
+  const destLng = Number(req.query.destLng);
+  const batteryLevel = Number(req.query.batteryLevel);
+  const batteryCapacityKwh = Number(req.query.batteryCapacityKwh);
+  const consumptionPerKm = Number(req.query.consumptionPerKm);
+
+  if (!Number.isFinite(originLat) || !Number.isFinite(originLng) || !Number.isFinite(destLat) || !Number.isFinite(destLng)) {
+    return res.status(422).json({ error: 'Valid origin/destination and EV parameters required.' });
+  }
+
+  if (!Number.isFinite(batteryLevel) || !Number.isFinite(batteryCapacityKwh)) {
+    return res.status(422).json({ error: 'Valid battery level and capacity required.' });
+  }
+
+  try {
+    const result = await planEvRoute({
+      origin: { lat: originLat, lng: originLng },
+      destination: { lat: destLat, lng: destLng },
+      batteryLevel,
+      batteryCapacityKwh,
+      consumptionPerKm,
+    });
+    res.json({ success: true, result });
+  } catch (error: any) {
+    console.error('[HERE] EV routing error:', error);
+    res.status(503).json({ error: 'EV routing service unavailable.' });
+  }
+});
+
+app.get('/api/location/charging-stations', async (req, res) => {
+  const lat = Number(req.query.lat);
+  const lng = Number(req.query.lng);
+  const radius = Number(req.query.radius || 5000);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return res.status(422).json({ error: 'Valid lat/lng required.' });
+
+  try {
+    const stations = await searchChargingStations(lat, lng, radius);
+    res.json({ success: true, stations });
+  } catch (error: any) {
+    console.error('[HERE] Charging stations error:', error);
+    res.status(503).json({ error: 'Charging stations service unavailable.' });
+  }
+});
+
+// Waypoint optimization
+app.get('/api/location/waypoint-optimize', async (req, res) => {
+  // This would accept waypoint parameters, but for now we'll use a simplified approach
+  // In production, this would parse waypoint data from the query or body
+  res.json({ success: true, message: 'Waypoint optimization endpoint ready' });
+});
+
+// Snap to roads for GPS tracking
+app.get('/api/location/snap-to-roads', async (req, res) => {
+  const lat = Number(req.query.lat);
+  const lng = Number(req.query.lng);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return res.status(422).json({ error: 'Valid lat/lng required.' });
+
+  try {
+    const result = await snapToRoads([{ lat, lng }]);
+    res.json({ success: true, snappedPoint: result.snappedPoints[0] });
+  } catch (error: any) {
+    console.error('[HERE] Snap to roads error:', error);
+    res.status(503).json({ error: 'Snap to roads service unavailable.' });
+  }
+});
+
+// Matrix routing for optimization scenarios
+app.get('/api/location/matrix', async (req, res) => {
+  const originLat = Number(req.query.originLat);
+  const originLng = Number(req.query.originLng);
+  const destLat = Number(req.query.destLat);
+  const destLng = Number(req.query.destLng);
+
+  if (!Number.isFinite(originLat) || !Number.isFinite(originLng) || !Number.isFinite(destLat) || !Number.isFinite(destLng)) {
+    return res.status(422).json({ error: 'Valid origin and destination coordinates required.' });
+  }
+
+  try {
+    // Calculate route for matrix/dispatch scenario
+    const result = await calculateDeliveryRoute(
+      { lat: originLat, lng: originLng },
+      { lat: destLat, lng: destLng }
+    );
+    res.json({ success: true, result });
+  } catch (error: any) {
+    console.error('[HERE] Matrix routing error:', error);
+    res.status(503).json({ error: 'Matrix routing service unavailable.' });
+  }
+});
+
+app.get('/api/location/reachable-range', async (req, res) => {
+  const originLat = Number(req.query.originLat);
+  const originLng = Number(req.query.originLng);
+  const batteryLevel = Number(req.query.batteryLevel);
+  const batteryCapacityKwh = Number(req.query.batteryCapacityKwh);
+  const consumptionPerKm = Number(req.query.consumptionPerKm);
+
+  if (!Number.isFinite(originLat) || !Number.isFinite(originLng) || !Number.isFinite(batteryLevel)) {
+    return res.status(422).json({ error: 'Valid origin and battery parameters required.' });
+  }
+
+  try {
+    const result = await calculateReachableRange(
+      { lat: originLat, lng: originLng },
+      batteryLevel,
+      batteryCapacityKwh,
+      consumptionPerKm
+    );
+    res.json({ success: true, result });
+  } catch (error: any) {
+    console.error('[HERE] Reachable range error:', error);
+    res.status(503).json({ error: 'Reachable range service unavailable.' });
+  }
+});
+
+app.get('/api/health', (req, res) => {
   const lat = Number(req.query.lat);
   const lng = Number(req.query.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return res.status(422).json({ error: 'Valid latitude and longitude are required.' });

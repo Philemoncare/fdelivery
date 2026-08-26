@@ -127,7 +127,7 @@ export function VendorRegisterPage() {
       const res = await register(payload, 'vendor');
       if (res.success) {
         clearDraft(draftKey);
-        setDraftStep(steps.length + 1); // Success state
+        setDraftStep(steps.length + 1); // Application submitted state
       } else {
         showToast('error', 'Registration Failed', res.error || 'Please check your information.');
       }

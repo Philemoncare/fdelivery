@@ -4,7 +4,7 @@ import { useApp } from '@/src/context/AppContext';
 import { useAuth } from '@/src/lib/auth/auth-store';
 import { resolvePostAuthenticationRoute } from '@/src/lib/auth/types';
 import { SearchAutocomplete } from './SearchAutocomplete';
-import { GlobalNavActions } from './GlobalNavActions';
+import { GlobalNavActions, HeaderCountryLanguage } from './GlobalNavActions';
 import {
   ChevronDown,
   Menu,
@@ -174,7 +174,9 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({ onToggleMegaMenu, is
 
               <span className="hidden lg:block h-6 w-px bg-gray-100 dark:bg-slate-800 mx-0.5" />
 
-              {/* Secondary quiet actions: language, wishlist, messages, notifications */}
+              {/* Country and Language selector for public website */}
+              {!user && <HeaderCountryLanguage defaultCountryCode="GH" />}
+
               <GlobalNavActions className="hidden md:flex" />
 
               <div className="h-6 w-px bg-gray-100 dark:bg-slate-800 mx-1 hidden md:block"></div>

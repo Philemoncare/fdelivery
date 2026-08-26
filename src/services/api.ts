@@ -440,8 +440,8 @@ export const NewsletterService = {
 };
 
 export const LocationService = {
-  reverseGeocode: (latitude: number, longitude: number) => request<{ address: string; area: string; city: string; region: string; country: string; latitude: number; longitude: number }>(`/geocoding/reverse?lat=${encodeURIComponent(latitude)}&lng=${encodeURIComponent(longitude)}`),
-  searchPlaces: (q: string) => request<{ ok: boolean; places: DeliveryLocation[]; error: string | null }>(`/geocoding/search?q=${encodeURIComponent(q)}`),
+  reverseGeocode: (latitude: number, longitude: number) => request<{ address: string; area: string; city: string; country: string; latitude: number; longitude: number }>(`/api/location/reverse-geocode?lat=${encodeURIComponent(latitude)}&lng=${encodeURIComponent(longitude)}`),
+  searchPlaces: (q: string) => request<{ ok: boolean; places: DeliveryLocation[]; error: string | null }>(`/api/location/search?q=${encodeURIComponent(q)}`),
 };
 
 // ------------------------------------------------------------
